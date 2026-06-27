@@ -48,7 +48,7 @@ function VaultApp() {
   const [buffer, setBuffer] = useState<string>("");
   const [savedSnapshot, setSavedSnapshot] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(["DCIPHERED", "SEco"]),
+    () => new Set(["Notes", "Reference"]),
   );
   const [query, setQuery] = useState("");
   const [centerTab, setCenterTab] = useState<"edit" | "preview">("edit");
