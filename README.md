@@ -51,16 +51,16 @@ the files come from.
 
 ```markdown
 ---
-id: dciphered-probe-tiers
-title: DCIPHERED Probe Tiers
-tags: [dciphered, diagnostics, safety]
+id: project-plan
+title: Project Alpha Plan
+tags: [notes, planning]
 ---
 ```
 
 ### Explicit heading anchors
 
 ```markdown
-## Tier 1: Safe OS APIs {#tier-1-safe-os-apis}
+## Milestones {#milestones}
 ```
 
 ### Wikilinks
@@ -71,8 +71,8 @@ tags: [dciphered, diagnostics, safety]
 [[Some Note#section-id|Alias Text]]
 ```
 
-Wikilink targets resolve by **filename stem** (`probe-tiers.md` →
-`probe-tiers`) or by **frontmatter `id`**. Broken links are rendered
+Wikilink targets resolve by **filename stem** (`project-plan.md` →
+`project-plan`) or by **frontmatter `id`**. Broken links are rendered
 in red with a strikethrough and listed in the validation panel.
 
 ## Index
