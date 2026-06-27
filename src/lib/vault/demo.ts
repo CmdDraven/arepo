@@ -5,133 +5,137 @@ export const DEMO_FILES: DemoFile[] = [
     path: "index.md",
     content: `---
 id: index
-title: Vault Index
+title: Example Workspace
 tags: [index, meta]
 ---
 
-# Vault Index
+# Example Workspace
 
 Welcome to your local Markdown knowledge base. The notes below are plain
 \`.md\` files on disk — this app only indexes them.
 
-## Areas
+## Sections
 
-- [[probe-tiers|DCIPHERED Probe Tiers]]
-- [[safety-model]]
-- [[model-provenance-tracker]]
-- [[autonomy-governor]]
+- [[meeting-notes|Weekly Meeting Notes]]
+- [[project-plan]]
+- [[style-guide]]
+- [[terminology]]
 
 ## Broken link demo
 
 This link points nowhere on purpose: [[nonexistent-note]].
 
-And this anchor is missing: [[safety-model#does-not-exist]].
+And this anchor is missing: [[project-plan#does-not-exist]].
 `,
   },
   {
-    path: "DCIPHERED/probe-tiers.md",
+    path: "Notes/meeting-notes.md",
     content: `---
-id: dciphered-probe-tiers
-title: DCIPHERED Probe Tiers
-tags: [dciphered, diagnostics, safety]
+id: meeting-notes
+title: Weekly Meeting Notes
+tags: [notes, meeting]
 ---
 
-# DCIPHERED Probe Tiers
+# Weekly Meeting Notes
 
-Tiered probes for diagnosing model behaviour. See also [[safety-model]].
+Notes from the weekly sync. Related: [[project-plan]].
 
-## Tier 1: Safe OS APIs {#tier-1-safe-os-apis}
+## Attendees {#attendees}
 
-Read-only probes that only touch sandboxed OS APIs.
+- Alice
+- Bob
+- Carol
 
-- File metadata
-- Process listing
-- Network counters
+## Agenda {#agenda}
 
-## Tier 2: Instrumented Calls {#tier-2-instrumented-calls}
+1. Review last week's actions
+2. Discuss [[project-plan#milestones]]
+3. Open questions
 
-Wrapped calls with full audit logging. See [[safety-model#audit-logging]].
+## Action Items {#action-items}
 
-## Tier 3: Live Intervention {#tier-3-live-intervention}
-
-Requires explicit operator approval per [[autonomy-governor#approval-gates]].
+- Draft the next iteration of [[project-plan]]
+- Update [[style-guide]] with the new heading rules
 `,
   },
   {
-    path: "DCIPHERED/safety-model.md",
+    path: "Notes/project-plan.md",
     content: `---
-id: dciphered-safety-model
-title: DCIPHERED Safety Model
-tags: [dciphered, safety]
+id: project-plan
+title: Project Alpha Plan
+tags: [notes, planning]
 ---
 
-# Safety Model
+# Project Alpha Plan
 
-The safety model is layered. Each layer is independently auditable.
+High-level plan for Project Alpha. See also [[meeting-notes]] and
+[[terminology]] for definitions.
 
-## Threat Classes {#threat-classes}
+## Goals {#goals}
 
-1. Data exfiltration
-2. Privilege escalation
-3. Silent drift
+1. Ship the first prototype
+2. Collect feedback from reviewers
+3. Plan Project Beta
 
-## Audit Logging {#audit-logging}
+## Milestones {#milestones}
 
-All Tier 2+ probes (see [[probe-tiers#tier-2-instrumented-calls]]) emit
-structured audit events.
+| Milestone | Owner | Status |
+| --- | --- | --- |
+| Draft outline | Alice | Done |
+| Build prototype | Bob | In progress |
+| Review session | Carol | Pending |
 
-## Provenance {#provenance}
+## Checklist {#checklist}
 
-Cross-reference with [[model-provenance-tracker]].
+- [ ] Confirm scope
+- [ ] Assign owners
+- [ ] Schedule review per [[meeting-notes#agenda]]
 `,
   },
   {
-    path: "SEco/model-provenance-tracker.md",
+    path: "Reference/style-guide.md",
     content: `---
-id: seco-model-provenance-tracker
-title: Model Provenance Tracker
-tags: [seco, provenance]
+id: style-guide
+title: Style Guide
+tags: [reference, style]
 ---
 
-# Model Provenance Tracker
+# Style Guide
 
-Tracks where every deployed model came from.
+Conventions for notes in this Example Workspace.
 
-## Fields {#fields}
+## Headings {#headings}
 
-| Field | Notes |
-| --- | --- |
-| source | upstream repo |
-| hash | sha256 of weights |
-| signer | release key id |
+Use sentence case. Add explicit anchors with \`{#anchor-id}\` for any
+heading you expect other notes to link to.
 
-## Integration {#integration}
+## Links {#links}
 
-Feeds into [[autonomy-governor]] decisions and links back to
-[[safety-model#provenance]].
+Prefer wikilinks like [[terminology]] over raw URLs for notes inside the
+vault. See [[terminology#sample-term]] for vocabulary.
 `,
   },
   {
-    path: "SEco/autonomy-governor.md",
+    path: "Reference/terminology.md",
     content: `---
-id: seco-autonomy-governor
-title: Autonomy Governor
-tags: [seco, governance]
+id: terminology
+title: Terminology
+tags: [reference, glossary]
 ---
 
-# Autonomy Governor
+# Terminology
 
-Decides when an agent is allowed to act without an operator.
+Shared vocabulary used across the workspace. See also [[style-guide]].
 
-## Approval Gates {#approval-gates}
+## Sample Term {#sample-term}
 
-- Tier 3 probes from [[probe-tiers#tier-3-live-intervention]]
-- Any write to production
+A placeholder definition for a generic concept used in [[project-plan]].
 
-## Inputs {#inputs}
+## Review Checklist {#review-checklist}
 
-- Provenance score from [[model-provenance-tracker#fields]]
-- Current threat class (see [[safety-model#threat-classes]])
+- Confirm the note has a frontmatter \`id\` and \`title\`
+- Verify wikilinks resolve
+- Cross-check against [[style-guide#headings]]
 `,
   },
 ];

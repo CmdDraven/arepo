@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEMO_FILES } from "./demo";
 import { buildIndex, validate, type VaultIndex, type ValidationIssue } from "./indexer";
 
-const STORAGE_KEY = "vault:files:v1";
+const STORAGE_KEY = "vault:files:v2";
 
 type FilesMap = Record<string, string>;
 
