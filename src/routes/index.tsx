@@ -277,6 +277,11 @@ function VaultApp() {
                 setActivePath(p);
                 if (isMobile) setMobileTab("edit");
               }}
+              onOpenPreview={(p) => {
+                setActivePath(p);
+                if (isMobile) setMobileTab("preview");
+                else setCenterTab("preview");
+              }}
             />
           )}
         </div>
