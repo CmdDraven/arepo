@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Crosshair,
+  Info,
   Maximize2,
   RotateCcw,
   ZoomIn,
   ZoomOut,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,10 +19,12 @@ export function VaultGraph({
   data,
   activePath,
   onSelect,
+  onOpenPreview,
 }: {
   data: GraphData;
   activePath: string | null;
   onSelect: (path: string) => void;
+  onOpenPreview?: (path: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -30,6 +34,10 @@ export function VaultGraph({
   const [hover, setHover] = useState<GNode | null>(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
+  const [pinned, setPinned] = useState<GNode | null>(null);
+  const [pinnedPos, setPinnedPos] = useState({ x: 0, y: 0 });
+  const [showLegend, setShowLegend] = useState(false);
+  const [showClusters, setShowClusters] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -247,6 +255,20 @@ export function VaultGraph({
 
   const showLabels = transform.k > 0.55;
   const showFullLabels = transform.k > 0.9;
+  const clustersVisible = showClusters || transform.k < 0.5;
+
+  const emptyMessage =
+    filter === "orphans"
+      ? "No orphan notes."
+      : filter === "broken"
+        ? "No broken links."
+        : filter === "neighborhood" &&
+            (!activePath || !data.nodeById[activePath])
+          ? "Select a note to view its neighborhood."
+          : "No nodes match this filter.";
+
+  const details = pinned ?? hover;
+  const detailsPos = pinned ? pinnedPos : hoverPos;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -291,6 +313,15 @@ export function VaultGraph({
           <span className="text-[10px] font-mono text-muted-foreground mr-1">
             {Math.round(transform.k * 100)}%
           </span>
+          <Button
+            size="sm"
+            variant={showLegend ? "secondary" : "ghost"}
+            className="h-6 w-6 p-0"
+            title="Legend"
+            onClick={() => setShowLegend((s) => !s)}
+          >
+            <Info className="size-3.5" />
+          </Button>
           <Button
             size="sm"
             variant="ghost"
@@ -349,17 +380,18 @@ export function VaultGraph({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onClick={() => setPinned(null)}
       >
         {visibleNodes.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
-            No nodes match this filter.
+            {emptyMessage}
           </div>
         ) : (
           <svg width={size.w} height={size.h} className="absolute inset-0">
             <g
               transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}
             >
-              {data.componentBounds
+              {clustersVisible && data.componentBounds
                 .filter((c) =>
                   visibleNodes.some((n) => n.componentId === c.id),
                 )
@@ -374,8 +406,8 @@ export function VaultGraph({
                     className={cn(
                       "fill-none",
                       c.isOrphans
-                        ? "stroke-muted-foreground/25"
-                        : "stroke-muted-foreground/15",
+                        ? "stroke-muted-foreground/15"
+                        : "stroke-muted-foreground/10",
                     )}
                     strokeDasharray={`${4 / transform.k} ${3 / transform.k}`}
                     strokeWidth={1 / transform.k}
@@ -432,13 +464,19 @@ export function VaultGraph({
                       ev.stopPropagation();
                       if (movedRef.current) return;
                       if (n.type === "missing") return;
-                      onSelect(n.id);
+                      const pos = localXY(ev.clientX, ev.clientY);
+                      setPinned(n);
+                      setPinnedPos(pos);
+                      setHover(null);
                     }}
                     onPointerEnter={(ev) => {
+                      if (pinned) return;
                       setHover(n);
                       setHoverPos(localXY(ev.clientX, ev.clientY));
                     }}
-                    onPointerLeave={() => setHover(null)}
+                    onPointerLeave={() => {
+                      if (!pinned) setHover(null);
+                    }}
                   >
                     <circle
                       r={r}
@@ -465,34 +503,142 @@ export function VaultGraph({
             </g>
           </svg>
         )}
-        {hover && (
+        {details && !pinned && (
           <div
             className="absolute pointer-events-none z-10 bg-popover text-popover-foreground border rounded shadow-md px-2 py-1.5 text-[11px] max-w-[240px]"
             style={{
-              left: Math.min(hoverPos.x + 12, size.w - 240),
-              top: Math.min(hoverPos.y + 12, size.h - 70),
+              left: Math.min(detailsPos.x + 12, size.w - 240),
+              top: Math.min(detailsPos.y + 12, size.h - 70),
             }}
           >
-            <div className="font-medium truncate">{hover.label}</div>
+            <div className="font-medium truncate">{details.label}</div>
             <div className="font-mono text-[10px] text-muted-foreground truncate">
-              {hover.type === "missing" ? "(missing target)" : hover.path}
+              {details.type === "missing" ? "(missing target)" : details.path}
             </div>
             <div className="text-muted-foreground mt-0.5">
-              → {hover.outgoingCount} · ← {hover.backlinkCount}
-              {hover.validationIssueCount > 0 && (
+              → {details.outgoingCount} · ← {details.backlinkCount}
+              {details.validationIssueCount > 0 && (
                 <span className="text-destructive">
                   {" "}
-                  · {hover.validationIssueCount} issue
-                  {hover.validationIssueCount > 1 ? "s" : ""}
+                  · {details.validationIssueCount} issue
+                  {details.validationIssueCount > 1 ? "s" : ""}
                 </span>
               )}
             </div>
           </div>
         )}
+        {pinned && (
+          <div
+            className="absolute z-20 bg-popover text-popover-foreground border rounded shadow-md text-[11px] w-[240px]"
+            style={{
+              left: Math.min(Math.max(8, pinnedPos.x + 12), size.w - 248),
+              top: Math.min(Math.max(8, pinnedPos.y + 12), size.h - 140),
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-1 px-2 pt-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate">{pinned.label}</div>
+                <div className="font-mono text-[10px] text-muted-foreground truncate">
+                  {pinned.type === "missing" ? "(missing target)" : pinned.path}
+                </div>
+              </div>
+              <button
+                className="text-muted-foreground hover:text-foreground shrink-0"
+                onClick={() => setPinned(null)}
+                title="Close"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+            <div className="px-2 pb-1.5 text-muted-foreground">
+              → {pinned.outgoingCount} · ← {pinned.backlinkCount}
+              {pinned.validationIssueCount > 0 && (
+                <span className="text-destructive">
+                  {" "}· {pinned.validationIssueCount} issue
+                  {pinned.validationIssueCount > 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            {pinned.type !== "missing" && (
+              <div className="flex border-t">
+                <button
+                  className="flex-1 px-2 py-1.5 text-[11px] hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    onSelect(pinned.id);
+                    setPinned(null);
+                  }}
+                >
+                  Open in Edit
+                </button>
+                {onOpenPreview && (
+                  <button
+                    className="flex-1 px-2 py-1.5 text-[11px] border-l hover:bg-accent hover:text-accent-foreground"
+                    onClick={() => {
+                      onOpenPreview(pinned.id);
+                      setPinned(null);
+                    }}
+                  >
+                    Open in Preview
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {showLegend && (
+          <div className="absolute top-2 right-2 z-10 bg-popover text-popover-foreground border rounded shadow-md text-[11px] w-[200px]">
+            <div className="flex items-center justify-between px-2 py-1 border-b">
+              <span className="font-medium">Legend</span>
+              <button
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setShowLegend(false)}
+                title="Close"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+            <ul className="px-2 py-1.5 space-y-1">
+              <li className="flex items-center gap-2">
+                <svg width={14} height={14}><circle cx={7} cy={7} r={5} className="fill-background stroke-foreground/70" strokeWidth={1.5} /></svg>
+                <span>Note</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <svg width={14} height={14}><circle cx={7} cy={7} r={6} className="fill-primary stroke-primary" /></svg>
+                <span>Selected note</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <svg width={14} height={14}><circle cx={7} cy={7} r={5} className="fill-muted stroke-muted-foreground/60" strokeWidth={1.5} /></svg>
+                <span>Orphan (no links)</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <svg width={14} height={14}><circle cx={7} cy={7} r={5} className="fill-destructive/25 stroke-destructive" strokeWidth={1.5} /></svg>
+                <span>Broken link target</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <svg width={20} height={6}><line x1={0} y1={3} x2={20} y2={3} className="stroke-destructive" strokeWidth={1.5} strokeDasharray="3 2" /></svg>
+                <span>Broken edge</span>
+              </li>
+            </ul>
+            <div className="border-t px-2 py-1.5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showClusters}
+                  onChange={(e) => setShowClusters(e.target.checked)}
+                />
+                <span>Show cluster boundaries</span>
+              </label>
+            </div>
+          </div>
+        )}
         <div className="absolute bottom-1 left-2 text-[10px] font-mono text-muted-foreground pointer-events-none">
-          {visibleNodes.length} nodes · {visibleEdges.length} edges ·{" "}
-          {data.componentBounds.length} components
-          {visibleIds.size !== data.nodes.length && " (filtered)"}
+          {visibleNodes.length === 0
+            ? ""
+            : `${visibleNodes.length} nodes · ${visibleEdges.length} edges${
+                visibleIds.size !== data.nodes.length ? " (filtered)" : ""
+              }`}
         </div>
       </div>
     </div>
