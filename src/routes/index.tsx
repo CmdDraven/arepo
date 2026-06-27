@@ -14,8 +14,11 @@ import {
   Save,
   Search,
   Sun,
+  Network,
 } from "lucide-react";
 import { FileTree } from "@/components/FileTree";
+import { VaultGraph } from "@/components/VaultGraph";
+import { buildGraph } from "@/lib/vault/graph";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +58,7 @@ function VaultApp() {
   const [mobileTab, setMobileTab] = useState<"vault" | "edit" | "preview" | "inspect">(
     "vault",
   );
+  const [vaultMode, setVaultMode] = useState<"tree" | "graph">("tree");
   const isMobile = useIsMobile();
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window === "undefined") return "light";
@@ -182,65 +186,101 @@ function VaultApp() {
   const totalIssues = issues.length;
   const errorCount = issues.filter((i) => i.severity === "error").length;
 
+  const graphData = useMemo(
+    () => (vaultMode === "graph" ? buildGraph(index, issues) : null),
+    [vaultMode, index, issues],
+  );
+
   // ----- shared pane content -----
   const vaultPane = (
     <div className="flex flex-col min-h-0 h-full">
-      <div className="p-2 border-b space-y-2 shrink-0">
-        <div className="relative">
-          <Search className="size-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search files, text, tags…"
-            className="h-8 pl-7 text-xs"
-          />
-        </div>
-        <div className="flex gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 flex-1 text-xs"
-            onClick={() => handleNewFile("")}
-          >
-            New file
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 flex-1 text-xs"
-            onClick={() => handleNewFolder("")}
-          >
-            New folder
-          </Button>
-        </div>
+      <div className="p-2 border-b shrink-0 flex gap-1">
+        <SegBtn
+          active={vaultMode === "tree"}
+          onClick={() => setVaultMode("tree")}
+        >
+          <FolderTree className="size-3.5" /> Tree
+        </SegBtn>
+        <SegBtn
+          active={vaultMode === "graph"}
+          onClick={() => setVaultMode("graph")}
+        >
+          <Network className="size-3.5" /> Graph
+        </SegBtn>
       </div>
-      <div className="flex-1 min-h-0 overflow-auto p-2">
-        {results ? (
-          <SearchResults
-            results={results}
-            onPick={(p) => {
-              setActivePath(p);
-              setQuery("");
-              if (isMobile) setMobileTab("edit");
-            }}
-          />
-        ) : (
-          <FileTree
-            paths={paths}
-            folders={vault.folders}
-            activePath={activePath}
-            dirtyPaths={dirtyPaths}
-            expanded={expanded}
-            onToggleFolder={toggleFolder}
-            onSelect={(p) => {
-              setActivePath(p);
-              if (isMobile) setMobileTab("edit");
-            }}
-            onNewFile={handleNewFile}
-            onNewFolder={handleNewFolder}
-          />
-        )}
-      </div>
+      {vaultMode === "tree" ? (
+        <>
+          <div className="p-2 border-b space-y-2 shrink-0">
+            <div className="relative">
+              <Search className="size-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search files, text, tags…"
+                className="h-8 pl-7 text-xs"
+              />
+            </div>
+            <div className="flex gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 flex-1 text-xs"
+                onClick={() => handleNewFile("")}
+              >
+                New file
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 flex-1 text-xs"
+                onClick={() => handleNewFolder("")}
+              >
+                New folder
+              </Button>
+            </div>
+          </div>
+          <div className="flex-1 min-h-0 overflow-auto p-2">
+            {results ? (
+              <SearchResults
+                results={results}
+                onPick={(p) => {
+                  setActivePath(p);
+                  setQuery("");
+                  if (isMobile) setMobileTab("edit");
+                }}
+              />
+            ) : (
+              <FileTree
+                paths={paths}
+                folders={vault.folders}
+                activePath={activePath}
+                dirtyPaths={dirtyPaths}
+                expanded={expanded}
+                onToggleFolder={toggleFolder}
+                onSelect={(p) => {
+                  setActivePath(p);
+                  if (isMobile) setMobileTab("edit");
+                }}
+                onNewFile={handleNewFile}
+                onNewFolder={handleNewFolder}
+              />
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="flex-1 min-h-0">
+          {graphData && (
+            <VaultGraph
+              data={graphData}
+              activePath={activePath}
+              onSelect={(p) => {
+                setActivePath(p);
+                if (isMobile) setMobileTab("edit");
+              }}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 
