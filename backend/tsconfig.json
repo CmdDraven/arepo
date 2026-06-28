@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "rootDir": "..",
+    "outDir": "../dist-backend",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": false
+  },
+  "include": [
+    "./**/*.ts",
+    "../src/lib/vault/frontmatter.ts",
+    "../src/lib/vault/diff.ts",
+    "../src/lib/vault/indexer.ts",
+    "../src/lib/vault/render.ts",
+    "../src/lib/vault/graph.ts"
+  ]
+}
