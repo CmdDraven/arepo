@@ -171,6 +171,7 @@ mdAtlas cache files to appear beside user notes.
 - `DELETE /api/vaults/:vaultId/file?path=...`
 - `POST /api/vaults/:vaultId/reindex`
 - `GET /api/vaults/:vaultId/index`
+- `GET /api/vaults/:vaultId/storage`
 
 `POST /api/vaults/:vaultId/reindex` means "rebuild the generated machine index
 from Markdown files." It does not create or require a user-authored `index.md`.
@@ -232,6 +233,23 @@ or search work.
 
 The frontend still owns preview rendering and graph layout, but note content
 and the index now come from the local backend.
+
+## Storage Reporting
+
+`GET /api/vaults/:vaultId/storage` reports local storage use for a configured
+vault. Per-file size is shown in the Metadata panel, graph multi-selection shows
+combined selected-file size, and full vault storage details are shown in Vault
+Settings. The backend scans only inside the configured vault root, counts regular
+files, and skips symlinks. It reports:
+
+- total vault file count and bytes
+- Markdown/text file count and bytes
+- attachment/other file count and bytes
+- mdAtlas app-data cache bytes for the vault's generated machine index files
+
+Generated machine indexes live under the app data directory and are disposable
+cache. They are not user-authored Markdown content and can be rebuilt from the
+vault files.
 
 The current indexer strips fenced code blocks and inline code before extracting
 headings and wikilinks. It is still a lightweight Markdown parser, not a full

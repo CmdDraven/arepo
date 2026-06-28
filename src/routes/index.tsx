@@ -82,6 +82,7 @@ function VaultApp() {
 
   const paths = useMemo(() => Object.keys(files), [files]);
   const [activePath, setActivePath] = useState<string | null>(() => paths[0] ?? null);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const [buffer, setBuffer] = useState<string>("");
   const [savedSnapshot, setSavedSnapshot] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["Notes", "Reference"]));
@@ -192,7 +193,42 @@ function VaultApp() {
     void refreshActiveVault();
   }, [dirty, handledVaultChangeAt, refreshActiveVault, vaultStatus]);
 
-  const note = activePath ? index.notes[activePath] : null;
+  const selectedNotePaths = useMemo(
+    () => Array.from(selectedPaths).filter((path) => Boolean(index.notes[path])),
+    [index.notes, selectedPaths],
+  );
+  const metadataPath = selectedNotePaths.length === 1 ? selectedNotePaths[0] : activePath;
+  const metadataNote = metadataPath ? index.notes[metadataPath] : null;
+  const metadataFileMeta = metadataPath ? fileMeta[metadataPath] : undefined;
+  const combinedMetadata = useMemo(() => {
+    if (selectedNotePaths.length <= 1) return null;
+    const uniqueTags = new Set<string>();
+    let totalBytes = 0;
+    let headings = 0;
+    let outgoing = 0;
+    let backlinks = 0;
+    let issueCount = 0;
+    for (const path of selectedNotePaths) {
+      const selectedNote = index.notes[path];
+      if (!selectedNote) continue;
+      for (const tag of selectedNote.tags) uniqueTags.add(tag);
+      totalBytes += fileMeta[path]?.size ?? 0;
+      headings += selectedNote.headings.length;
+      outgoing += selectedNote.wikilinks.length;
+      backlinks += index.backlinks[path]?.length ?? 0;
+      issueCount += issues.filter((issue) => issue.path === path).length;
+    }
+    return {
+      fileCount: selectedNotePaths.length,
+      totalBytes,
+      headings,
+      outgoing,
+      backlinks,
+      issueCount,
+      tags: Array.from(uniqueTags).sort((a, b) => a.localeCompare(b)),
+      paths: selectedNotePaths,
+    };
+  }, [fileMeta, index.backlinks, index.notes, issues, selectedNotePaths]);
   const previewBody = useMemo(() => {
     // Re-parse the live buffer so preview matches what's in the editor
     if (!activePath) return "";
@@ -254,6 +290,7 @@ function VaultApp() {
       if (dirty && !window.confirm("Discard unsaved changes and switch files?")) {
         return;
       }
+      setSelectedPaths(new Set());
       setActivePath(path);
     },
     [activePath, dirty],
@@ -530,6 +567,8 @@ function VaultApp() {
             <VaultGraph
               data={graphData}
               activePath={activePath}
+              selectedPaths={selectedPaths}
+              onSelectionChange={(paths) => setSelectedPaths(new Set(paths))}
               onSelect={(p) => {
                 selectPath(p);
                 if (isMobile) setMobileTab("edit");
@@ -667,17 +706,62 @@ function VaultApp() {
           </ul>
         )}
       </Section>
-      <Section icon={<FileText className="size-3.5" />} title="Metadata">
-        {note ? (
+      <Section
+        icon={<FileText className="size-3.5" />}
+        title={combinedMetadata ? "Combined metadata" : "Metadata"}
+        count={combinedMetadata?.fileCount}
+      >
+        {combinedMetadata ? (
           <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-            <dt className="text-muted-foreground">title</dt>
-            <dd className="truncate">{note.title}</dd>
-            <dt className="text-muted-foreground">id</dt>
-            <dd className="font-mono truncate">{(note.frontmatter.id as string) ?? "—"}</dd>
+            <dt className="text-muted-foreground">files</dt>
+            <dd>{combinedMetadata.fileCount}</dd>
+            <dt className="text-muted-foreground">total size</dt>
+            <dd>{formatBytes(combinedMetadata.totalBytes)}</dd>
             <dt className="text-muted-foreground">tags</dt>
             <dd className="flex flex-wrap gap-1">
-              {note.tags.length ? (
-                note.tags.map((t) => (
+              {combinedMetadata.tags.length ? (
+                combinedMetadata.tags.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="text-[10px] py-0">
+                    {tag}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </dd>
+            <dt className="text-muted-foreground">headings</dt>
+            <dd>{combinedMetadata.headings}</dd>
+            <dt className="text-muted-foreground">outgoing</dt>
+            <dd>{combinedMetadata.outgoing}</dd>
+            <dt className="text-muted-foreground">backlinks</dt>
+            <dd>{combinedMetadata.backlinks}</dd>
+            <dt className="text-muted-foreground">issues</dt>
+            <dd>{combinedMetadata.issueCount}</dd>
+            <dt className="text-muted-foreground">paths</dt>
+            <dd className="space-y-0.5">
+              {combinedMetadata.paths.map((path) => (
+                <div key={path} className="font-mono truncate" title={path}>
+                  {path}
+                </div>
+              ))}
+            </dd>
+          </dl>
+        ) : metadataNote ? (
+          <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <dt className="text-muted-foreground">title</dt>
+            <dd className="truncate">{metadataNote.title}</dd>
+            <dt className="text-muted-foreground">path</dt>
+            <dd className="font-mono truncate" title={metadataPath ?? undefined}>
+              {metadataPath}
+            </dd>
+            <dt className="text-muted-foreground">size</dt>
+            <dd>{metadataFileMeta ? formatBytes(metadataFileMeta.size) : "checking"}</dd>
+            <dt className="text-muted-foreground">id</dt>
+            <dd className="font-mono truncate">{(metadataNote.frontmatter.id as string) ?? "—"}</dd>
+            <dt className="text-muted-foreground">tags</dt>
+            <dd className="flex flex-wrap gap-1">
+              {metadataNote.tags.length ? (
+                metadataNote.tags.map((t) => (
                   <Badge key={t} variant="secondary" className="text-[10px] py-0">
                     {t}
                   </Badge>
@@ -687,9 +771,9 @@ function VaultApp() {
               )}
             </dd>
             <dt className="text-muted-foreground">headings</dt>
-            <dd>{note.headings.length}</dd>
+            <dd>{metadataNote.headings.length}</dd>
             <dt className="text-muted-foreground">outgoing</dt>
-            <dd>{note.wikilinks.length}</dd>
+            <dd>{metadataNote.wikilinks.length}</dd>
           </dl>
         ) : (
           <Empty>No file selected.</Empty>
@@ -1296,10 +1380,23 @@ function FullFilePane({ title, text }: { title: string; text: string }) {
   );
 }
 
+type StorageBucket = {
+  fileCount: number;
+  bytes: number;
+};
+
+type VaultStorageSummary = {
+  total: StorageBucket;
+  markdownText: StorageBucket;
+  attachments: StorageBucket;
+  appDataCache: StorageBucket & { machineIndexBytes: number };
+};
+
 type VaultSummary = {
   fileCount: number;
   indexedNoteCount: number;
   issueCount: number;
+  storage: VaultStorageSummary | null;
   status: "ready" | "error";
   error?: string;
 };
@@ -1342,13 +1439,14 @@ function VaultSettingsPanel({
     const entries = await Promise.all(
       vaults.map(async (vault) => {
         try {
-          const [files, indexResponse] = await Promise.all([
+          const [files, indexResponse, storage] = await Promise.all([
             settingsApi<{ files: { path: string }[] }>(
               `/api/vaults/${encodeURIComponent(vault.id)}/files`,
             ),
             settingsApi<{ index: { notes: Record<string, unknown> }; issues: unknown[] }>(
               `/api/vaults/${encodeURIComponent(vault.id)}/index`,
             ),
+            settingsApi<VaultStorageSummary>(`/api/vaults/${encodeURIComponent(vault.id)}/storage`),
           ]);
           return [
             vault.id,
@@ -1356,6 +1454,7 @@ function VaultSettingsPanel({
               fileCount: files.files.length,
               indexedNoteCount: Object.keys(indexResponse.index.notes).length,
               issueCount: indexResponse.issues.length,
+              storage,
               status: "ready" as const,
             },
           ] as const;
@@ -1366,6 +1465,7 @@ function VaultSettingsPanel({
               fileCount: 0,
               indexedNoteCount: 0,
               issueCount: 0,
+              storage: null,
               status: "error" as const,
               error: errorMessage(error),
             },
@@ -1575,26 +1675,7 @@ function ConfiguredVaultsCard({
                 <div className="grid gap-2 sm:grid-cols-2">
                   <PermissionList permissions={vault.permissions} />
                   <div className="text-xs space-y-1">
-                    <div>
-                      <span className="text-muted-foreground">Files:</span>{" "}
-                      {summary ? summary.fileCount : "checking"}
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Indexed notes:</span>{" "}
-                      {summary ? summary.indexedNoteCount : "checking"}
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Index issues:</span>{" "}
-                      {summary ? summary.issueCount : "checking"}
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Status:</span>{" "}
-                      {summary?.status === "error" ? (
-                        <span className="text-destructive">{summary.error}</span>
-                      ) : (
-                        <span>{summary?.status ?? "checking"}</span>
-                      )}
-                    </div>
+                    <StorageSummaryList summary={summary} />
                   </div>
                 </div>
                 {vault.permissions.deleteFiles && (
@@ -1610,6 +1691,65 @@ function ConfiguredVaultsCard({
       </div>
     </section>
   );
+}
+
+function StorageSummaryList({ summary }: { summary: VaultSummary | undefined }) {
+  if (!summary) {
+    return <div className="text-muted-foreground">Storage: checking</div>;
+  }
+  if (summary.status === "error") {
+    return <div className="text-destructive">{summary.error}</div>;
+  }
+  const storage = summary.storage;
+  return (
+    <>
+      <div>
+        <span className="text-muted-foreground">Files:</span> {summary.fileCount}
+      </div>
+      <div>
+        <span className="text-muted-foreground">Indexed notes:</span> {summary.indexedNoteCount}
+      </div>
+      <div>
+        <span className="text-muted-foreground">Index issues:</span> {summary.issueCount}
+      </div>
+      <div>
+        <span className="text-muted-foreground">Vault content:</span>{" "}
+        {storage ? formatBytes(storage.total.bytes) : "checking"}
+        {storage && ` (${storage.total.fileCount} files)`}
+      </div>
+      <div>
+        <span className="text-muted-foreground">Markdown/text:</span>{" "}
+        {storage ? formatBytes(storage.markdownText.bytes) : "checking"}
+        {storage && ` (${storage.markdownText.fileCount} files)`}
+      </div>
+      <div>
+        <span className="text-muted-foreground">Attachments/other:</span>{" "}
+        {storage ? formatBytes(storage.attachments.bytes) : "checking"}
+        {storage && ` (${storage.attachments.fileCount} files)`}
+      </div>
+      <div>
+        <span className="text-muted-foreground">mdAtlas map/index cache:</span>{" "}
+        {storage ? formatBytes(storage.appDataCache.bytes) : "checking"}
+        {storage && ` (${storage.appDataCache.fileCount} files)`}
+      </div>
+      <div>
+        <span className="text-muted-foreground">Status:</span> {summary.status}
+      </div>
+    </>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
 
 function PermissionList({ permissions }: { permissions: VaultPermission }) {

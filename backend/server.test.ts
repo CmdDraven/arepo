@@ -98,6 +98,35 @@ test("vault registration and file APIs stay inside configured root", async () =>
   assert.equal(traversal.status, 400);
 });
 
+test("vault storage endpoint reports content and cache sizes", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-vault-"));
+  await fs.mkdir(path.join(rootPath, "assets"), { recursive: true });
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
+  await fs.writeFile(path.join(rootPath, "assets", "file.bin"), Buffer.alloc(4));
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+
+  const response = await routeRequest(request("GET", `/api/vaults/${vault.id}/storage`), cwd);
+  assert.equal(response.status, 200);
+  const storage = response.body as {
+    total: { fileCount: number; bytes: number };
+    markdownText: { fileCount: number; bytes: number };
+    attachments: { fileCount: number; bytes: number };
+    appDataCache: { fileCount: number; bytes: number; machineIndexBytes: number };
+  };
+  assert.equal(storage.total.fileCount, 2);
+  assert.equal(storage.total.bytes, 11);
+  assert.equal(storage.markdownText.fileCount, 1);
+  assert.equal(storage.markdownText.bytes, 7);
+  assert.equal(storage.attachments.fileCount, 1);
+  assert.equal(storage.attachments.bytes, 4);
+  assert.equal(storage.appDataCache.fileCount, 1);
+  assert.equal(storage.appDataCache.machineIndexBytes > 0, true);
+});
+
 test("vault indexing works without a user-authored index.md", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-data-"));

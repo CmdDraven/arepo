@@ -91,8 +91,9 @@ disposable vault first; do not use important notes for initial acceptance.
    - `deleteFiles` disabled
 4. Submit the form.
 5. Expected result: the vault appears in the configured vault list with display
-   name, vault id, root path, permissions, file count, indexed note count, and
-   generated machine index status.
+   name, vault id, root path, permissions, file count, indexed note count,
+   generated machine index status, vault content size, Markdown/text size,
+   attachment/other size, and mdAtlas map/index cache size.
 6. Expected result: if the backend rejects the vault, the UI shows the backend
    error clearly.
 
@@ -197,14 +198,24 @@ Run this only on a clean config or after moving aside `.mdatlas/config.json`.
 5. Pan and zoom the graph.
 6. Expected result: pan and zoom controls remain usable on desktop and mobile
    viewport sizes.
+7. Expected result: an unobtrusive canvas hint explains Shift-drag area
+   selection and Shift-click node toggling.
+8. Hold Shift and drag from any point on the graph canvas to draw a selection
+   rectangle over multiple nodes.
+9. Expected result: selected nodes are visually marked and the Metadata panel
+   updates with the selected file count, combined file size, tags, heading count,
+   outgoing links, backlinks, issue count, and selected paths.
+10. Hold Shift and click a single node without dragging.
+11. Expected result: that node is toggled in or out of the current graph
+    selection.
 
 ## 13. Inspect And Backlinks
 
 1. Select `Projects/Alpha.md`.
 2. Open Inspect mode.
 3. Expected result: backlinks include `Home.md`.
-4. Expected result: metadata includes title, id if present, tags, headings, and
-   outgoing link counts.
+4. Expected result: metadata includes title, path, file size, id if present,
+   tags, headings, and outgoing link counts.
 5. Select a note with no backlinks.
 6. Expected result: the UI shows an empty backlink state rather than an error.
 
@@ -305,6 +316,33 @@ Confirm the following throughout local-mode acceptance:
 - Vite dev frontend port overrides continue to use the local `/api` proxy.
 - If the frontend is served without the Vite dev proxy, `MDATLAS_ALLOWED_ORIGINS`
   must include the new frontend origin; wildcard CORS is not acceptable.
+
+## 18. Storage Reporting
+
+1. In the disposable vault, add a nested Markdown file and a non-Markdown file:
+
+   ```bash
+   mkdir -p /tmp/mdatlas-acceptance-vault/Assets
+   printf '# Storage note\n' > /tmp/mdatlas-acceptance-vault/Storage.md
+   printf 'attachment bytes\n' > /tmp/mdatlas-acceptance-vault/Assets/example.bin
+   ```
+
+2. Select `Storage.md`.
+3. Expected result: the Metadata panel shows the selected file's size.
+4. Switch to Graph mode and multi-select `Storage.md` with at least one other
+   note by holding Shift and dragging a selection box around graph nodes.
+5. Expected result: the Metadata panel shows combined metadata, including
+   selected file count and combined selected-file size.
+6. Open the Vaults or Settings screen and refresh the configured vaults list.
+7. Expected result: Vault content size and file count include both files.
+8. Expected result: Markdown/text size includes `.md`/text files.
+9. Expected result: Attachment/other size includes non-Markdown files.
+10. Expected result: mdAtlas map/index cache size is shown separately from vault
+    content and is treated as disposable cache.
+11. Optional symlink check: create a symlink inside the vault to a file outside
+    the vault.
+12. Expected result: storage reporting skips the symlink and does not count or
+    follow the outside file.
 
 ## Acceptance Result
 

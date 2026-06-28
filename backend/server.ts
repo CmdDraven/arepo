@@ -3,6 +3,7 @@ import { URL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { addVault, getNodeInfo, getVault, loadConfig } from "./config.js";
 import { getMachineIndex, rebuildMachineIndex } from "./indexCache.js";
+import { getVaultStorageSummary } from "./storage.js";
 import {
   getVaultRuntimeStatus,
   recordVaultIndexed,
@@ -110,6 +111,10 @@ export async function routeRequest(
           await getVaultRuntimeStatus(vault, cwd, url.searchParams.get("path")),
           cors.headers,
         );
+      }
+
+      if (method === "GET" && action === "storage") {
+        return json(200, await getVaultStorageSummary(vault, cwd), cors.headers);
       }
 
       if (method === "PUT" && action === "file") {

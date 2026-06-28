@@ -12,11 +12,15 @@ export function VaultGraph({
   activePath,
   onSelect,
   onOpenPreview,
+  selectedPaths = new Set(),
+  onSelectionChange,
 }: {
   data: GraphData;
   activePath: string | null;
   onSelect: (path: string) => void;
   onOpenPreview?: (path: string) => void;
+  selectedPaths?: Set<string>;
+  onSelectionChange?: (paths: string[]) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -30,6 +34,13 @@ export function VaultGraph({
   const [pinnedPos, setPinnedPos] = useState({ x: 0, y: 0 });
   const [showLegend, setShowLegend] = useState(false);
   const [showClusters, setShowClusters] = useState(false);
+  const [selectionDrag, setSelectionDrag] = useState<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+  const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -135,16 +146,97 @@ export function VaultGraph({
     k: number;
   } | null>(null);
   const movedRef = useRef(false);
+  const nodeSelectionRef = useRef<{
+    node: GNode;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+  const boxSelectionRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressNextClickRef = useRef(false);
 
   const localXY = (cx: number, cy: number) => {
     const r = containerRef.current!.getBoundingClientRect();
     return { x: cx - r.left, y: cy - r.top };
   };
 
+  const screenXY = (node: GNode) => ({
+    x: node.x * transform.k + transform.x,
+    y: node.y * transform.k + transform.y,
+  });
+
+  const pathsInSelectionRect = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+    const minX = Math.min(a.x, b.x);
+    const maxX = Math.max(a.x, b.x);
+    const minY = Math.min(a.y, b.y);
+    const maxY = Math.max(a.y, b.y);
+    return visibleNodes
+      .filter((node) => node.type !== "missing")
+      .filter((node) => {
+        const p = screenXY(node);
+        return p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+      })
+      .map((node) => node.id);
+  };
+
+  const pathAtPoint = (point: { x: number; y: number }) => {
+    let nearest: { path: string; distance: number } | null = null;
+    for (const node of visibleNodes) {
+      if (node.type === "missing") continue;
+      const p = screenXY(node);
+      const distance = Math.hypot(p.x - point.x, p.y - point.y);
+      if (distance <= 14 && (!nearest || distance < nearest.distance)) {
+        nearest = { path: node.id, distance };
+      }
+    }
+    return nearest?.path ?? null;
+  };
+
+  const commitSelection = (paths: string[], additive: boolean) => {
+    if (!onSelectionChange) return;
+    if (additive) {
+      onSelectionChange(Array.from(new Set([...selectedSet, ...paths])));
+    } else {
+      onSelectionChange(paths);
+    }
+  };
+
+  const toggleSelectedPath = (path: string) => {
+    if (!onSelectionChange) return;
+    const next = new Set(selectedSet);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    onSelectionChange(Array.from(next));
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     movedRef.current = false;
+    if (e.shiftKey && onSelectionChange) {
+      const pos = localXY(e.clientX, e.clientY);
+      boxSelectionRef.current = {
+        pointerId: e.pointerId,
+        startX: pos.x,
+        startY: pos.y,
+        moved: false,
+      };
+      setSelectionDrag({
+        startX: pos.x,
+        startY: pos.y,
+        currentX: pos.x,
+        currentY: pos.y,
+      });
+      setDragging(false);
+      setPinned(null);
+      e.preventDefault();
+      return;
+    }
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 1) {
       dragRef.current = {
         x: e.clientX,
@@ -169,6 +261,21 @@ export function VaultGraph({
     }
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    const box = boxSelectionRef.current;
+    if (box?.pointerId === e.pointerId) {
+      const pos = localXY(e.clientX, e.clientY);
+      if (Math.abs(pos.x - box.startX) + Math.abs(pos.y - box.startY) > 3) {
+        box.moved = true;
+      }
+      setSelectionDrag({
+        startX: box.startX,
+        startY: box.startY,
+        currentX: pos.x,
+        currentY: pos.y,
+      });
+      e.preventDefault();
+      return;
+    }
     if (!pointers.current.has(e.pointerId)) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 2 && pinchRef.current) {
@@ -193,6 +300,28 @@ export function VaultGraph({
     }
   };
   const onPointerUp = (e: React.PointerEvent) => {
+    const box = boxSelectionRef.current;
+    if (box?.pointerId === e.pointerId) {
+      const pos = localXY(e.clientX, e.clientY);
+      if (box.moved) {
+        commitSelection(
+          pathsInSelectionRect({ x: box.startX, y: box.startY }, { x: pos.x, y: pos.y }),
+          false,
+        );
+      } else {
+        const path = pathAtPoint(pos);
+        if (path) toggleSelectedPath(path);
+        else commitSelection([], false);
+      }
+      boxSelectionRef.current = null;
+      setSelectionDrag(null);
+      suppressNextClickRef.current = true;
+      window.setTimeout(() => {
+        suppressNextClickRef.current = false;
+      }, 0);
+      e.preventDefault();
+      return;
+    }
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinchRef.current = null;
     if (pointers.current.size === 0) {
@@ -348,14 +477,21 @@ export function VaultGraph({
         ref={containerRef}
         className="relative flex-1 min-h-0 overflow-hidden bg-muted/20 touch-none select-none"
         style={{
-          cursor: dragging ? "grabbing" : "grab",
+          cursor: selectionDrag ? "crosshair" : dragging ? "grabbing" : "grab",
           overscrollBehavior: "contain",
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onClick={() => setPinned(null)}
+        onClick={() => {
+          if (suppressNextClickRef.current) {
+            suppressNextClickRef.current = false;
+            return;
+          }
+          setPinned(null);
+          onSelectionChange?.([]);
+        }}
       >
         {visibleNodes.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
@@ -406,7 +542,8 @@ export function VaultGraph({
               })}
               {visibleNodes.map((n) => {
                 const isActive = n.id === activePath;
-                const r = isActive ? 8 : 6;
+                const isSelected = selectedSet.has(n.id);
+                const r = isActive || isSelected ? 8 : 6;
                 const cls =
                   n.type === "missing"
                     ? "fill-destructive/25 stroke-destructive"
@@ -425,16 +562,40 @@ export function VaultGraph({
                     key={n.id}
                     transform={`translate(${n.x},${n.y})`}
                     className="cursor-pointer"
-                    onPointerDown={(ev) => ev.stopPropagation()}
-                    onClick={(ev) => {
+                    onPointerDown={(ev) => {
+                      if (ev.shiftKey) return;
                       ev.stopPropagation();
-                      if (movedRef.current) return;
                       if (n.type === "missing") return;
                       const pos = localXY(ev.clientX, ev.clientY);
+                      nodeSelectionRef.current = {
+                        node: n,
+                        startX: pos.x,
+                        startY: pos.y,
+                        moved: false,
+                      };
+                      (ev.currentTarget as Element).setPointerCapture(ev.pointerId);
+                    }}
+                    onPointerMove={(ev) => {
+                      const drag = nodeSelectionRef.current;
+                      if (!drag || drag.node.id !== n.id) return;
+                      const pos = localXY(ev.clientX, ev.clientY);
+                      if (Math.abs(pos.x - drag.startX) + Math.abs(pos.y - drag.startY) > 4) {
+                        drag.moved = true;
+                      }
+                    }}
+                    onPointerUp={(ev) => {
+                      const drag = nodeSelectionRef.current;
+                      if (!drag || drag.node.id !== n.id) return;
+                      ev.stopPropagation();
+                      nodeSelectionRef.current = null;
+                      if (drag.moved || n.type === "missing") return;
+                      commitSelection([n.id], false);
+                      const pinnedAt = localXY(ev.clientX, ev.clientY);
                       setPinned(n);
-                      setPinnedPos(pos);
+                      setPinnedPos(pinnedAt);
                       setHover(null);
                     }}
+                    onClick={(ev) => ev.stopPropagation()}
                     onPointerEnter={(ev) => {
                       if (pinned) return;
                       setHover(n);
@@ -444,6 +605,13 @@ export function VaultGraph({
                       if (!pinned) setHover(null);
                     }}
                   >
+                    {isSelected && (
+                      <circle
+                        r={r + 5 / transform.k}
+                        className="fill-none stroke-primary/70"
+                        strokeWidth={1.8 / transform.k}
+                      />
+                    )}
                     <circle r={r} className={cls} strokeWidth={1.5 / transform.k} />
                     {showLabels && (
                       <text
@@ -463,6 +631,27 @@ export function VaultGraph({
               })}
             </g>
           </svg>
+        )}
+        {visibleNodes.length > 0 && (
+          <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[260px] rounded border bg-popover/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur">
+            Hold Shift and drag to select an area. Shift-click nodes to add or remove.
+          </div>
+        )}
+        {selectionDrag && (
+          <div
+            className="absolute z-20 pointer-events-none border border-primary/70 bg-primary/10"
+            style={{
+              left: Math.min(selectionDrag.startX, selectionDrag.currentX),
+              top: Math.min(selectionDrag.startY, selectionDrag.currentY),
+              width: Math.abs(selectionDrag.currentX - selectionDrag.startX),
+              height: Math.abs(selectionDrag.currentY - selectionDrag.startY),
+            }}
+          />
+        )}
+        {selectedSet.size > 0 && (
+          <div className="absolute left-2 bottom-2 z-10 rounded border bg-popover px-2 py-1 text-[11px] text-popover-foreground shadow-sm">
+            {selectedSet.size} selected
+          </div>
         )}
         {details && !pinned && (
           <div
