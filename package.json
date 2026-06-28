@@ -6,13 +6,15 @@
   "scripts": {
     "dev": "vite dev --port 8733",
     "backend:build": "tsc -p backend/tsconfig.json",
-    "backend:dev": "npm run backend:build && node dist-backend/backend/server.js",
+    "backend:dev": "node scripts/local-dev.mjs",
     "backend:test": "npm run backend:build && node --test dist-backend/backend/**/*.test.js",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "backend:dev:server": "npm run backend:build && node dist-backend/backend/server.js",
+    "frontend:menu": "node scripts/frontend-menu.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

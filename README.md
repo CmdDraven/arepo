@@ -47,35 +47,58 @@ Install dependencies:
 npm install
 ```
 
-Start the backend on the default local API address `http://127.0.0.1:8734`:
+Start the guided local dev workflow:
 
 ```bash
 npm run backend:dev
 ```
 
+This starts the backend in the current terminal and tries to open a second
+terminal with frontend/build targets:
+
+- `dev` starts the Vite UI on `http://localhost:8733`.
+- `dev:port` starts the Vite UI on a custom port.
+- `build`, `build:dev`, and `preview` run the matching npm targets.
+
+If your desktop environment does not allow mdAtlas to open a second terminal,
+run the menu yourself in another terminal:
+
+```bash
+npm run frontend:menu
+```
+
+For a backend-only terminal, use:
+
+```bash
+npm run backend:dev:server
+```
+
 The backend host and port remain configurable through environment variables:
 
 ```bash
-MDATLAS_HOST=127.0.0.1 MDATLAS_PORT=9002 npm run backend:dev
+MDATLAS_HOST=127.0.0.1 MDATLAS_PORT=9002 npm run backend:dev:server
 ```
 
-In another terminal, start the frontend on the default local UI port
+You can also start the frontend directly. It defaults to the local UI port
 `http://localhost:8733`:
 
 ```bash
 npm run dev
 ```
 
-You can use normal Vite CLI overrides for a different frontend port:
+Normal Vite CLI overrides still work for a different frontend port:
 
 ```bash
 npm run dev -- --port 9001
 ```
 
 Open the URL printed by Vite. The dev server proxies `/api` to the backend at
-`http://127.0.0.1:8734` by default.
+`http://127.0.0.1:8734` by default. The Vite dev proxy works with overridden
+frontend ports such as `9001` because browser requests stay same-origin to Vite.
 
-If you change the frontend port, add that origin to the backend CORS allowlist:
+If you serve the frontend without the Vite dev proxy, or call the backend
+directly from another browser origin, add that origin to the backend CORS
+allowlist:
 
 ```bash
 MDATLAS_ALLOWED_ORIGINS=http://localhost:9001 npm run backend:dev
@@ -164,8 +187,11 @@ from Markdown files." It does not create or require a user-authored `index.md`.
 - Extra CORS origins can be added with comma-separated
   `MDATLAS_ALLOWED_ORIGINS`; do not use wildcard origins. For example:
   `MDATLAS_ALLOWED_ORIGINS=http://localhost:9001 npm run backend:dev`.
-- If the frontend dev port changes, the backend CORS allowlist must include the
-  new frontend origin.
+- The Vite dev proxy strips browser `Origin` before forwarding local `/api`
+  requests, so normal `npm run dev -- --port ...` overrides do not require a
+  CORS change.
+- If the frontend is served without the Vite dev proxy, the backend CORS
+  allowlist must include that frontend origin.
 - Only configured vault roots in `.mdatlas/config.json` are accessible.
 - Config is validated at startup. Duplicate vault IDs, missing roots, malformed
   JSON, and unsafe permission shapes are rejected.

@@ -31,6 +31,7 @@ test("reads and writes files inside the vault root", async () => {
   assert.equal(written.path, "Notes/a.md");
   const after = await readVaultFile(vault, "Notes/a.md");
   assert.equal(after.content, "# A2\n");
+  assert.equal(written.hash, after.hash);
 });
 
 test("rejects stale writes when the file changed on disk", async () => {

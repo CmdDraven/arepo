@@ -69,7 +69,7 @@ export async function writeVaultFile(
   rawPath: unknown,
   content: unknown,
   precondition: WritePrecondition = {},
-): Promise<{ path: string; mtimeMs: number; size: number }> {
+): Promise<{ path: string; mtimeMs: number; size: number; hash: string }> {
   requirePermission(vault.permissions.writeContent, "Vault is not writable");
   if (typeof content !== "string") throw new Error("content must be a string");
   const vaultPath = normalizeVaultPath(rawPath, "file");
@@ -77,7 +77,7 @@ export async function writeVaultFile(
   await assertUnchangedIfExpected(absolutePath, precondition);
   await atomicWriteFile(absolutePath, content);
   const stat = await fs.lstat(absolutePath);
-  return { path: vaultPath, mtimeMs: stat.mtimeMs, size: stat.size };
+  return { path: vaultPath, mtimeMs: stat.mtimeMs, size: stat.size, hash: hashContent(content) };
 }
 
 export async function createVaultFile(

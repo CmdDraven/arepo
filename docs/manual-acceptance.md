@@ -11,44 +11,55 @@ disposable vault first; do not use important notes for initial acceptance.
 
 ## 1. Start Backend And Frontend
 
-1. Start the local backend:
+1. Start the guided local backend workflow:
 
    ```bash
    npm run backend:dev
    ```
 
-2. Confirm the backend prints the default backend URL:
-   `http://127.0.0.1:8734`.
-3. Confirm it does not bind to `0.0.0.0` unless explicitly configured.
-4. To override the backend port for a test run, use `MDATLAS_PORT`, for example:
+2. Expected result: the backend starts in the current terminal and prints the
+   default backend URL: `http://127.0.0.1:8734`.
+3. Expected result: mdAtlas opens a second terminal with frontend/build targets,
+   or prints the fallback command `npm run frontend:menu`.
+4. In the frontend target menu, choose `dev`.
+5. Confirm the backend does not bind to `0.0.0.0` unless explicitly configured.
+6. To run only the backend without the launcher, use:
 
    ```bash
-   MDATLAS_PORT=9002 npm run backend:dev
+   npm run backend:dev:server
    ```
 
-5. In another terminal, start the frontend on the default local UI port:
+7. To override the backend port for a test run, use `MDATLAS_PORT`, for example:
+
+   ```bash
+   MDATLAS_PORT=9002 npm run backend:dev:server
+   ```
+
+8. You can also start the frontend directly on the default local UI port:
 
    ```bash
    npm run dev
    ```
 
-6. Open `http://localhost:8733` in the browser, or the URL printed by Vite.
-7. To override the frontend port, use normal Vite CLI arguments:
+9. Open `http://localhost:8733` in the browser, or the URL printed by Vite.
+10. To override the frontend port, use normal Vite CLI arguments:
 
-   ```bash
-   npm run dev -- --port 9001
-   ```
+    ```bash
+    npm run dev -- --port 9001
+    ```
 
-8. If the frontend port changes, restart the backend with that origin in the
-   CORS allowlist:
+11. Expected result: when using the Vite dev server, the app still talks to
+    the backend through the `/api` proxy after a frontend port override.
+12. If the frontend is served without the Vite dev proxy, restart the backend
+    with that origin in the CORS allowlist:
 
-   ```bash
-   MDATLAS_ALLOWED_ORIGINS=http://localhost:9001 npm run backend:dev
-   ```
+    ```bash
+    MDATLAS_ALLOWED_ORIGINS=http://localhost:9001 npm run backend:dev:server
+    ```
 
-9. Expected result: the app loads without requiring a cloud account, hosted
-   database, remote API, or login.
-10. Expected result: the backend remains bound to `127.0.0.1` unless explicitly
+13. Expected result: the app loads without requiring a cloud account, hosted
+    database, remote API, or login.
+14. Expected result: the backend remains bound to `127.0.0.1` unless explicitly
     configured with `MDATLAS_HOST`.
 
 ## 2. Create A Disposable Test Vault
@@ -221,17 +232,26 @@ another local editor for the external-edit steps.
 10. Expected result: normal save is blocked with a clear message that the disk
     changed externally and the user must review or overwrite to continue.
 11. Open `Review changes`.
-12. Expected result: the diff compares `Your edits` against `Disk version`.
-13. Expected result: removed text is highlighted with `#a51b0b`.
-14. Expected result: added text is highlighted with `#34219C`.
-15. Expected result: Markdown is shown as plain escaped text, not rendered HTML.
-16. Choose `Overwrite disk with my edits`.
-17. Confirm the overwrite prompt.
-18. Expected result: the external editor detects that the disk file changed.
-19. Reload the file in the external editor.
-20. Expected result: the mdAtlas editor buffer was written to disk.
-21. Expected result: mdAtlas clears the dirty state and conflict state.
-22. Expected result: the conflict does not re-trigger from mdAtlas' own
+12. Expected result: the review screen offers both `Diff` and `Full files`
+    views.
+13. Expected result: the `Diff` view compares `Your edits` against `Disk
+    version` and shows only changed lines plus two lines of context before and
+    after each change.
+14. Expected result: Markdown is shown as plain escaped text, not rendered HTML.
+15. Switch to `Full files`.
+16. Expected result: both full plain-text file versions are readable with line
+    numbers.
+17. Expected result: removed text is highlighted with `#a51b0b` in the full-file
+    view.
+18. Expected result: added text is highlighted with `#34219C` in the full-file
+    view.
+19. Choose `Overwrite disk with my edits`.
+20. Confirm the overwrite prompt.
+21. Expected result: the external editor detects that the disk file changed.
+22. Reload the file in the external editor.
+23. Expected result: the mdAtlas editor buffer was written to disk.
+24. Expected result: mdAtlas clears the dirty state and conflict state.
+25. Expected result: the conflict does not re-trigger from mdAtlas' own
     overwrite.
 
 ## 15. Unsafe Path Rejection
@@ -282,8 +302,9 @@ Confirm the following throughout local-mode acceptance:
 - Backups remain external through Borg, Restic, or Kopia.
 - The local backend has no auth yet and must not be exposed to a LAN or the
   internet.
-- If the frontend port is changed, `MDATLAS_ALLOWED_ORIGINS` must include the
-  new frontend origin; wildcard CORS is not acceptable.
+- Vite dev frontend port overrides continue to use the local `/api` proxy.
+- If the frontend is served without the Vite dev proxy, `MDATLAS_ALLOWED_ORIGINS`
+  must include the new frontend origin; wildcard CORS is not acceptable.
 
 ## Acceptance Result
 

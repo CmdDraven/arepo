@@ -41,6 +41,8 @@ export type FileResponse = {
   hash: string;
 };
 
+type FileWriteResponse = Omit<FileResponse, "content">;
+
 type IndexResponse = {
   index: VaultIndex;
   issues: ValidationIssue[];
@@ -281,7 +283,7 @@ export function useVault(): VaultStore {
     (path: string, content: string) =>
       mutate(async (vault) => {
         const meta = fileMeta[path];
-        await api<OperationResult>(
+        const response = await api<OperationResult<FileWriteResponse>>(
           `/api/vaults/${encodeURIComponent(vault.id)}/file?path=${encodeURIComponent(path)}`,
           {
             method: "PUT",
@@ -292,6 +294,17 @@ export function useVault(): VaultStore {
             }),
           },
         );
+        if (response.ok && response.data) {
+          setFiles((prev) => ({ ...prev, [response.data.path]: content }));
+          setFileMeta((prev) => ({
+            ...prev,
+            [response.data.path]: {
+              mtimeMs: response.data.mtimeMs,
+              size: response.data.size,
+              hash: response.data.hash,
+            },
+          }));
+        }
       }),
     [fileMeta, mutate],
   );
@@ -302,7 +315,7 @@ export function useVault(): VaultStore {
         const current = await api<FileResponse>(
           `/api/vaults/${encodeURIComponent(vault.id)}/file?path=${encodeURIComponent(path)}`,
         );
-        await api<OperationResult>(
+        const response = await api<OperationResult<FileWriteResponse>>(
           `/api/vaults/${encodeURIComponent(vault.id)}/file?path=${encodeURIComponent(path)}`,
           {
             method: "PUT",
@@ -313,6 +326,17 @@ export function useVault(): VaultStore {
             }),
           },
         );
+        if (response.ok && response.data) {
+          setFiles((prev) => ({ ...prev, [response.data.path]: content }));
+          setFileMeta((prev) => ({
+            ...prev,
+            [response.data.path]: {
+              mtimeMs: response.data.mtimeMs,
+              size: response.data.size,
+              hash: response.data.hash,
+            },
+          }));
+        }
       }),
     [mutate],
   );

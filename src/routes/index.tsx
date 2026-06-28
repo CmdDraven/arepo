@@ -20,7 +20,12 @@ import {
 } from "lucide-react";
 import { FileTree } from "@/components/FileTree";
 import { VaultGraph } from "@/components/VaultGraph";
-import { buildLineDiff, type LineDiffRow } from "@/lib/vault/diff";
+import {
+  buildContextLineDiff,
+  buildLineDiff,
+  numberLineDiffRows,
+  type ContextLineDiffRow,
+} from "@/lib/vault/diff";
 import { buildGraph } from "@/lib/vault/graph";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +112,9 @@ function VaultApp() {
     return (localStorage.getItem("vault:theme") as "light" | "dark") || "light";
   });
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const selfWriteSuppressionRef = useRef<{ path: string; content: string; until: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -158,12 +166,23 @@ function VaultApp() {
     const meta = fileMeta[activePath];
     if (!file.hash || !meta || file.hash === meta.hash) return;
     if (dirty) {
+      const selfWrite = selfWriteSuppressionRef.current;
+      if (
+        selfWrite?.path === activePath &&
+        selfWrite.content === buffer &&
+        Date.now() < selfWrite.until
+      ) {
+        return;
+      }
       if (suppressedConflict?.path === activePath && suppressedConflict.hash === file.hash) return;
       setExternalNotice({ kind: "conflict", path: activePath });
       return;
     }
+    if (selfWriteSuppressionRef.current?.path === activePath) {
+      selfWriteSuppressionRef.current = null;
+    }
     void reloadFile(activePath);
-  }, [activePath, dirty, fileMeta, reloadFile, suppressedConflict, vaultStatus]);
+  }, [activePath, buffer, dirty, fileMeta, reloadFile, suppressedConflict, vaultStatus]);
 
   useEffect(() => {
     if (!vaultStatus?.changedExternally || !vaultStatus.lastEventAt || dirty) return;
@@ -199,10 +218,23 @@ function VaultApp() {
       return false;
     }
     const ok = await write(activePath, buffer);
-    if (ok) setSavedSnapshot(buffer);
+    if (ok) {
+      selfWriteSuppressionRef.current = {
+        path: activePath,
+        content: buffer,
+        until: Date.now() + 5000,
+      };
+      setSavedSnapshot(buffer);
+      setExternalNotice(null);
+      setDiffReview(null);
+      setDiffError(null);
+      setConflictMessage(null);
+      setSuppressedConflict(null);
+      void refreshVaultStatus(activePath);
+    }
     setSaving(false);
     return ok;
-  }, [activePath, buffer, hasExternalChange, saving, write]);
+  }, [activePath, buffer, hasExternalChange, refreshVaultStatus, saving, write]);
 
   // Ctrl/Cmd+S
   useEffect(() => {
@@ -1113,7 +1145,12 @@ function DiffReviewPanel({
   onSaveAsNew: () => void;
   onOverwrite: () => void;
 }) {
-  const rows = useMemo(() => buildLineDiff(yourText, diskText), [yourText, diskText]);
+  const [viewMode, setViewMode] = useState<"diff" | "full">("diff");
+  const rows = useMemo(
+    () => numberLineDiffRows(buildLineDiff(yourText, diskText)),
+    [yourText, diskText],
+  );
+  const contextRows = useMemo(() => buildContextLineDiff(rows, 2), [rows]);
   return (
     <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm p-3 md:p-6">
       <div className="h-full max-w-7xl mx-auto border rounded-md bg-background shadow-lg flex flex-col min-h-0">
@@ -1122,6 +1159,24 @@ function DiffReviewPanel({
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold">Review external changes</h2>
             <div className="text-xs text-muted-foreground font-mono truncate">{path}</div>
+          </div>
+          <div className="flex rounded-md border p-0.5">
+            <Button
+              variant={viewMode === "diff" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setViewMode("diff")}
+            >
+              Diff
+            </Button>
+            <Button
+              variant={viewMode === "full" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setViewMode("full")}
+            >
+              Full files
+            </Button>
           </div>
           <div className="flex flex-wrap gap-1">
             <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onKeep}>
@@ -1148,8 +1203,17 @@ function DiffReviewPanel({
         </div>
         <div className="flex-1 min-h-0 overflow-auto p-3">
           <div className="grid gap-3 md:grid-cols-2 md:h-full md:min-h-0">
-            <DiffPane title="Your edits" side="left" rows={rows} />
-            <DiffPane title="Disk version" side="right" rows={rows} />
+            {viewMode === "diff" ? (
+              <>
+                <DiffPane title="Your edits" side="left" rows={contextRows} />
+                <DiffPane title="Disk version" side="right" rows={contextRows} />
+              </>
+            ) : (
+              <>
+                <DiffPane title="Your edits" side="left" rows={rows} />
+                <DiffPane title="Disk version" side="right" rows={rows} />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1164,16 +1228,20 @@ function DiffPane({
 }: {
   title: string;
   side: "left" | "right";
-  rows: LineDiffRow[];
+  rows: ContextLineDiffRow[];
 }) {
   return (
     <section className="border rounded-md min-h-[260px] md:min-h-0 flex flex-col">
       <div className="shrink-0 border-b px-3 py-2 text-xs font-semibold">{title}</div>
       <div className="flex-1 min-h-0 overflow-auto bg-muted/20">
         <pre className="m-0 p-0 text-xs leading-relaxed font-mono whitespace-pre-wrap break-words">
-          {rows.map((row, index) => (
-            <DiffLine key={index} row={row} side={side} lineNumber={index + 1} />
-          ))}
+          {rows.map((row, index) =>
+            row.kind === "gap" ? (
+              <DiffGap key={index} />
+            ) : (
+              <DiffLine key={index} row={row} side={side} />
+            ),
+          )}
         </pre>
       </div>
     </section>
@@ -1183,13 +1251,12 @@ function DiffPane({
 function DiffLine({
   row,
   side,
-  lineNumber,
 }: {
-  row: LineDiffRow;
+  row: Exclude<ContextLineDiffRow, { kind: "gap" }>;
   side: "left" | "right";
-  lineNumber: number;
 }) {
   const text = side === "left" ? row.left : row.right;
+  const lineNumber = side === "left" ? row.leftLine : row.rightLine;
   const highlighted =
     (side === "left" && (row.kind === "removed" || row.kind === "changed")) ||
     (side === "right" && (row.kind === "added" || row.kind === "changed"));
@@ -1205,6 +1272,27 @@ function DiffLine({
       <span className="inline-block w-10 pr-3 select-none text-right opacity-50">{lineNumber}</span>
       <span>{text ?? ""}</span>
     </span>
+  );
+}
+
+function FullFilePane({ title, text }: { title: string; text: string }) {
+  const lines = useMemo(() => text.split(/\r?\n/), [text]);
+  return (
+    <section className="border rounded-md min-h-[260px] md:min-h-0 flex flex-col">
+      <div className="shrink-0 border-b px-3 py-2 text-xs font-semibold">{title}</div>
+      <div className="flex-1 min-h-0 overflow-auto bg-muted/20">
+        <pre className="m-0 p-0 text-xs leading-relaxed font-mono whitespace-pre-wrap break-words">
+          {lines.map((line, index) => (
+            <span key={index} className="block min-h-[1.5em] px-2 py-0.5">
+              <span className="inline-block w-10 pr-3 select-none text-right opacity-50">
+                {index + 1}
+              </span>
+              <span>{line}</span>
+            </span>
+          ))}
+        </pre>
+      </div>
+    </section>
   );
 }
 
