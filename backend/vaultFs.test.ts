@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { buildVaultIndex, createVaultFile, readVaultFile, writeVaultFile } from "./vaultFs.js";
 import { renderMarkdown } from "../src/lib/vault/render.js";
+import { buildGraph } from "../src/lib/vault/graph.js";
 import type { VaultInfo } from "./types.js";
 
 async function makeVault(): Promise<VaultInfo> {
@@ -121,6 +122,96 @@ test("folder-qualified wikilinks resolve from the vault root", async () => {
     issues.some((issue) => issue.kind === "missing-anchor"),
     false,
   );
+});
+
+test("repository test-vault indexes core fixture expectations", async () => {
+  const rootPath = path.resolve(process.cwd(), "test-vault");
+  const vault: VaultInfo = {
+    id: "repo-test-vault",
+    displayName: "Repository Test Vault",
+    rootPath,
+    permissions: {
+      readIndex: true,
+      readContent: true,
+      writeContent: true,
+      deleteFiles: false,
+    },
+  };
+
+  const { index, issues } = await buildVaultIndex(vault);
+
+  assert.ok(index.notes["Notes/note.md"]);
+  assert.ok(index.notes["Reference/reference-note.md"]);
+  assert.equal(index.notes["Notes/note.md"]?.frontmatter.id, "note");
+  assert.equal(index.notes["Reference/reference-note.md"]?.frontmatter.id, "reference-note");
+
+  const noteLinks = index.outgoingLinks["Notes/note.md"] ?? [];
+  assert.ok(
+    noteLinks.some(
+      (link) =>
+        link.target === "Reference/reference-note" &&
+        link.targetPath === "Reference/reference-note.md",
+    ),
+  );
+  assert.ok(
+    noteLinks.some(
+      (link) =>
+        link.target === "Reference/reference-note" &&
+        link.anchor === "terminology" &&
+        link.status === "resolved",
+    ),
+  );
+
+  const referenceLinks = index.outgoingLinks["Reference/reference-note.md"] ?? [];
+  assert.ok(
+    referenceLinks.some(
+      (link) => link.target === "Notes/note" && link.targetPath === "Notes/note.md",
+    ),
+  );
+  assert.ok(referenceLinks.some((link) => link.target === "note" && link.status === "resolved"));
+
+  const brokenTargets = index.brokenLinks.map((link) => link.target).sort();
+  assert.ok(brokenTargets.includes("Reference/missing-reference"));
+  assert.ok(brokenTargets.includes("missing-note"));
+  assert.equal(
+    issues.filter(
+      (issue) =>
+        issue.kind === "broken-wikilink" &&
+        (issue.message.includes("Reference/missing-reference") ||
+          issue.message.includes("missing-note")),
+    ).length,
+    2,
+  );
+
+  const allOutgoingTargets = Object.values(index.outgoingLinks)
+    .flat()
+    .map((link) => link.target);
+  assert.equal(
+    allOutgoingTargets.some((target) => target.includes("fake")),
+    false,
+  );
+  assert.equal(
+    allOutgoingTargets.some((target) => target.includes("inline")),
+    false,
+  );
+
+  assert.ok(
+    (index.backlinks["Notes/note.md"] ?? []).some(
+      (backlink) => backlink.fromPath === "Reference/reference-note.md",
+    ),
+  );
+  assert.ok(
+    (index.backlinks["Reference/reference-note.md"] ?? []).some(
+      (backlink) => backlink.fromPath === "Notes/note.md",
+    ),
+  );
+
+  const graph = buildGraph(index, issues);
+  assert.ok(graph.nodes.some((node) => node.id === "Notes/note.md"));
+  assert.ok(graph.nodes.some((node) => node.id === "Reference/reference-note.md"));
+  assert.ok(graph.nodes.some((node) => node.id === "missing:missing-note"));
+  assert.ok(graph.edges.some((edge) => edge.type === "wikilink"));
+  assert.ok(graph.edges.some((edge) => edge.type === "broken"));
 });
 
 test("id links resolve before unique filename stems", async () => {

@@ -1,7 +1,8 @@
 # mdAtlas Local Mode Manual Acceptance Test
 
-Use this checklist before treating a local build as usable. Run it against a
-disposable vault first; do not use important notes for initial acceptance.
+Use this checklist before treating a local build as usable. The default fixture
+is the repository's committed `test-vault/` folder. It is safe to edit and reset
+locally, but it is not a real user vault.
 
 ## Prerequisites
 
@@ -62,31 +63,27 @@ disposable vault first; do not use important notes for initial acceptance.
 14. Expected result: the backend remains bound to `127.0.0.1` unless explicitly
     configured with `MDATLAS_HOST`.
 
-## 2. Create A Disposable Test Vault
+## 2. Locate The Repository Test Vault
 
-1. Create a temporary folder outside the repository, for example:
-
-   ```bash
-   mkdir -p /tmp/mdatlas-acceptance-vault/Projects
-   ```
-
-2. Add starter Markdown files:
+1. From the mdAtlas repository root, print the absolute path to the example
+   vault:
 
    ```bash
-   printf '# Home\n\nSee [[Projects/Alpha]] and [[Missing Note]].\n' > /tmp/mdatlas-acceptance-vault/Home.md
-   printf '# Alpha\n\nBack to [[Home]].\n\n## Details\n\nUseful notes.\n' > /tmp/mdatlas-acceptance-vault/Projects/Alpha.md
+   realpath test-vault
    ```
 
-3. Expected result: the vault is ordinary Markdown files on disk. No app
+2. Expected result: the path points to the repository's `test-vault/` folder.
+3. Expected result: the vault contains ordinary Markdown files on disk. No app
    database is required to create or inspect it.
+4. Keep this path available for the Add vault flow.
 
 ## 3. Add Vault In UI
 
 1. In mdAtlas, open the Vaults or Settings screen.
 2. Confirm the local node health indicator can test the backend connection.
 3. Add a vault with:
-   - Name: `Acceptance Vault`
-   - Root path: `/tmp/mdatlas-acceptance-vault`
+   - Name: `Test Vault`
+   - Root path: the absolute path printed by `realpath test-vault`
    - Permissions: `readIndex`, `readContent`, and `writeContent` enabled
    - `deleteFiles` disabled
 4. Submit the form.
@@ -109,7 +106,7 @@ Run this only on a clean config or after moving aside `.mdatlas/config.json`.
 
 ## 5. Edit And Save Files
 
-1. Select `Home.md`.
+1. Select `Notes/note.md`.
 2. Add a line in the editor:
 
    ```markdown
@@ -128,7 +125,7 @@ Run this only on a clean config or after moving aside `.mdatlas/config.json`.
 1. In a terminal, inspect the file:
 
    ```bash
-   sed -n '1,120p' /tmp/mdatlas-acceptance-vault/Home.md
+   sed -n '1,120p' <absolute path to test-vault>/Notes/note.md
    ```
 
 2. Expected result: the saved line is present on disk.
@@ -145,12 +142,12 @@ Run this only on a clean config or after moving aside `.mdatlas/config.json`.
    ```markdown
    # Capture
 
-   Linked from [[Home]].
+   Linked from [[Notes/note]].
    ```
 
 4. Expected result: the folder and `.md` file appear in the UI.
 5. Expected result: the folder and file exist under
-   `/tmp/mdatlas-acceptance-vault/Inbox` on disk.
+   `<absolute path to test-vault>/Inbox` on disk.
 
 ## 8. Rename
 
@@ -165,7 +162,7 @@ Run this only on a clean config or after moving aside `.mdatlas/config.json`.
 ## 9. Rebuild Machine Index
 
 1. Open the Vaults or Settings screen.
-2. Run Rebuild index for the acceptance vault.
+2. Run Rebuild index for the test vault.
 3. Expected result: the generated machine index status updates successfully.
 4. Expected result: file count, indexed note count, and issue count remain
    consistent with the files on disk.
@@ -174,49 +171,61 @@ Run this only on a clean config or after moving aside `.mdatlas/config.json`.
 
 ## 10. Valid Wikilinks
 
-1. Open `Home.md`.
-2. Confirm `[[Projects/Alpha]]` is treated as a valid wikilink.
-3. Open preview mode.
-4. Click the rendered wikilink.
-5. Expected result: mdAtlas opens `Projects/Alpha.md`.
-6. Inspect mode should show a backlink from `Home.md` to `Projects/Alpha.md`.
+1. Open `Notes/note.md`.
+2. Confirm `[[Reference/reference-note]]` is treated as a valid folder-qualified
+   wikilink.
+3. Confirm `[[Reference/reference-note#terminology]]` is treated as a valid
+   anchor-qualified wikilink.
+4. Open preview mode.
+5. Click the rendered folder-qualified wikilink.
+6. Expected result: mdAtlas opens `Reference/reference-note.md`.
+7. Click the rendered anchor-qualified wikilink.
+8. Expected result: mdAtlas opens the reference note and scrolls to the
+   `terminology` heading anchor.
+9. Inspect mode should show backlinks between `Notes/note.md` and
+   `Reference/reference-note.md`.
 
 ## 11. Broken Wikilinks
 
-1. Confirm `[[Missing Note]]` remains in `Home.md`.
-2. Reindex if needed.
-3. Expected result: the validation/inspect UI reports a broken link issue for
-   the missing note.
-4. Expected result: the app does not create missing files silently.
+1. Confirm `[[missing-note]]` remains in `Notes/note.md`.
+2. Confirm `[[Reference/missing-reference]]` remains in
+   `Reference/reference-note.md`.
+3. Reindex if needed.
+4. Expected result: the validation/inspect UI reports broken link issues for the
+   intentional missing notes.
+5. Expected result: fake wikilinks inside fenced code and inline code are
+   ignored and do not appear as validation issues.
+6. Expected result: the app does not create missing files silently.
 
 ## 12. Graph Mode
 
 1. Switch the left vault panel from Tree to Graph.
 2. Expected result: graph mode renders nodes for notes in the vault.
 3. Expected result: linked notes have visible edges.
-4. Expected result: broken or disconnected notes do not break graph rendering.
-5. Pan and zoom the graph.
-6. Expected result: pan and zoom controls remain usable on desktop and mobile
+4. Expected result: intentional broken links appear as missing-link nodes.
+5. Expected result: broken or disconnected notes do not break graph rendering.
+6. Pan and zoom the graph.
+7. Expected result: pan and zoom controls remain usable on desktop and mobile
    viewport sizes.
-7. Expected result: an unobtrusive canvas hint explains Shift-drag area
+8. Expected result: an unobtrusive canvas hint explains Shift-drag area
    selection and Shift-click node toggling.
-8. Hold Shift and drag from any point on the graph canvas to draw a selection
+9. Hold Shift and drag from any point on the graph canvas to draw a selection
    rectangle over multiple nodes.
-9. Expected result: selected nodes are visually marked and the Metadata panel
-   updates with the selected file count, combined file size, tags, heading count,
-   outgoing links, backlinks, issue count, and selected paths.
-10. Hold Shift and click a single node without dragging.
-11. Expected result: that node is toggled in or out of the current graph
+10. Expected result: selected nodes are visually marked and the Metadata panel
+    updates with the selected file count, combined file size, tags, heading
+    count, outgoing links, backlinks, issue count, and selected paths.
+11. Hold Shift and click a single node without dragging.
+12. Expected result: that node is toggled in or out of the current graph
     selection.
 
 ## 13. Inspect And Backlinks
 
-1. Select `Projects/Alpha.md`.
+1. Select `Reference/reference-note.md`.
 2. Open Inspect mode.
-3. Expected result: backlinks include `Home.md`.
+3. Expected result: backlinks include `Notes/note.md`.
 4. Expected result: metadata includes title, path, file size, id if present,
    tags, headings, and outgoing link counts.
-5. Select a note with no backlinks.
+5. Optional: create a temporary note that nothing links to.
 6. Expected result: the UI shows an empty backlink state rather than an error.
 
 ## 14. External Edit Conflict Detection
@@ -224,14 +233,14 @@ Run this only on a clean config or after moving aside `.mdatlas/config.json`.
 This case protects safe coexistence with other editors. Use Kate, VSCodium, or
 another local editor for the external-edit steps.
 
-1. Open `Home.md` in mdAtlas.
+1. Open `Notes/note.md` in mdAtlas.
 2. Make an unsaved edit in the mdAtlas editor.
 3. Open the same file in Kate, VSCodium, or another editor.
 4. Edit the same file externally and save it. A terminal can also simulate the
    external save:
 
    ```bash
-   printf '\nExternal edit.\n' >> /tmp/mdatlas-acceptance-vault/Home.md
+   printf '\nExternal edit.\n' >> <absolute path to test-vault>/Notes/note.md
    ```
 
 5. Expected result: mdAtlas shows an external-change conflict for the open file.
@@ -270,17 +279,20 @@ another local editor for the external-edit steps.
 Use the UI where possible, and use direct HTTP calls only against the local
 backend.
 
-1. In Add vault, try a relative root path such as `notes`.
-2. Expected result: the UI rejects it before submit.
-3. Try a root path containing `..`, duplicate slashes, or a newline.
-4. Expected result: the UI rejects the malformed path.
-5. Against an existing vault, attempt to read a traversal path:
+1. Note the configured vault id shown in Vault Settings for use in direct API
+   checks.
+2. In Add vault, try a relative root path such as `notes`.
+3. Expected result: the UI rejects it before submit.
+4. Try a root path containing `..`, duplicate slashes, or a newline.
+5. Expected result: the UI rejects the malformed path.
+6. Against an existing vault, attempt to read a traversal path, replacing
+   `<vault-id>` with the configured vault id:
 
    ```bash
-   curl 'http://127.0.0.1:8734/api/vaults/acceptance-vault/file?path=../secret.md'
+   curl 'http://127.0.0.1:8734/api/vaults/<vault-id>/file?path=../secret.md'
    ```
 
-6. Expected result: the backend rejects the request and does not read outside
+7. Expected result: the backend rejects the request and does not read outside
    the configured vault root.
 
 ## 16. Delete Permission Default
@@ -319,30 +331,42 @@ Confirm the following throughout local-mode acceptance:
 
 ## 18. Storage Reporting
 
-1. In the disposable vault, add a nested Markdown file and a non-Markdown file:
-
-   ```bash
-   mkdir -p /tmp/mdatlas-acceptance-vault/Assets
-   printf '# Storage note\n' > /tmp/mdatlas-acceptance-vault/Storage.md
-   printf 'attachment bytes\n' > /tmp/mdatlas-acceptance-vault/Assets/example.bin
-   ```
-
-2. Select `Storage.md`.
-3. Expected result: the Metadata panel shows the selected file's size.
-4. Switch to Graph mode and multi-select `Storage.md` with at least one other
-   note by holding Shift and dragging a selection box around graph nodes.
-5. Expected result: the Metadata panel shows combined metadata, including
+1. Select `Notes/note.md`.
+2. Expected result: the Metadata panel shows the selected file's size.
+3. Switch to Graph mode and multi-select both committed notes by holding Shift
+   and dragging a selection box around graph nodes.
+4. Expected result: the Metadata panel shows combined metadata, including
    selected file count and combined selected-file size.
-6. Open the Vaults or Settings screen and refresh the configured vaults list.
-7. Expected result: Vault content size and file count include both files.
-8. Expected result: Markdown/text size includes `.md`/text files.
-9. Expected result: Attachment/other size includes non-Markdown files.
-10. Expected result: mdAtlas map/index cache size is shown separately from vault
-    content and is treated as disposable cache.
+5. Open the Vaults or Settings screen and refresh the configured vaults list.
+6. Expected result: Vault content size and file count include the committed
+   fixture files.
+7. Expected result: Markdown/text size includes the committed `.md` files.
+8. Expected result: mdAtlas map/index cache size is shown separately from vault
+   content and is treated as disposable cache.
+9. Optional attachment check: add a temporary file such as
+   `<absolute path to test-vault>/Assets/example.bin`.
+10. Expected result: Attachment/other size includes non-Markdown files.
 11. Optional symlink check: create a symlink inside the vault to a file outside
     the vault.
 12. Expected result: storage reporting skips the symlink and does not count or
     follow the outside file.
+
+## Optional: Create A Temporary Scratch Vault
+
+Use this only when you want to avoid editing the committed `test-vault/` fixture.
+
+1. Create a temporary folder outside the repository:
+
+   ```bash
+   mkdir -p /tmp/mdatlas-acceptance-vault/Projects
+   printf '# Home\n\nSee [[Projects/Alpha]] and [[Missing Note]].\n' > /tmp/mdatlas-acceptance-vault/Home.md
+   printf '# Alpha\n\nBack to [[Home]].\n\n## Details\n\nUseful notes.\n' > /tmp/mdatlas-acceptance-vault/Projects/Alpha.md
+   ```
+
+2. Add `/tmp/mdatlas-acceptance-vault` through Vault Settings instead of
+   `test-vault/`.
+3. Expected result: mdAtlas treats it like any other configured local Markdown
+   vault and builds the machine index automatically.
 
 ## Acceptance Result
 

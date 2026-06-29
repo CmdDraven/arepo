@@ -104,6 +104,31 @@ allowlist:
 MDATLAS_ALLOWED_ORIGINS=http://localhost:9001 npm run backend:dev
 ```
 
+## Example Test Vault
+
+The repository includes `test-vault/` as a small example Markdown vault for
+demos and manual acceptance testing. It is ordinary Markdown content, not
+generated app data and not a real user vault.
+
+To try it, start mdAtlas locally, open Vault Settings, and add the absolute path
+to `test-vault/` as a vault. From the repository root, this prints the path to
+use:
+
+```bash
+realpath test-vault
+```
+
+mdAtlas automatically builds the machine index when the vault is added. A
+user-authored `index.md` is not required; if one exists in any vault, mdAtlas
+treats it as a normal note. The example vault intentionally includes broken
+wikilinks so validation, inspect mode, and graph missing-link nodes have
+something to report. It also demonstrates folder-qualified links, heading
+anchors, backlinks, and ignored wikilinks inside code.
+
+Generated machine index/cache files are stored outside the vault under the
+configured app data directory. Do not commit `.mdatlas/`, app-data caches,
+`dist/`, `dist-backend/`, or `node_modules/`.
+
 ## Configure Vaults
 
 Vault configuration is stored locally in:
