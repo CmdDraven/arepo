@@ -6,9 +6,9 @@ tags: [test, markdown, local]
 
 # Test Note
 
-This is a disposable test note for a two-file mdAtlas vault.
+This is a disposable test note for a two-file AREPO vault.
 
-There is no required `index.md` inside this vault. 
+There is no required `index.md` inside this vault.
 
 ## Purpose {#purpose}
 
@@ -60,12 +60,12 @@ The indexer and preview renderer should also ignore inline code like `[[Referenc
 
 ## Manual Test
 
-This section is being created while the file is open in mdAtlas, to test behavior with live changes. 
+This section is being created while the file is open in AREPO, to test behavior with live changes.
 
 During further testing, edits or addendums to this section will suffice.
 
 Testing live update in this line.
 
-This line conflicts from the live edit data in mdAtlas. Intended to test the Live Buffer is not overwritten. 
+This line conflicts from the live edit data in AREPO. Intended to test the Live Buffer is not overwritten.
 
 Next is testing that buffer writes can be chosen in favour of the local change.

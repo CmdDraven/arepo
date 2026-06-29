@@ -9,7 +9,7 @@ import { buildGraph } from "../src/lib/vault/graph.js";
 import type { VaultInfo } from "./types.js";
 
 async function makeVault(): Promise<VaultInfo> {
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-vault-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
   return {
     id: "test",
     displayName: "Test",
@@ -278,7 +278,7 @@ test("preview rendering leaves inline-code wikilinks literal", async () => {
 
 test("explicit file operations reject symlinks inside vault paths", async (t) => {
   const vault = await makeVault();
-  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-outside-"));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-outside-"));
   await fs.writeFile(path.join(outside, "escape.md"), "# Escape\n", "utf8");
   try {
     await fs.symlink(outside, path.join(vault.rootPath, "linked"), "dir");

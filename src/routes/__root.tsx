@@ -72,10 +72,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "mdAtlas" },
+      { title: "AREPO" },
       { name: "description", content: "Local-first Markdown vault viewer/editor/indexer" },
-      { name: "author", content: "mdAtlas" },
-      { property: "og:title", content: "mdAtlas" },
+      { name: "author", content: "AREPO" },
+      { property: "og:title", content: "AREPO" },
       { property: "og:description", content: "Local-first Markdown vault viewer/editor/indexer" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

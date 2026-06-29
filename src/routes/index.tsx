@@ -38,7 +38,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Vault — Local Markdown Knowledge Base" },
+      { title: "AREPO — Local Knowledge Mapping" },
       {
         name: "description",
         content:
@@ -422,7 +422,7 @@ function VaultApp() {
   const handleOverwriteDisk = async () => {
     if (!activePath) return;
     const okToOverwrite = window.confirm(
-      "Overwrite the current disk version with your mdAtlas editor buffer? The external disk changes for this file will be replaced.",
+      "Overwrite the current disk version with your AREPO editor buffer? The external disk changes for this file will be replaced.",
     );
     if (!okToOverwrite) return;
     const ok = await overwriteFile(activePath, buffer);
@@ -519,7 +519,7 @@ function VaultApp() {
                 <div>
                   <div className="font-medium">Optional homepage note</div>
                   <div className="text-muted-foreground">
-                    mdAtlas indexes this vault automatically; `index.md` is only a normal note.
+                    AREPO indexes this vault automatically; `index.md` is only a normal note.
                   </div>
                 </div>
                 <Button
@@ -1494,7 +1494,7 @@ function VaultSettingsPanel({
           <div className="min-w-0 flex-1">
             <h1 className="text-lg font-semibold tracking-tight">Vault Settings</h1>
             <p className="text-sm text-muted-foreground">
-              Configure local Markdown folders that this mdAtlas backend may read and write.
+              Configure local Markdown folders that this AREPO backend may read and write.
             </p>
           </div>
           {!firstRun && (
@@ -1508,7 +1508,7 @@ function VaultSettingsPanel({
           <div className="border rounded-md p-4 bg-muted/30 space-y-2">
             <h2 className="text-sm font-semibold">No local vault configured</h2>
             <p className="text-sm text-muted-foreground">
-              mdAtlas needs an existing local folder of Markdown files before the editor can open.
+              AREPO needs an existing local folder of Markdown files before the editor can open.
               Start with a test or disposable vault until you are comfortable with the write flow.
             </p>
           </div>
@@ -1728,7 +1728,7 @@ function StorageSummaryList({ summary }: { summary: VaultSummary | undefined }) 
         {storage && ` (${storage.attachments.fileCount} files)`}
       </div>
       <div>
-        <span className="text-muted-foreground">mdAtlas map/index cache:</span>{" "}
+        <span className="text-muted-foreground">AREPO map/index cache:</span>{" "}
         {storage ? formatBytes(storage.appDataCache.bytes) : "checking"}
         {storage && ` (${storage.appDataCache.fileCount} files)`}
       </div>
@@ -1996,8 +1996,8 @@ function validateVaultRootPath(path: string): string | null {
 }
 
 function validateVaultPermissions(permissions: VaultPermission): string | null {
-  if (!permissions.readIndex) return "Read index must stay enabled for mdAtlas indexing.";
-  if (!permissions.readContent) return "Read content must stay enabled for mdAtlas editing.";
+  if (!permissions.readIndex) return "Read index must stay enabled for AREPO indexing.";
+  if (!permissions.readContent) return "Read content must stay enabled for AREPO editing.";
   if (permissions.writeContent && !permissions.readContent) {
     return "Write content requires read content.";
   }

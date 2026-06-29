@@ -8,7 +8,7 @@ import type { VaultIndexResponse, VaultInfo } from "./types.js";
 const MACHINE_INDEX_VERSION = 1;
 
 export type StoredMachineIndex = {
-  kind: "mdatlas.machineIndex";
+  kind: "arepo.machineIndex";
   version: 1;
   generatedAt: string;
   vault: {
@@ -42,7 +42,7 @@ export async function writeMachineIndex(
 ): Promise<string> {
   const file = await machineIndexPath(vault, cwd);
   const stored: StoredMachineIndex = {
-    kind: "mdatlas.machineIndex",
+    kind: "arepo.machineIndex",
     version: MACHINE_INDEX_VERSION,
     generatedAt: new Date().toISOString(),
     vault: {

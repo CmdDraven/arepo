@@ -1,4 +1,4 @@
-# mdAtlas Local Mode Manual Acceptance Test
+# AREPO Local Mode Manual Acceptance Test
 
 Use this checklist before treating a local build as usable. The default fixture
 is the repository's committed `test-vault/` folder. It is safe to edit and reset
@@ -7,7 +7,7 @@ locally, but it is not a real user vault.
 ## Prerequisites
 
 - Node dependencies are installed with `npm install`.
-- You have two terminal windows open at the mdAtlas repository root.
+- You have two terminal windows open at the AREPO repository root.
 - You have a browser available on the same machine.
 
 ## 1. Start Backend And Frontend
@@ -20,7 +20,7 @@ locally, but it is not a real user vault.
 
 2. Expected result: the backend starts in the current terminal and prints the
    default backend URL: `http://127.0.0.1:8734`.
-3. Expected result: mdAtlas opens a second terminal with frontend/build targets,
+3. Expected result: AREPO opens a second terminal with frontend/build targets,
    or prints the fallback command `npm run frontend:menu`.
 4. In the frontend target menu, choose `dev`.
 5. Confirm the backend does not bind to `0.0.0.0` unless explicitly configured.
@@ -30,10 +30,10 @@ locally, but it is not a real user vault.
    npm run backend:dev:server
    ```
 
-7. To override the backend port for a test run, use `MDATLAS_PORT`, for example:
+7. To override the backend port for a test run, use `AREPO_PORT`, for example:
 
    ```bash
-   MDATLAS_PORT=9002 npm run backend:dev:server
+   AREPO_PORT=9002 npm run backend:dev:server
    ```
 
 8. You can also start the frontend directly on the default local UI port:
@@ -55,17 +55,17 @@ locally, but it is not a real user vault.
     with that origin in the CORS allowlist:
 
     ```bash
-    MDATLAS_ALLOWED_ORIGINS=http://localhost:9001 npm run backend:dev:server
+    AREPO_ALLOWED_ORIGINS=http://localhost:9001 npm run backend:dev:server
     ```
 
 13. Expected result: the app loads without requiring a cloud account, hosted
     database, remote API, or login.
 14. Expected result: the backend remains bound to `127.0.0.1` unless explicitly
-    configured with `MDATLAS_HOST`.
+    configured with `AREPO_HOST`.
 
 ## 2. Locate The Repository Test Vault
 
-1. From the mdAtlas repository root, print the absolute path to the example
+1. From the AREPO repository root, print the absolute path to the example
    vault:
 
    ```bash
@@ -79,7 +79,7 @@ locally, but it is not a real user vault.
 
 ## 3. Add Vault In UI
 
-1. In mdAtlas, open the Vaults or Settings screen.
+1. In AREPO, open the Vaults or Settings screen.
 2. Confirm the local node health indicator can test the backend connection.
 3. Add a vault with:
    - Name: `Test Vault`
@@ -90,16 +90,16 @@ locally, but it is not a real user vault.
 5. Expected result: the vault appears in the configured vault list with display
    name, vault id, root path, permissions, file count, indexed note count,
    generated machine index status, vault content size, Markdown/text size,
-   attachment/other size, and mdAtlas map/index cache size.
+   attachment/other size, and AREPO map/index cache size.
 6. Expected result: if the backend rejects the vault, the UI shows the backend
    error clearly.
 
 ## 4. First-Run Empty State
 
-Run this only on a clean config or after moving aside `.mdatlas/config.json`.
+Run this only on a clean config or after moving aside `.arepo/config.json`.
 
-1. Start mdAtlas with no configured vaults.
-2. Expected result: the app explains that mdAtlas needs a local Markdown folder.
+1. Start AREPO with no configured vaults.
+2. Expected result: the app explains that AREPO needs a local Markdown folder.
 3. Expected result: the UI offers the Add vault flow.
 4. Expected result: the empty state recommends using a test or disposable vault
    first.
@@ -130,7 +130,7 @@ Run this only on a clean config or after moving aside `.mdatlas/config.json`.
 
 2. Expected result: the saved line is present on disk.
 3. Refresh the browser.
-4. Expected result: mdAtlas reloads the saved content from the filesystem-backed
+4. Expected result: AREPO reloads the saved content from the filesystem-backed
    vault.
 
 ## 7. Create Files And Folders
@@ -178,9 +178,9 @@ Run this only on a clean config or after moving aside `.mdatlas/config.json`.
    anchor-qualified wikilink.
 4. Open preview mode.
 5. Click the rendered folder-qualified wikilink.
-6. Expected result: mdAtlas opens `Reference/reference-note.md`.
+6. Expected result: AREPO opens `Reference/reference-note.md`.
 7. Click the rendered anchor-qualified wikilink.
-8. Expected result: mdAtlas opens the reference note and scrolls to the
+8. Expected result: AREPO opens the reference note and scrolls to the
    `terminology` heading anchor.
 9. Inspect mode should show backlinks between `Notes/note.md` and
    `Reference/reference-note.md`.
@@ -233,8 +233,8 @@ Run this only on a clean config or after moving aside `.mdatlas/config.json`.
 This case protects safe coexistence with other editors. Use Kate, VSCodium, or
 another local editor for the external-edit steps.
 
-1. Open `Notes/note.md` in mdAtlas.
-2. Make an unsaved edit in the mdAtlas editor.
+1. Open `Notes/note.md` in AREPO.
+2. Make an unsaved edit in the AREPO editor.
 3. Open the same file in Kate, VSCodium, or another editor.
 4. Edit the same file externally and save it. A terminal can also simulate the
    external save:
@@ -243,7 +243,7 @@ another local editor for the external-edit steps.
    printf '\nExternal edit.\n' >> <absolute path to test-vault>/Notes/note.md
    ```
 
-5. Expected result: mdAtlas shows an external-change conflict for the open file.
+5. Expected result: AREPO shows an external-change conflict for the open file.
 6. Click `Keep editing`.
 7. Expected result: the conflict banner does not spam or reappear on every poll.
 8. Expected result: a persistent conflict indicator remains visible for the open
@@ -269,9 +269,9 @@ another local editor for the external-edit steps.
 20. Confirm the overwrite prompt.
 21. Expected result: the external editor detects that the disk file changed.
 22. Reload the file in the external editor.
-23. Expected result: the mdAtlas editor buffer was written to disk.
-24. Expected result: mdAtlas clears the dirty state and conflict state.
-25. Expected result: the conflict does not re-trigger from mdAtlas' own
+23. Expected result: the AREPO editor buffer was written to disk.
+24. Expected result: AREPO clears the dirty state and conflict state.
+25. Expected result: the conflict does not re-trigger from AREPO's own
     overwrite.
 
 ## 15. Unsafe Path Rejection
@@ -326,7 +326,7 @@ Confirm the following throughout local-mode acceptance:
 - The local backend has no auth yet and must not be exposed to a LAN or the
   internet.
 - Vite dev frontend port overrides continue to use the local `/api` proxy.
-- If the frontend is served without the Vite dev proxy, `MDATLAS_ALLOWED_ORIGINS`
+- If the frontend is served without the Vite dev proxy, `AREPO_ALLOWED_ORIGINS`
   must include the new frontend origin; wildcard CORS is not acceptable.
 
 ## 18. Storage Reporting
@@ -341,7 +341,7 @@ Confirm the following throughout local-mode acceptance:
 6. Expected result: Vault content size and file count include the committed
    fixture files.
 7. Expected result: Markdown/text size includes the committed `.md` files.
-8. Expected result: mdAtlas map/index cache size is shown separately from vault
+8. Expected result: AREPO map/index cache size is shown separately from vault
    content and is treated as disposable cache.
 9. Optional attachment check: add a temporary file such as
    `<absolute path to test-vault>/Assets/example.bin`.
@@ -358,14 +358,14 @@ Use this only when you want to avoid editing the committed `test-vault/` fixture
 1. Create a temporary folder outside the repository:
 
    ```bash
-   mkdir -p /tmp/mdatlas-acceptance-vault/Projects
-   printf '# Home\n\nSee [[Projects/Alpha]] and [[Missing Note]].\n' > /tmp/mdatlas-acceptance-vault/Home.md
-   printf '# Alpha\n\nBack to [[Home]].\n\n## Details\n\nUseful notes.\n' > /tmp/mdatlas-acceptance-vault/Projects/Alpha.md
+   mkdir -p /tmp/arepo-acceptance-vault/Projects
+   printf '# Home\n\nSee [[Projects/Alpha]] and [[Missing Note]].\n' > /tmp/arepo-acceptance-vault/Home.md
+   printf '# Alpha\n\nBack to [[Home]].\n\n## Details\n\nUseful notes.\n' > /tmp/arepo-acceptance-vault/Projects/Alpha.md
    ```
 
-2. Add `/tmp/mdatlas-acceptance-vault` through Vault Settings instead of
+2. Add `/tmp/arepo-acceptance-vault` through Vault Settings instead of
    `test-vault/`.
-3. Expected result: mdAtlas treats it like any other configured local Markdown
+3. Expected result: AREPO treats it like any other configured local Markdown
    vault and builds the machine index automatically.
 
 ## Acceptance Result

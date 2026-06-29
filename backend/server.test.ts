@@ -26,9 +26,9 @@ function request(
 }
 
 async function writeConfig(cwd: string, appDataDir: string): Promise<void> {
-  await fs.mkdir(path.join(cwd, ".mdatlas"), { recursive: true });
+  await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
   await fs.writeFile(
-    path.join(cwd, ".mdatlas", "config.json"),
+    path.join(cwd, ".arepo", "config.json"),
     JSON.stringify({
       node: {
         nodeId: "local",
@@ -66,17 +66,17 @@ function statusBody(response: Awaited<ReturnType<typeof routeRequest>>) {
 }
 
 test("health endpoint returns local node info", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
   const response = await routeRequest(request("GET", "/api/health"), cwd);
   assert.equal(response.status, 200);
   assert.equal((response.body as { ok: boolean }).ok, true);
 });
 
 test("vault registration and file APIs stay inside configured root", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-data-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-root-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
 
   const created = await routeRequest(
     request("POST", "/api/vaults", { rootPath, displayName: "Docs" }),
@@ -99,8 +99,8 @@ test("vault registration and file APIs stay inside configured root", async () =>
 });
 
 test("vault storage endpoint reports content and cache sizes", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-vault-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
   await fs.mkdir(path.join(rootPath, "assets"), { recursive: true });
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
   await fs.writeFile(path.join(rootPath, "assets", "file.bin"), Buffer.alloc(4));
@@ -128,10 +128,10 @@ test("vault storage endpoint reports content and cache sizes", async () => {
 });
 
 test("vault indexing works without a user-authored index.md", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-data-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-root-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
   await fs.mkdir(path.join(rootPath, "Projects"));
   await fs.writeFile(
     path.join(rootPath, "Home.md"),
@@ -173,10 +173,10 @@ test("vault indexing works without a user-authored index.md", async () => {
 });
 
 test("user-authored index.md is indexed as a normal note when present", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-data-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-root-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
   await fs.writeFile(path.join(rootPath, "Home.md"), "# Home\n\n[[index]]\n", "utf8");
   await fs.writeFile(path.join(rootPath, "index.md"), "# Optional Homepage\n\n[[Home]]\n", "utf8");
 
@@ -196,10 +196,10 @@ test("user-authored index.md is indexed as a normal note when present", async ()
 });
 
 test("external file change is surfaced through vault status", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-data-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-root-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
 
   const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
@@ -221,10 +221,10 @@ test("external file change is surfaced through vault status", async () => {
 });
 
 test("external additions and deletions are reflected in status and rebuilt index", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-data-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-root-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
   await fs.writeFile(path.join(rootPath, "a.md"), "# A\n", "utf8");
 
   const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
@@ -253,11 +253,11 @@ test("external additions and deletions are reflected in status and rebuilt index
 });
 
 test("watch/index status ignores symlink escapes", async (t) => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-data-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-root-"));
-  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-outside-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-outside-"));
   await fs.writeFile(path.join(outside, "escape.md"), "# Escape\n", "utf8");
   try {
     await fs.symlink(outside, path.join(rootPath, "linked"), "dir");
@@ -284,7 +284,7 @@ test("watch/index status ignores symlink escapes", async (t) => {
 });
 
 test("cors allows default local dev origins, env extras, and rejects arbitrary origins", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-server-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
   const localhost = await routeRequest(
     request("GET", "/api/health", undefined, { origin: "http://localhost:8733" }),
     cwd,
@@ -299,8 +299,8 @@ test("cors allows default local dev origins, env extras, and rejects arbitrary o
   assert.equal(loopback.status, 200);
   assert.equal(loopback.headers?.["access-control-allow-origin"], "http://127.0.0.1:8733");
 
-  const originalAllowedOrigins = process.env.MDATLAS_ALLOWED_ORIGINS;
-  process.env.MDATLAS_ALLOWED_ORIGINS = "http://localhost:9001";
+  const originalAllowedOrigins = process.env.AREPO_ALLOWED_ORIGINS;
+  process.env.AREPO_ALLOWED_ORIGINS = "http://localhost:9001";
   try {
     const extra = await routeRequest(
       request("GET", "/api/health", undefined, { origin: "http://localhost:9001" }),
@@ -310,9 +310,9 @@ test("cors allows default local dev origins, env extras, and rejects arbitrary o
     assert.equal(extra.headers?.["access-control-allow-origin"], "http://localhost:9001");
   } finally {
     if (originalAllowedOrigins === undefined) {
-      delete process.env.MDATLAS_ALLOWED_ORIGINS;
+      delete process.env.AREPO_ALLOWED_ORIGINS;
     } else {
-      process.env.MDATLAS_ALLOWED_ORIGINS = originalAllowedOrigins;
+      process.env.AREPO_ALLOWED_ORIGINS = originalAllowedOrigins;
     }
   }
 

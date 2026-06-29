@@ -9,8 +9,8 @@ import { writeMachineIndex } from "./indexCache.js";
 import type { VaultInfo } from "./types.js";
 
 async function makeVault(): Promise<{ cwd: string; vault: VaultInfo }> {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-storage-cwd-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-storage-vault-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-storage-cwd-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-storage-vault-"));
   return {
     cwd,
     vault: {
@@ -65,7 +65,7 @@ test("storage summary classifies Markdown/text separately from attachments", asy
 
 test("storage summary skips symlinks", async (t) => {
   const { cwd, vault } = await makeVault();
-  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-storage-outside-"));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-storage-outside-"));
   await writeFile(vault.rootPath, "note.md", "inside");
   await fs.writeFile(path.join(outside, "outside.md"), "outside-content");
   try {

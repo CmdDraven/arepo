@@ -6,23 +6,23 @@ import path from "node:path";
 import { loadConfig, resolveAppDataDir } from "./config.js";
 
 async function writeConfig(cwd: string, config: unknown): Promise<void> {
-  await fs.mkdir(path.join(cwd, ".mdatlas"), { recursive: true });
+  await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
   await fs.writeFile(
-    path.join(cwd, ".mdatlas", "config.json"),
+    path.join(cwd, ".arepo", "config.json"),
     typeof config === "string" ? config : JSON.stringify(config),
     "utf8",
   );
 }
 
 test("config validation rejects parse errors clearly", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-config-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
   await writeConfig(cwd, "{bad json");
-  await assert.rejects(() => loadConfig(cwd), /Invalid mdAtlas config JSON/);
+  await assert.rejects(() => loadConfig(cwd), /Invalid AREPO config JSON/);
 });
 
 test("config validation rejects duplicate vault ids and missing roots", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-config-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-root-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
   const permissions = {
     readIndex: true,
     readContent: true,
@@ -63,8 +63,8 @@ test("config validation rejects duplicate vault ids and missing roots", async ()
 });
 
 test("config validation rejects unsafe permission shapes", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-config-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-root-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -90,7 +90,7 @@ test("config validation rejects unsafe permission shapes", async () => {
 });
 
 test("app data directory can be configured in local config", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-config-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
   const appDataDir = path.join(cwd, "app-data");
   await writeConfig(cwd, {
     node: {

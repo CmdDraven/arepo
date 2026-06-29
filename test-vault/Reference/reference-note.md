@@ -6,7 +6,7 @@ tags: [reference, test]
 
 # Reference Note
 
-This is a disposable reference note for a two-file mdAtlas vault.
+This is a disposable reference note for a two-file AREPO vault.
 
 ## Overview {#overview}
 

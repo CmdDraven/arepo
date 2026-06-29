@@ -27,7 +27,7 @@ async function chooseTarget() {
   const rl = readline.createInterface({ input, output });
   try {
     while (true) {
-      console.log("\nmdAtlas frontend/build targets");
+      console.log("\nAREPO frontend/build targets");
       console.log("1. dev         Vite dev UI on http://localhost:8733");
       console.log("2. dev:port    Vite dev UI on a custom port");
       console.log("3. build       Production frontend build");

@@ -90,7 +90,7 @@ const EXPLICIT_ANCHOR_RE = /\{#([a-z0-9-_]+)\}\s*$/i;
 const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
 const FENCED_CODE_RE = /(^|\n)(```|~~~)[^\n]*\n[\s\S]*?\n\2[ \t]*(?=\n|$)/g;
 const INLINE_CODE_RE = /`[^`\n]*`/g;
-const CODE_TOKEN_PREFIX = "MDATLAS_CODE_TOKEN_";
+const CODE_TOKEN_PREFIX = "AREPO_CODE_TOKEN_";
 
 export function extractHeadings(body: string): Heading[] {
   const out: Heading[] = [];
@@ -182,7 +182,7 @@ export function maskMarkdownCode(body: string): { masked: string; code: string[]
 }
 
 export function restoreMarkdownCode(masked: string, code: string[]): string {
-  return masked.replace(/@@MDATLAS_CODE_TOKEN_(\d+)@@/g, (_match, rawIndex: string) => {
+  return masked.replace(/@@AREPO_CODE_TOKEN_(\d+)@@/g, (_match, rawIndex: string) => {
     const value = code[Number(rawIndex)];
     return value ?? "";
   });

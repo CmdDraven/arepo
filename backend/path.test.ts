@@ -17,7 +17,7 @@ test("rejects path traversal and absolute paths", () => {
 });
 
 test("resolved paths must remain inside the vault root", async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "mdatlas-path-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-path-"));
   assert.equal(resolveInsideVault(root, "safe.md"), path.join(root, "safe.md"));
   assert.throws(
     () => resolveInsideVault(root, "../outside.md"),

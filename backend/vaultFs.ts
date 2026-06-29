@@ -174,7 +174,7 @@ async function walk(
 ): Promise<void> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
-    if (entry.name === ".git" || entry.name === ".mdatlas") continue;
+    if (entry.name === ".git" || entry.name === ".arepo") continue;
     if (entry.isSymbolicLink()) continue;
     const absolutePath = path.join(dir, entry.name);
     await visit(absolutePath, entry);

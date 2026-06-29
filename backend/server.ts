@@ -49,7 +49,7 @@ export async function routeRequest(
       403,
       {
         ok: false,
-        error: "Origin is not allowed by mdAtlas local backend CORS policy",
+        error: "Origin is not allowed by AREPO local backend CORS policy",
       },
       cors.headers,
     );
@@ -258,7 +258,7 @@ function corsHeaders(request: RequestLike): {
 }
 
 function configuredAllowedOrigins(): string[] {
-  const raw = process.env.MDATLAS_ALLOWED_ORIGINS;
+  const raw = process.env.AREPO_ALLOWED_ORIGINS;
   const configured = raw
     ? raw
         .split(",")
@@ -279,10 +279,10 @@ function initialNote(rawPath: unknown): string {
 }
 
 function bindHost(): string {
-  const host = process.env.MDATLAS_HOST?.trim() || DEFAULT_HOST;
+  const host = process.env.AREPO_HOST?.trim() || DEFAULT_HOST;
   if (!isLocalBindHost(host)) {
     console.warn(
-      `WARNING: mdAtlas backend binding to non-local address "${host}". ` +
+      `WARNING: AREPO backend binding to non-local address "${host}". ` +
         "V1 has no authentication; do not expose this server to untrusted networks.",
     );
   }
@@ -296,7 +296,7 @@ function isLocalBindHost(host: string): boolean {
 async function main(): Promise<void> {
   const config = await loadConfig();
   await startConfiguredVaultWatchers(config.vaults);
-  const port = Number(process.env.MDATLAS_PORT ?? DEFAULT_PORT);
+  const port = Number(process.env.AREPO_PORT ?? DEFAULT_PORT);
   const host = bindHost();
   const server = createServer();
   const shutdown = () => {
@@ -306,7 +306,7 @@ async function main(): Promise<void> {
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
   server.listen(port, host, () => {
-    console.log(`mdAtlas backend listening on http://${host}:${port}`);
+    console.log(`AREPO backend listening on http://${host}:${port}`);
   });
 }
 

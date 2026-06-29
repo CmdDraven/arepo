@@ -35,6 +35,6 @@ dist/
 dist-backend/
 .output/
 .tanstack/
-.mdatlas/
+.arepo/
 .env
 .env.*

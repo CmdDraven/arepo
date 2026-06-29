@@ -31,7 +31,7 @@ function frontendMenuCommand() {
 }
 
 function openFrontendTerminal() {
-  if (process.env.MDATLAS_NO_OPEN_TERMINAL === "1") return false;
+  if (process.env.AREPO_NO_OPEN_TERMINAL === "1") return false;
 
   if (process.platform === "darwin" && hasCommand("osascript")) {
     const script = `tell application "Terminal" to do script "cd ${root.replaceAll('"', '\\"')} && npm run frontend:menu"`;
@@ -87,7 +87,7 @@ function startBackend() {
   });
 }
 
-console.log("mdAtlas local dev launcher");
+console.log("AREPO local dev launcher");
 console.log("Starting the local backend in this terminal.");
 const opened = openFrontendTerminal();
 if (opened) {
