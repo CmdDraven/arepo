@@ -1401,6 +1401,47 @@ type VaultSummary = {
   error?: string;
 };
 
+type LocalNodeRuntimeStatus = {
+  ok: true;
+  node: {
+    nodeId: string;
+    displayName: string;
+    mode: "local" | "remote";
+    apiVersion: 1;
+  };
+  runtime: {
+    host: string;
+    port: number;
+    localOnlyMode: boolean;
+    allowedOrigins: string[];
+    startupWarnings: string[];
+  };
+  vaultCount: number;
+  vaults: {
+    vaultId: string;
+    displayName: string;
+    indexStatus: "fresh" | "stale" | "rebuilding" | "error";
+    changedExternally: boolean;
+    watcherHealth: "ok" | "stale" | "rebuilding" | "error";
+    changedPathCount: number;
+    addedPathCount: number;
+    deletedPathCount: number;
+    lastEventAt?: number;
+    lastIndexedAt?: number;
+    storageSummaryAvailable: boolean;
+    error?: string;
+  }[];
+  capabilities: {
+    storageSummary: true;
+    remoteNodes: false;
+    authentication: false;
+    sync: false;
+    ai: false;
+    database: false;
+    migrationSupport: false;
+  };
+};
+
 function VaultSettingsPanel({
   vaults,
   activeVaultId,
@@ -1432,7 +1473,24 @@ function VaultSettingsPanel({
 }) {
   const [summaries, setSummaries] = useState<Record<string, VaultSummary>>({});
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [nodeStatus, setNodeStatus] = useState<LocalNodeRuntimeStatus | null>(null);
+  const [nodeStatusError, setNodeStatusError] = useState<string | null>(null);
+  const [nodeStatusLoading, setNodeStatusLoading] = useState(false);
   const [busyVaultId, setBusyVaultId] = useState<string | null>(null);
+
+  const refreshNodeStatus = useCallback(async () => {
+    setNodeStatusLoading(true);
+    setNodeStatusError(null);
+    try {
+      const status = await settingsApi<LocalNodeRuntimeStatus>("/api/node/status");
+      setNodeStatus(status);
+    } catch (error) {
+      setNodeStatus(null);
+      setNodeStatusError(errorMessage(error));
+    } finally {
+      setNodeStatusLoading(false);
+    }
+  }, []);
 
   const refreshSummaries = useCallback(async () => {
     setSummaryError(null);
@@ -1480,6 +1538,10 @@ function VaultSettingsPanel({
     void refreshSummaries().catch((error) => setSummaryError(errorMessage(error)));
   }, [refreshSummaries]);
 
+  useEffect(() => {
+    void refreshNodeStatus();
+  }, [refreshNodeStatus, vaults]);
+
   const reindexOne = async (vaultId: string) => {
     setBusyVaultId(vaultId);
     const ok = await onReindexVault(vaultId);
@@ -1523,6 +1585,12 @@ function VaultSettingsPanel({
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-4">
             <NodeHealthCard health={health} onTestHealth={onTestHealth} />
+            <LocalNodeDiagnosticsCard
+              status={nodeStatus}
+              error={nodeStatusError}
+              loading={nodeStatusLoading}
+              onRefresh={refreshNodeStatus}
+            />
             <ConfiguredVaultsCard
               vaults={vaults}
               summaries={summaries}
@@ -1533,6 +1601,7 @@ function VaultSettingsPanel({
               onRefresh={async () => {
                 await onRefreshVaults();
                 await refreshSummaries();
+                await refreshNodeStatus();
               }}
             />
           </div>
@@ -1585,6 +1654,159 @@ function NodeHealthCard({
         </div>
         <Button variant="outline" size="sm" onClick={() => void test()} disabled={checking}>
           {checking ? "Checking..." : "Test connection"}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function LocalNodeDiagnosticsCard({
+  status,
+  error,
+  loading,
+  onRefresh,
+}: {
+  status: LocalNodeRuntimeStatus | null;
+  error: string | null;
+  loading: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  const unsupported: [string, boolean][] = status
+    ? [
+        ["Authentication", status.capabilities.authentication],
+        ["Remote nodes", status.capabilities.remoteNodes],
+        ["Sync", status.capabilities.sync],
+        ["AI/vector", status.capabilities.ai],
+        ["Database", status.capabilities.database],
+        ["Migrations", status.capabilities.migrationSupport],
+      ]
+    : [];
+
+  return (
+    <section className="border rounded-md">
+      <div className="border-b px-3 py-2 flex items-center gap-2">
+        <Info className="size-4 text-muted-foreground" />
+        <h2 className="text-sm font-semibold">Local Node Diagnostics</h2>
+        <Badge
+          variant={status?.runtime.localOnlyMode ? "outline" : "destructive"}
+          className="ml-auto"
+        >
+          {status?.runtime.localOnlyMode ? "Local only" : "Warning"}
+        </Badge>
+      </div>
+      <div className="p-3 text-sm space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Read-only runtime status for this local AREPO backend. This is not remote node or
+          federation setup.
+        </p>
+
+        {error && (
+          <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive flex gap-2">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>Backend unavailable: {error}</span>
+          </div>
+        )}
+
+        {status?.runtime.startupWarnings.map((warning) => (
+          <div
+            key={warning}
+            className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive flex gap-2"
+          >
+            <ShieldAlert className="size-4 shrink-0" />
+            <span>{warning}</span>
+          </div>
+        ))}
+
+        {status ? (
+          <>
+            <div className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-1 text-xs">
+              <span className="text-muted-foreground">Node</span>
+              <span>
+                {status.node.displayName} <span className="font-mono">({status.node.nodeId})</span>
+              </span>
+              <span className="text-muted-foreground">Mode</span>
+              <span>{status.node.mode}</span>
+              <span className="text-muted-foreground">Backend</span>
+              <span className="font-mono">
+                {status.runtime.host}:{status.runtime.port}
+              </span>
+              <span className="text-muted-foreground">Vaults</span>
+              <span>{status.vaultCount}</span>
+              <span className="text-muted-foreground">Storage status</span>
+              <span>{status.capabilities.storageSummary ? "available" : "unavailable"}</span>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs font-semibold">Allowed browser origins</div>
+              <div className="flex flex-wrap gap-1">
+                {status.runtime.allowedOrigins.map((origin) => (
+                  <Badge key={origin} variant="secondary" className="font-mono">
+                    {origin}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs font-semibold">Vault runtime health</div>
+              {status.vaults.length === 0 ? (
+                <div className="text-xs text-muted-foreground">No configured vaults.</div>
+              ) : (
+                <div className="space-y-2">
+                  {status.vaults.map((vault) => (
+                    <div key={vault.vaultId} className="rounded border bg-muted/20 px-2 py-1.5">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="font-medium truncate">{vault.displayName}</span>
+                        <Badge
+                          variant={vault.watcherHealth === "error" ? "destructive" : "outline"}
+                          className="ml-auto"
+                        >
+                          {vault.watcherHealth}
+                        </Badge>
+                      </div>
+                      <div className="mt-1 grid gap-x-3 gap-y-1 sm:grid-cols-2 text-xs text-muted-foreground">
+                        <span>Index: {vault.indexStatus}</span>
+                        <span>
+                          Storage summary:{" "}
+                          {vault.storageSummaryAvailable ? "available" : "unavailable"}
+                        </span>
+                        <span>Changed paths: {vault.changedPathCount}</span>
+                        <span>
+                          Added/deleted: {vault.addedPathCount}/{vault.deletedPathCount}
+                        </span>
+                        {vault.lastIndexedAt && (
+                          <span>Indexed: {formatTime(vault.lastIndexedAt)}</span>
+                        )}
+                        {vault.lastEventAt && (
+                          <span>Last event: {formatTime(vault.lastEventAt)}</span>
+                        )}
+                      </div>
+                      {vault.error && (
+                        <div className="mt-1 text-xs text-destructive">{vault.error}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs font-semibold">Disabled V1 capabilities</div>
+              <div className="flex flex-wrap gap-1">
+                {unsupported.map(([label, enabled]) => (
+                  <Badge key={label} variant={enabled ? "outline" : "secondary"}>
+                    {label}: {enabled ? "enabled" : "disabled"}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          !error && <div className="text-xs text-muted-foreground">Runtime status: checking</div>
+        )}
+
+        <Button variant="outline" size="sm" onClick={() => void onRefresh()} disabled={loading}>
+          {loading ? "Refreshing..." : "Refresh diagnostics"}
         </Button>
       </div>
     </section>
@@ -1750,6 +1972,10 @@ function formatBytes(bytes: number): string {
   }
   const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
   return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function formatTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleString();
 }
 
 function PermissionList({ permissions }: { permissions: VaultPermission }) {

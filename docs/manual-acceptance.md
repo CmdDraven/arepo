@@ -4,11 +4,36 @@ Use this checklist before treating a local build as usable. The default fixture
 is the repository's committed `test-vault/` folder. It is safe to edit and reset
 locally, but it is not a real user vault.
 
+This is the canonical manual daily-driver acceptance gate for AREPO V1 local
+mode. It verifies current local-node behavior only. It must not be used to imply
+that LAN exposure, reverse-proxy exposure, auth, sync, AI/vector features,
+database support, migrations, federation, or remote nodes are implemented.
+
 ## Prerequisites
 
 - Node dependencies are installed with `npm install`.
 - You have two terminal windows open at the AREPO repository root.
 - You have a browser available on the same machine.
+
+## Release Gate Commands
+
+Run these commands before or after the manual checklist. A local daily-driver
+release candidate should pass all three:
+
+```bash
+npm run backend:test
+npm run lint
+npm run build
+```
+
+Expected result:
+
+- Backend tests pass.
+- Lint passes. The existing Fast Refresh warnings in shared UI components are
+  acceptable if still present.
+- Build passes.
+- `package.json` currently has no frontend test script. Do not record frontend
+  tests as passed unless a real frontend test script has been added.
 
 ## 1. Start Backend And Frontend
 
@@ -94,7 +119,56 @@ locally, but it is not a real user vault.
 6. Expected result: if the backend rejects the vault, the UI shows the backend
    error clearly.
 
-## 4. First-Run Empty State
+## 4. Local Node Diagnostics
+
+Open Vault Settings and inspect the `Local Node Diagnostics` card.
+
+1. Expected result: the card is read-only and clearly describes itself as local
+   AREPO backend runtime status, not remote node or federation setup.
+2. Expected result: node display name, node id, and node mode render.
+3. Expected result: backend host and port render. Defaults should be
+   `127.0.0.1:8734` unless explicitly overridden.
+4. Expected result: configured browser CORS origins render, including
+   `http://localhost:8733` and `http://127.0.0.1:8733` by default.
+5. Expected result: vault count renders and matches the configured vault list.
+6. Expected result: each configured vault shows watcher/index health, including
+   index status and changed-path counts.
+7. Expected result: storage-summary availability renders for each vault.
+8. Expected result: unsupported V1 capabilities are visible as disabled:
+   authentication, remote nodes, sync, AI/vector, database support, and
+   migrations.
+9. Expected result: the diagnostics card does not contain controls to enable
+   auth, sync, AI/vector features, database support, migrations, federation,
+   remote node registration, reverse proxy setup, or LAN exposure.
+10. Stop the backend while leaving the frontend open, then refresh diagnostics
+    or reload the settings view.
+11. Expected result: the UI shows an understandable backend-unavailable state
+    instead of implying the vault data is browser-local canonical state.
+12. Restart the backend before continuing the checklist.
+
+### Optional Non-Local Bind Warning Check
+
+Run this only in a trusted local test environment. Do not leave the backend bound
+to a LAN-facing address.
+
+1. Stop the backend.
+2. Start the backend with a non-local bind address:
+
+   ```bash
+   AREPO_HOST=0.0.0.0 npm run backend:dev:server
+   ```
+
+3. Open Vault Settings and inspect Local Node Diagnostics.
+4. Expected result: a prominent no-auth warning is shown.
+5. Expected result: the card does not describe this as safe for LAN, internet,
+   reverse-proxy, or untrusted-client exposure.
+6. Stop the backend and restart it with the default local bind before continuing:
+
+   ```bash
+   npm run backend:dev:server
+   ```
+
+## 5. First-Run Empty State
 
 Run this only on a clean config or after moving aside `.arepo/config.json`.
 
@@ -104,7 +178,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 4. Expected result: the empty state recommends using a test or disposable vault
    first.
 
-## 5. Edit And Save Files
+## 6. Edit And Save Files
 
 1. Select `Notes/note.md`.
 2. Add a line in the editor:
@@ -120,7 +194,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 6. Expected result: no browser localStorage note copy becomes the source of
    truth.
 
-## 6. Confirm Disk Persistence
+## 7. Confirm Disk Persistence
 
 1. In a terminal, inspect the file:
 
@@ -133,7 +207,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 4. Expected result: AREPO reloads the saved content from the filesystem-backed
    vault.
 
-## 7. Create Files And Folders
+## 8. Create Files And Folders
 
 1. In the tree view, create a folder named `Inbox`.
 2. Create a file named `Inbox/Capture.md` or create `Capture` inside `Inbox`.
@@ -149,7 +223,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 5. Expected result: the folder and file exist under
    `<absolute path to test-vault>/Inbox` on disk.
 
-## 8. Rename
+## 9. Rename
 
 1. Select `Inbox/Capture.md`.
 2. Rename it to `Inbox/Renamed Capture.md`.
@@ -159,7 +233,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 6. Expected result: renaming to an existing file path is rejected rather than
    overwriting the destination.
 
-## 9. Rebuild Machine Index
+## 10. Rebuild Machine Index
 
 1. Open the Vaults or Settings screen.
 2. Run Rebuild index for the test vault.
@@ -169,7 +243,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 5. Expected result: no user-authored `index.md` is required. If `index.md`
    exists, it is treated as a normal Markdown note.
 
-## 10. Valid Wikilinks
+## 11. Valid Wikilinks
 
 1. Open `Notes/note.md`.
 2. Confirm `[[Reference/reference-note]]` is treated as a valid folder-qualified
@@ -185,7 +259,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 9. Inspect mode should show backlinks between `Notes/note.md` and
    `Reference/reference-note.md`.
 
-## 11. Broken Wikilinks
+## 12. Broken Wikilinks
 
 1. Confirm `[[missing-note]]` remains in `Notes/note.md`.
 2. Confirm `[[Reference/missing-reference]]` remains in
@@ -197,7 +271,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
    ignored and do not appear as validation issues.
 6. Expected result: the app does not create missing files silently.
 
-## 12. Graph Mode
+## 13. Graph Mode
 
 1. Switch the left vault panel from Tree to Graph.
 2. Expected result: graph mode renders nodes for notes in the vault.
@@ -218,7 +292,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 12. Expected result: that node is toggled in or out of the current graph
     selection.
 
-## 13. Inspect And Backlinks
+## 14. Inspect And Backlinks
 
 1. Select `Reference/reference-note.md`.
 2. Open Inspect mode.
@@ -228,7 +302,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 5. Optional: create a temporary note that nothing links to.
 6. Expected result: the UI shows an empty backlink state rather than an error.
 
-## 14. External Edit Conflict Detection
+## 15. External Edit Conflict Detection
 
 This case protects safe coexistence with other editors. Use Kate, VSCodium, or
 another local editor for the external-edit steps.
@@ -274,7 +348,7 @@ another local editor for the external-edit steps.
 25. Expected result: the conflict does not re-trigger from AREPO's own
     overwrite.
 
-## 15. Unsafe Path Rejection
+## 16. Unsafe Path Rejection
 
 Use the UI where possible, and use direct HTTP calls only against the local
 backend.
@@ -295,7 +369,7 @@ backend.
 7. Expected result: the backend rejects the request and does not read outside
    the configured vault root.
 
-## 16. Delete Permission Default
+## 17. Delete Permission Default
 
 1. Open the Add vault form.
 2. Expected result: `deleteFiles` is disabled by default.
@@ -307,7 +381,7 @@ backend.
 7. Expected result: delete operations are rejected by the backend unless the
    vault permission explicitly allows deletes.
 
-## 17. Security Expectations
+## 18. Security And Scope Expectations
 
 Confirm the following throughout local-mode acceptance:
 
@@ -328,8 +402,13 @@ Confirm the following throughout local-mode acceptance:
 - Vite dev frontend port overrides continue to use the local `/api` proxy.
 - If the frontend is served without the Vite dev proxy, `AREPO_ALLOWED_ORIGINS`
   must include the new frontend origin; wildcard CORS is not acceptable.
+- Vault Settings shows unsupported V1 capabilities as disabled, not as features
+  that can be enabled.
+- No UI or API flow in this checklist enables auth, sync, AI/vector features,
+  database support, migrations, federation, remote node registration, reverse
+  proxy setup, or LAN exposure.
 
-## 18. Storage Reporting
+## 19. Storage Reporting
 
 1. Select `Notes/note.md`.
 2. Expected result: the Metadata panel shows the selected file's size.

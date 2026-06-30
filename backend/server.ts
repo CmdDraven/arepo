@@ -1,14 +1,23 @@
 import http from "node:http";
 import { URL } from "node:url";
 import { fileURLToPath } from "node:url";
-import { addVault, getNodeInfo, getVault, loadConfig } from "./config.js";
+import { addVault } from "./config.js";
 import { getMachineIndex, rebuildMachineIndex } from "./indexCache.js";
+import {
+  getLocalNodeHealth,
+  getLocalNodeRuntimeStatus,
+  getLocalVault,
+  startLocalNode,
+} from "./nodeService.js";
+import {
+  configuredAllowedOrigins as configuredAllowedOriginsFromEnv,
+  resolveBackendRuntimeOptions,
+} from "./nodeRuntime.js";
 import { getVaultStorageSummary } from "./storage.js";
 import {
   getVaultRuntimeStatus,
   recordVaultIndexed,
   recordVaultMutation,
-  startConfiguredVaultWatchers,
   stopAllVaultWatchers,
 } from "./vaultWatch.js";
 import {
@@ -30,10 +39,6 @@ export type ResponsePayload = {
   body: unknown;
   headers?: Record<string, string>;
 };
-
-const DEFAULT_PORT = 8734;
-const DEFAULT_HOST = "127.0.0.1";
-const DEFAULT_ALLOWED_ORIGINS = ["http://localhost:8733", "http://127.0.0.1:8733"];
 
 export async function routeRequest(
   request: RequestLike,
@@ -61,25 +66,15 @@ export async function routeRequest(
 
   try {
     if (method === "GET" && url.pathname === "/api/health") {
-      const node = await getNodeInfo(cwd);
-      return json(
-        200,
-        {
-          ok: true,
-          node: {
-            nodeId: node.nodeId,
-            displayName: node.displayName,
-            mode: node.mode,
-            apiVersion: node.apiVersion,
-          },
-        },
-        cors.headers,
-      );
+      return json(200, await getLocalNodeHealth(cwd), cors.headers);
+    }
+
+    if (method === "GET" && url.pathname === "/api/node/status") {
+      return json(200, await getLocalNodeRuntimeStatus(cwd), cors.headers);
     }
 
     if (method === "GET" && url.pathname === "/api/vaults") {
-      const node = await getNodeInfo(cwd);
-      await startConfiguredVaultWatchers(node.vaults, cwd);
+      const { node } = await startLocalNode(cwd);
       return json(200, node, cors.headers);
     }
 
@@ -94,7 +89,7 @@ export async function routeRequest(
     if (segments[0] === "api" && segments[1] === "vaults" && segments[2]) {
       const vaultId = decodeURIComponent(segments[2]);
       const action = segments[3];
-      const vault = await getVault(vaultId, cwd);
+      const vault = await getLocalVault(vaultId, cwd);
 
       if (method === "GET" && action === "files") {
         const [files, folders] = await Promise.all([listMarkdownFiles(vault), listFolders(vault)]);
@@ -258,14 +253,7 @@ function corsHeaders(request: RequestLike): {
 }
 
 function configuredAllowedOrigins(): string[] {
-  const raw = process.env.AREPO_ALLOWED_ORIGINS;
-  const configured = raw
-    ? raw
-        .split(",")
-        .map((origin) => origin.trim())
-        .filter(Boolean)
-    : [];
-  return Array.from(new Set([...DEFAULT_ALLOWED_ORIGINS, ...configured]));
+  return configuredAllowedOriginsFromEnv();
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {
@@ -278,26 +266,11 @@ function initialNote(rawPath: unknown): string {
   return `---\nid: ${slug}\ntitle: ${slug}\ntags: []\n---\n\n# ${slug}\n\n`;
 }
 
-function bindHost(): string {
-  const host = process.env.AREPO_HOST?.trim() || DEFAULT_HOST;
-  if (!isLocalBindHost(host)) {
-    console.warn(
-      `WARNING: AREPO backend binding to non-local address "${host}". ` +
-        "V1 has no authentication; do not expose this server to untrusted networks.",
-    );
-  }
-  return host;
-}
-
-function isLocalBindHost(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
-}
-
 async function main(): Promise<void> {
-  const config = await loadConfig();
-  await startConfiguredVaultWatchers(config.vaults);
-  const port = Number(process.env.AREPO_PORT ?? DEFAULT_PORT);
-  const host = bindHost();
+  await startLocalNode();
+  const runtime = resolveBackendRuntimeOptions();
+  if (runtime.nonLocalWarning) console.warn(runtime.nonLocalWarning);
+  const { host, port } = runtime;
   const server = createServer();
   const shutdown = () => {
     stopAllVaultWatchers();

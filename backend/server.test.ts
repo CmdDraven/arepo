@@ -6,7 +6,7 @@ import path from "node:path";
 import { routeRequest, type RequestLike } from "./server.js";
 import { machineIndexPath } from "./indexCache.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
-import type { VaultIndexResponse, VaultInfo } from "./types.js";
+import type { LocalNodeRuntimeStatus, VaultIndexResponse, VaultInfo } from "./types.js";
 
 function request(
   method: string,
@@ -70,6 +70,84 @@ test("health endpoint returns local node info", async () => {
   const response = await routeRequest(request("GET", "/api/health"), cwd);
   assert.equal(response.status, 200);
   assert.equal((response.body as { ok: boolean }).ok, true);
+});
+
+test("node status endpoint reports local runtime posture", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir);
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+
+  const response = await routeRequest(request("GET", "/api/node/status"), cwd);
+  assert.equal(response.status, 200);
+  const status = response.body as LocalNodeRuntimeStatus;
+  assert.equal(status.ok, true);
+  assert.equal(status.node.nodeId, "local");
+  assert.equal(status.node.mode, "local");
+  assert.equal(status.runtime.host, "127.0.0.1");
+  assert.equal(status.runtime.port, 8734);
+  assert.equal(status.runtime.localOnlyMode, true);
+  assert.deepEqual(status.runtime.startupWarnings, []);
+  assert.ok(status.runtime.allowedOrigins.includes("http://localhost:8733"));
+  assert.equal(status.vaultCount, 1);
+  assert.equal(status.vaults[0]?.vaultId, vault.id);
+  assert.equal(status.vaults[0]?.storageSummaryAvailable, true);
+  assert.equal(status.capabilities.storageSummary, true);
+  assert.equal(status.capabilities.remoteNodes, false);
+  assert.equal(status.capabilities.authentication, false);
+  assert.equal(status.capabilities.sync, false);
+  assert.equal(status.capabilities.ai, false);
+  assert.equal(status.capabilities.database, false);
+  assert.equal(status.capabilities.migrationSupport, false);
+});
+
+test("node status endpoint reports non-local bind warning", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const originalHost = process.env.AREPO_HOST;
+  process.env.AREPO_HOST = "0.0.0.0";
+  try {
+    const response = await routeRequest(request("GET", "/api/node/status"), cwd);
+    assert.equal(response.status, 200);
+    const status = response.body as LocalNodeRuntimeStatus;
+    assert.equal(status.runtime.host, "0.0.0.0");
+    assert.equal(status.runtime.localOnlyMode, false);
+    assert.match(status.runtime.startupWarnings[0] ?? "", /no authentication/);
+  } finally {
+    if (originalHost === undefined) {
+      delete process.env.AREPO_HOST;
+    } else {
+      process.env.AREPO_HOST = originalHost;
+    }
+  }
+});
+
+test("node status endpoint surfaces invalid config diagnostics", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
+  await fs.writeFile(
+    path.join(cwd, ".arepo", "config.json"),
+    JSON.stringify({
+      node: {
+        nodeId: "bad node id",
+        displayName: "Local Node",
+        mode: "local",
+        apiVersion: 1,
+      },
+      vaults: [],
+    }),
+    "utf8",
+  );
+
+  const response = await routeRequest(request("GET", "/api/node/status"), cwd);
+  assert.equal(response.status, 400);
+  const body = response.body as { ok: false; error: string };
+  assert.equal(body.ok, false);
+  assert.match(body.error, /nodeId must contain only/);
 });
 
 test("vault registration and file APIs stay inside configured root", async () => {

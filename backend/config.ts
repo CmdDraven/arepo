@@ -113,6 +113,14 @@ async function validateConfig(config: VaultConfigFile, file: string): Promise<vo
   if (!config.node || typeof config.node !== "object") {
     throw new Error(`Invalid AREPO config at ${file}: node is required`);
   }
+  if (typeof config.node.nodeId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(config.node.nodeId)) {
+    throw new Error(
+      `Invalid AREPO config at ${file}: nodeId must contain only letters, numbers, _ or -`,
+    );
+  }
+  if (typeof config.node.displayName !== "string" || !config.node.displayName.trim()) {
+    throw new Error(`Invalid AREPO config at ${file}: node displayName must be a non-empty string`);
+  }
   if (config.node.mode !== "local") {
     throw new Error(`Invalid AREPO config at ${file}: only local node mode is supported in V1`);
   }
@@ -152,6 +160,11 @@ async function validateConfig(config: VaultConfigFile, file: string): Promise<vo
     if (typeof vault.rootPath !== "string" || !path.isAbsolute(vault.rootPath)) {
       throw new Error(
         `Invalid AREPO config at ${file}: vault ${vault.id} rootPath must be absolute`,
+      );
+    }
+    if (vault.rootPath.includes("\0")) {
+      throw new Error(
+        `Invalid AREPO config at ${file}: vault ${vault.id} rootPath cannot contain null bytes`,
       );
     }
     const stat = await fs.stat(vault.rootPath).catch((error) => {

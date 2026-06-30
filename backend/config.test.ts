@@ -89,6 +89,45 @@ test("config validation rejects unsafe permission shapes", async () => {
   await assert.rejects(() => loadConfig(cwd), /must allow readContent/);
 });
 
+test("config validation rejects unsafe local node identity", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local node",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+    vaults: [],
+  });
+  await assert.rejects(() => loadConfig(cwd), /nodeId must contain only/);
+
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "",
+      mode: "local",
+      apiVersion: 1,
+    },
+    vaults: [],
+  });
+  await assert.rejects(() => loadConfig(cwd), /node displayName must be a non-empty string/);
+});
+
+test("config validation rejects unsupported node modes", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "remote",
+      apiVersion: 1,
+    },
+    vaults: [],
+  });
+  await assert.rejects(() => loadConfig(cwd), /only local node mode is supported in V1/);
+});
+
 test("app data directory can be configured in local config", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
   const appDataDir = path.join(cwd, "app-data");

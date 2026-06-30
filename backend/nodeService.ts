@@ -1,0 +1,130 @@
+import { getNodeInfo, getVault, loadConfig } from "./config.js";
+import { resolveBackendRuntimeOptions } from "./nodeRuntime.js";
+import { getVaultRuntimeStatus, startConfiguredVaultWatchers } from "./vaultWatch.js";
+import type {
+  LocalNodeHealth,
+  LocalNodeRuntimeStatus,
+  LocalNodeVaultRuntimeSummary,
+  NodeInfo,
+  VaultConfigFile,
+  VaultInfo,
+  VaultRuntimeStatus,
+} from "./types.js";
+
+export type LocalNodeContext = {
+  config: VaultConfigFile;
+  node: NodeInfo;
+};
+
+export async function loadLocalNode(cwd = process.cwd()): Promise<LocalNodeContext> {
+  const config = await loadConfig(cwd);
+  return { config, node: { ...config.node, vaults: config.vaults } };
+}
+
+export async function startLocalNode(cwd = process.cwd()): Promise<LocalNodeContext> {
+  const context = await loadLocalNode(cwd);
+  await startConfiguredVaultWatchers(context.node.vaults, cwd);
+  return context;
+}
+
+export async function getLocalNodeInfo(cwd = process.cwd()): Promise<NodeInfo> {
+  return getNodeInfo(cwd);
+}
+
+export async function getLocalNodeHealth(cwd = process.cwd()): Promise<LocalNodeHealth> {
+  const node = await getNodeInfo(cwd);
+  return {
+    ok: true,
+    node: {
+      nodeId: node.nodeId,
+      displayName: node.displayName,
+      mode: node.mode,
+      apiVersion: node.apiVersion,
+    },
+  };
+}
+
+export async function getLocalNodeRuntimeStatus(
+  cwd = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<LocalNodeRuntimeStatus> {
+  const { node } = await startLocalNode(cwd);
+  const runtime = resolveBackendRuntimeOptions(env);
+  const vaultStatuses = await Promise.all(
+    node.vaults.map(async (vault) => summarizeVaultRuntime(vault, cwd)),
+  );
+  return {
+    ok: true,
+    node: {
+      nodeId: node.nodeId,
+      displayName: node.displayName,
+      mode: node.mode,
+      apiVersion: node.apiVersion,
+    },
+    runtime: {
+      host: runtime.host,
+      port: runtime.port,
+      localOnlyMode: node.mode === "local" && runtime.nonLocalWarning === undefined,
+      allowedOrigins: runtime.allowedOrigins,
+      startupWarnings: runtime.nonLocalWarning ? [runtime.nonLocalWarning] : [],
+    },
+    vaultCount: node.vaults.length,
+    vaults: vaultStatuses,
+    capabilities: {
+      storageSummary: true,
+      remoteNodes: false,
+      authentication: false,
+      sync: false,
+      ai: false,
+      database: false,
+      migrationSupport: false,
+    },
+  };
+}
+
+export async function getLocalVault(vaultId: string, cwd = process.cwd()): Promise<VaultInfo> {
+  return getVault(vaultId, cwd);
+}
+
+async function summarizeVaultRuntime(
+  vault: VaultInfo,
+  cwd: string,
+): Promise<LocalNodeVaultRuntimeSummary> {
+  try {
+    const status = await getVaultRuntimeStatus(vault, cwd);
+    return toVaultRuntimeSummary(vault, status);
+  } catch (error) {
+    return {
+      vaultId: vault.id,
+      displayName: vault.displayName,
+      indexStatus: "error",
+      changedExternally: false,
+      watcherHealth: "error",
+      changedPathCount: 0,
+      addedPathCount: 0,
+      deletedPathCount: 0,
+      storageSummaryAvailable: false,
+      error: error instanceof Error ? error.message : "Vault runtime status failed",
+    };
+  }
+}
+
+function toVaultRuntimeSummary(
+  vault: VaultInfo,
+  status: VaultRuntimeStatus,
+): LocalNodeVaultRuntimeSummary {
+  return {
+    vaultId: vault.id,
+    displayName: vault.displayName,
+    indexStatus: status.indexStatus,
+    changedExternally: status.changedExternally,
+    watcherHealth: status.indexStatus === "fresh" ? "ok" : status.indexStatus,
+    changedPathCount: status.changedPaths.length,
+    addedPathCount: status.addedPaths.length,
+    deletedPathCount: status.deletedPaths.length,
+    lastEventAt: status.lastEventAt,
+    lastIndexedAt: status.lastIndexedAt,
+    storageSummaryAvailable: true,
+    error: status.error,
+  };
+}

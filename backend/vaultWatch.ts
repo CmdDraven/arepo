@@ -3,32 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { rebuildMachineIndex } from "./indexCache.js";
 import { listFolders, listMarkdownFiles, readVaultFile } from "./vaultFs.js";
-import type { VaultInfo } from "./types.js";
-
-export type IndexFreshness = "fresh" | "stale" | "rebuilding" | "error";
-
-export type WatchedFileStatus = {
-  path: string;
-  exists: boolean;
-  mtimeMs?: number;
-  size?: number;
-  hash?: string;
-  changedExternally: boolean;
-  deletedExternally: boolean;
-};
-
-export type VaultRuntimeStatus = {
-  vaultId: string;
-  indexStatus: IndexFreshness;
-  changedExternally: boolean;
-  changedPaths: string[];
-  addedPaths: string[];
-  deletedPaths: string[];
-  lastEventAt?: number;
-  lastIndexedAt?: number;
-  error?: string;
-  file?: WatchedFileStatus;
-};
+import type { IndexFreshness, VaultInfo, VaultRuntimeStatus, WatchedFileStatus } from "./types.js";
 
 type SnapshotEntry = {
   mtimeMs: number;

@@ -1,24 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { machineIndexPath } from "./indexCache.js";
-import type { VaultInfo } from "./types.js";
-
-export type StorageBucket = {
-  fileCount: number;
-  bytes: number;
-};
-
-export type VaultStorageSummary = {
-  vaultId: string;
-  vaultRoot: string;
-  total: StorageBucket;
-  markdownText: StorageBucket;
-  attachments: StorageBucket;
-  appDataCache: StorageBucket & {
-    machineIndexBytes: number;
-    files: { kind: "machine-index"; path: string; bytes: number }[];
-  };
-};
+import type { StorageBucket, VaultInfo, VaultStorageSummary } from "./types.js";
 
 const TEXT_EXTENSIONS = new Set([".md", ".markdown", ".mdown", ".mkd", ".txt"]);
 

@@ -24,10 +24,95 @@ export type NodeInfo = {
   vaults: VaultInfo[];
 };
 
+export type LocalNodeHealth = {
+  ok: true;
+  node: Omit<NodeInfo, "vaults">;
+};
+
+export type LocalNodeRuntimeStatus = {
+  ok: true;
+  node: Omit<NodeInfo, "vaults">;
+  runtime: {
+    host: string;
+    port: number;
+    localOnlyMode: boolean;
+    allowedOrigins: string[];
+    startupWarnings: string[];
+  };
+  vaultCount: number;
+  vaults: LocalNodeVaultRuntimeSummary[];
+  capabilities: {
+    storageSummary: true;
+    remoteNodes: false;
+    authentication: false;
+    sync: false;
+    ai: false;
+    database: false;
+    migrationSupport: false;
+  };
+};
+
+export type LocalNodeVaultRuntimeSummary = {
+  vaultId: string;
+  displayName: string;
+  indexStatus: IndexFreshness;
+  changedExternally: boolean;
+  watcherHealth: "ok" | "stale" | "rebuilding" | "error";
+  changedPathCount: number;
+  addedPathCount: number;
+  deletedPathCount: number;
+  lastEventAt?: number;
+  lastIndexedAt?: number;
+  storageSummaryAvailable: boolean;
+  error?: string;
+};
+
 export type VaultFile = {
   path: string;
   size: number;
   mtimeMs: number;
+};
+
+export type IndexFreshness = "fresh" | "stale" | "rebuilding" | "error";
+
+export type WatchedFileStatus = {
+  path: string;
+  exists: boolean;
+  mtimeMs?: number;
+  size?: number;
+  hash?: string;
+  changedExternally: boolean;
+  deletedExternally: boolean;
+};
+
+export type VaultRuntimeStatus = {
+  vaultId: string;
+  indexStatus: IndexFreshness;
+  changedExternally: boolean;
+  changedPaths: string[];
+  addedPaths: string[];
+  deletedPaths: string[];
+  lastEventAt?: number;
+  lastIndexedAt?: number;
+  error?: string;
+  file?: WatchedFileStatus;
+};
+
+export type StorageBucket = {
+  fileCount: number;
+  bytes: number;
+};
+
+export type VaultStorageSummary = {
+  vaultId: string;
+  vaultRoot: string;
+  total: StorageBucket;
+  markdownText: StorageBucket;
+  attachments: StorageBucket;
+  appDataCache: StorageBucket & {
+    machineIndexBytes: number;
+    files: { kind: "machine-index"; path: string; bytes: number }[];
+  };
 };
 
 export type OperationResult<T = unknown> =

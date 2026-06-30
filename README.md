@@ -44,6 +44,10 @@ display multiple registered AREPO nodes from a hub UI. V1 only implements the
 local node. It does not implement federation, live sync, hosted auth, or remote
 registration.
 
+See [docs/roadmap.md](docs/roadmap.md) for the current local-node roadmap and
+[docs/local-node-self-host.md](docs/local-node-self-host.md) for single-node
+self-host notes.
+
 ## Run Locally
 
 Install dependencies:
@@ -173,6 +177,10 @@ The UI can also add an existing local vault folder through the top bar. The
 backend never scans the whole filesystem; only configured vault roots are
 accessible.
 
+Vault Settings also shows read-only local node diagnostics from
+`GET /api/node/status`, including backend host/port, startup warnings, vault
+runtime health, and disabled V1 capability flags.
+
 `appDataDir` is optional. It controls where AREPO writes local generated data
 such as machine index caches. You can also set `AREPO_APP_DATA_DIR`; the
 environment variable takes precedence over config.
@@ -190,6 +198,7 @@ AREPO cache files to appear beside user notes.
 ## Current Backend API
 
 - `GET /api/health`
+- `GET /api/node/status`
 - `GET /api/vaults`
 - `POST /api/vaults`
 - `GET /api/vaults/:vaultId/files`
@@ -205,6 +214,12 @@ AREPO cache files to appear beside user notes.
 
 `POST /api/vaults/:vaultId/reindex` means "rebuild the generated machine index
 from Markdown files." It does not create or require a user-authored `index.md`.
+
+`GET /api/node/status` is a local-node-only diagnostic surface. It reports node
+identity, local runtime host/port, startup warnings such as non-local binding,
+vault count, per-vault watcher/index health, storage-summary availability, and
+explicit capability flags showing that auth, sync, AI, database support,
+migration support, and remote node registration are not active in V1.
 
 ## Security Model
 
@@ -324,6 +339,23 @@ npm run backend:test
 npm run lint
 npm run build
 ```
+
+## Daily-Driver Release Checklist
+
+Use this before treating a local build as daily-driver ready:
+
+1. Install dependencies with `npm install`.
+2. Start the backend with `npm run backend:dev`.
+3. Start the frontend with `npm run dev` and open `http://localhost:8733`.
+4. Add the absolute path to `test-vault/` through Vault Settings.
+5. Run the manual acceptance checklist in `docs/manual-acceptance.md`.
+6. Run `npm run backend:test`, `npm run lint`, and `npm run build`.
+7. Confirm `.arepo/`, generated app data, `dist/`, `dist-backend/`, and
+   `node_modules/` are not being committed.
+
+The canonical manual local-mode gate is
+[docs/manual-acceptance.md](docs/manual-acceptance.md). It uses `test-vault/`
+and includes Local Node Diagnostics checks.
 
 ## Limitations
 
