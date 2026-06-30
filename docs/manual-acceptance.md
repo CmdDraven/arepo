@@ -294,7 +294,8 @@ views over the generated machine index; they must not modify source Markdown.
 12. Expected result: duplicate heading anchors are listed if present, or the UI
     shows `No duplicate heading anchors found.`
 13. Click a filter result row.
-14. Expected result: AREPO opens the matching note without editing it.
+14. Expected result: AREPO opens the matching note without editing it and the
+    Inspect panel shows the file-level machine-index details for that result.
 15. Expected result: the panel does not offer AI analysis, semantic search,
     database persistence, sync, migration, federation, remote-node, or mutation
     controls.
@@ -324,11 +325,28 @@ views over the generated machine index; they must not modify source Markdown.
 
 1. Select `Reference/reference-note.md`.
 2. Open Inspect mode.
-3. Expected result: backlinks include `Notes/note.md`.
-4. Expected result: metadata includes title, path, file size, id if present,
-   tags, headings, and outgoing link counts.
-5. Optional: create a temporary note that nothing links to.
-6. Expected result: the UI shows an empty backlink state rather than an error.
+3. Expected result: the `Index inspect` section says its source is the
+   `machine-index` and shows title, path, frontmatter ID if present, tags, and
+   orphan status.
+4. Expected result: headings and heading anchors are listed without rendering
+   Markdown as HTML.
+5. Expected result: outgoing links show resolved destination paths and broken
+   outgoing links show the missing target clearly.
+6. Expected result: backlinks include `Notes/note.md` and can be clicked to
+   navigate without editing either file.
+7. Select `Notes/note.md` or click an index-filter result for an intentional
+   broken link.
+8. Expected result: validation issues and broken outgoing links appear in the
+   inspect view with clear error text.
+9. If the fixture contains duplicate frontmatter IDs or duplicate heading
+   anchors, confirm the inspect view lists the duplicate key and participating
+   paths/headings. If none are present, confirm the empty states are explicit.
+10. Optional: create a temporary note that nothing links to.
+11. Expected result: the inspect view reports `orphan: yes` and shows empty
+    backlink/outgoing sections rather than an error.
+12. Expected result: the inspect view remains read-only and does not offer AI,
+    semantic search, full-text search, database persistence, sync, migration,
+    federation, remote-node, or mutation controls.
 
 ## 16. External Edit Conflict Detection
 

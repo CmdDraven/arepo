@@ -11,6 +11,7 @@ import type {
   IndexFilterResponse,
   LocalNodeRuntimeStatus,
   VaultIndexResponse,
+  VaultInspectResponse,
   VaultInfo,
 } from "./types.js";
 
@@ -324,6 +325,70 @@ test("index structural filters expose read-only machine-index views", async () =
     ).length,
     2,
   );
+});
+
+test("index inspect endpoint exposes file-level machine-index details", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  await fs.mkdir(path.join(rootPath, "Refs"), { recursive: true });
+  await fs.writeFile(
+    path.join(rootPath, "note.md"),
+    "---\nid: same\ntitle: Note\ntags: [alpha]\n---\n# Note\n\n## First {#dup}\n## Second {#dup}\n[[Refs/ref]]\n[[Missing]]\n",
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(rootPath, "other.md"),
+    "---\nid: same\ntitle: Other\ntags: []\n---\n# Other\n\n[[note]]\n",
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(rootPath, "Refs", "ref.md"),
+    "---\nid: ref\ntitle: Reference\ntags: []\n---\n# Reference\n\n[[note]]\n",
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(rootPath, "orphan.md"),
+    "---\nid: orphan\ntitle: Orphan\ntags: []\n---\n# Orphan\n",
+    "utf8",
+  );
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+
+  const response = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/inspect?path=note.md`),
+    cwd,
+  );
+  assert.equal(response.status, 200);
+  const inspect = response.body as VaultInspectResponse;
+  assert.equal(inspect.source, "machine-index");
+  assert.equal(inspect.path, "note.md");
+  assert.equal(inspect.title, "Note");
+  assert.equal(inspect.frontmatterId, "same");
+  assert.deepEqual(inspect.tags, ["alpha"]);
+  assert.ok(inspect.headings.some((heading) => heading.anchor === "dup"));
+  assert.ok(
+    inspect.outgoingLinks.some(
+      (link) => link.target === "Refs/ref" && link.targetPath === "Refs/ref.md",
+    ),
+  );
+  assert.ok(inspect.backlinks.some((backlink) => backlink.fromPath === "other.md"));
+  assert.ok(inspect.backlinks.some((backlink) => backlink.fromPath === "Refs/ref.md"));
+  assert.ok(inspect.brokenOutgoingLinks.some((link) => link.target === "Missing"));
+  assert.equal(inspect.duplicateId?.id, "same");
+  assert.deepEqual(inspect.duplicateId?.paths.sort(), ["note.md", "other.md"]);
+  assert.equal(inspect.duplicateAnchors[0]?.anchor, "dup");
+  assert.equal(inspect.duplicateAnchors[0]?.headings.length, 2);
+  assert.equal(inspect.orphan, false);
+  assert.ok(inspect.issues.some((issue) => issue.kind === "broken-wikilink"));
+
+  const orphanResponse = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/inspect?path=orphan.md`),
+    cwd,
+  );
+  assert.equal(orphanResponse.status, 200);
+  assert.equal((orphanResponse.body as VaultInspectResponse).orphan, true);
 });
 
 test("user-authored index.md is indexed as a normal note when present", async () => {

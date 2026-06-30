@@ -91,6 +91,9 @@ function VaultApp() {
   const [indexFilterResponse, setIndexFilterResponse] = useState<IndexFilterResponse | null>(null);
   const [indexFilterLoading, setIndexFilterLoading] = useState(false);
   const [indexFilterError, setIndexFilterError] = useState<string | null>(null);
+  const [inspectData, setInspectData] = useState<VaultInspectResponse | null>(null);
+  const [inspectLoading, setInspectLoading] = useState(false);
+  const [inspectError, setInspectError] = useState<string | null>(null);
   const [centerTab, setCenterTab] = useState<"edit" | "preview">("edit");
   const [mobileTab, setMobileTab] = useState<"vault" | "edit" | "preview" | "inspect">("vault");
   const [vaultMode, setVaultMode] = useState<"tree" | "graph">("tree");
@@ -324,6 +327,36 @@ function VaultApp() {
     void refreshIndexFilter();
   }, [refreshIndexFilter]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeVault || !metadataPath || selectedNotePaths.length > 1) {
+      setInspectData(null);
+      setInspectError(null);
+      setInspectLoading(false);
+      return;
+    }
+    setInspectLoading(true);
+    setInspectError(null);
+    settingsApi<VaultInspectResponse>(
+      `/api/vaults/${encodeURIComponent(activeVault.id)}/index/inspect?path=${encodeURIComponent(metadataPath)}`,
+    )
+      .then((data) => {
+        if (!cancelled) setInspectData(data);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setInspectData(null);
+          setInspectError(errorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setInspectLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeVault, metadataPath, selectedNotePaths.length]);
+
   const onPreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     const link = target.closest("a.wikilink") as HTMLAnchorElement | null;
@@ -551,7 +584,7 @@ function VaultApp() {
               onRefresh={refreshIndexFilter}
               onPick={(path) => {
                 selectPath(path);
-                if (isMobile) setMobileTab("edit");
+                if (isMobile) setMobileTab("inspect");
               }}
             />
             {activeVault && !files["index.md"] && (
@@ -695,6 +728,37 @@ function VaultApp() {
 
   const inspectorPane = (
     <div className="flex flex-col min-h-0 h-full overflow-auto">
+      <Section
+        icon={<Info className="size-3.5" />}
+        title="Index inspect"
+        count={
+          inspectData
+            ? inspectData.issues.length + inspectData.brokenOutgoingLinks.length
+            : undefined
+        }
+      >
+        {selectedNotePaths.length > 1 ? (
+          <Empty>
+            Multi-select shows combined metadata below. Select one file for index inspection.
+          </Empty>
+        ) : inspectLoading ? (
+          <Empty>Loading machine-index details...</Empty>
+        ) : inspectError ? (
+          <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+            {inspectError}
+          </div>
+        ) : inspectData ? (
+          <InspectDetails
+            data={inspectData}
+            onPick={(path) => {
+              selectPath(path);
+              if (isMobile) setMobileTab("edit");
+            }}
+          />
+        ) : (
+          <Empty>No file selected.</Empty>
+        )}
+      </Section>
       <Section icon={<Link2 className="size-3.5" />} title="Backlinks" count={backlinks.length}>
         {backlinks.length === 0 ? (
           <Empty>No notes link here.</Empty>
@@ -1201,6 +1265,203 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <div className="text-xs text-muted-foreground italic">{children}</div>;
 }
 
+function InspectDetails({
+  data,
+  onPick,
+}: {
+  data: VaultInspectResponse;
+  onPick: (path: string) => void;
+}) {
+  return (
+    <div className="space-y-3 text-xs">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        <dt className="text-muted-foreground">source</dt>
+        <dd className="font-mono">{data.source}</dd>
+        <dt className="text-muted-foreground">title</dt>
+        <dd className="truncate">{data.title}</dd>
+        <dt className="text-muted-foreground">path</dt>
+        <dd className="font-mono truncate" title={data.path}>
+          {data.path}
+        </dd>
+        <dt className="text-muted-foreground">id</dt>
+        <dd className="font-mono truncate">{data.frontmatterId ?? "-"}</dd>
+        <dt className="text-muted-foreground">orphan</dt>
+        <dd>{data.orphan ? "yes" : "no"}</dd>
+        <dt className="text-muted-foreground">tags</dt>
+        <dd className="flex flex-wrap gap-1">
+          {data.tags.length ? (
+            data.tags.map((tag) => (
+              <Badge key={tag} variant="secondary" className="text-[10px] py-0">
+                {tag}
+              </Badge>
+            ))
+          ) : (
+            <span className="text-muted-foreground">-</span>
+          )}
+        </dd>
+      </dl>
+
+      <InspectGroup title="Headings" empty="No headings found.">
+        {data.headings.map((heading, index) => (
+          <div key={`${heading.anchor}-${index}`} className="rounded bg-muted/30 px-2 py-1">
+            <div className="truncate">
+              {"#".repeat(heading.level)} {heading.text}
+            </div>
+            <div className="font-mono text-[10px] text-muted-foreground truncate">
+              #{heading.anchor}
+              {heading.explicit ? " explicit" : " generated"}
+            </div>
+          </div>
+        ))}
+      </InspectGroup>
+
+      <InspectGroup title="Outgoing links" empty="No outgoing links found.">
+        {data.outgoingLinks.map((link, index) => (
+          <InspectLinkRow key={`${link.raw}-${index}`} link={link} onPick={onPick} />
+        ))}
+      </InspectGroup>
+
+      <InspectGroup title="Backlinks" empty="No backlinks found.">
+        {data.backlinks.map((backlink, index) => (
+          <button
+            key={`${backlink.fromPath}-${index}`}
+            className="w-full rounded px-2 py-1 text-left hover:bg-muted"
+            onClick={() => onPick(backlink.fromPath)}
+          >
+            <div className="truncate font-medium">{backlink.fromTitle}</div>
+            <div className="font-mono text-[10px] text-muted-foreground truncate">
+              {backlink.fromPath}
+              {backlink.anchor ? `#${backlink.anchor}` : ""}
+            </div>
+          </button>
+        ))}
+      </InspectGroup>
+
+      <InspectGroup title="Broken outgoing links" empty="No broken outgoing links.">
+        {data.brokenOutgoingLinks.map((link, index) => (
+          <div
+            key={`${link.raw}-${index}`}
+            className="rounded border border-destructive/30 px-2 py-1"
+          >
+            <div className="font-mono text-destructive truncate">{link.raw}</div>
+            <div className="text-[10px] text-muted-foreground break-words">
+              Missing target: {link.target}
+              {link.anchor ? `#${link.anchor}` : ""}
+            </div>
+          </div>
+        ))}
+      </InspectGroup>
+
+      <InspectGroup title="Duplicate frontmatter ID" empty="No duplicate frontmatter ID.">
+        {data.duplicateId ? (
+          <div className="space-y-1">
+            <div className="font-mono text-amber-600 dark:text-amber-400">
+              {data.duplicateId.id}
+            </div>
+            {data.duplicateId.paths.map((path) => (
+              <button
+                key={path}
+                className="block w-full rounded px-2 py-1 text-left font-mono text-[10px] hover:bg-muted"
+                onClick={() => onPick(path)}
+              >
+                {path}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </InspectGroup>
+
+      <InspectGroup title="Duplicate heading anchors" empty="No duplicate heading anchors.">
+        {data.duplicateAnchors.map((duplicate) => (
+          <div key={duplicate.anchor} className="rounded border border-amber-500/30 px-2 py-1">
+            <div className="font-mono text-amber-600 dark:text-amber-400">#{duplicate.anchor}</div>
+            <ul className="mt-1 space-y-0.5 text-[10px] text-muted-foreground">
+              {duplicate.headings.map((heading, index) => (
+                <li key={`${heading.text}-${index}`} className="truncate">
+                  {"#".repeat(heading.level)} {heading.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </InspectGroup>
+
+      <InspectGroup title="Validation issues" empty="No validation issues for this file.">
+        {data.issues.map((issue, index) => (
+          <div
+            key={`${issue.kind}-${index}`}
+            className={cn(
+              "rounded px-2 py-1 break-words",
+              issue.severity === "error"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+            )}
+          >
+            <span className="font-mono">[{issue.kind}]</span> {issue.message}
+          </div>
+        ))}
+      </InspectGroup>
+    </div>
+  );
+}
+
+function InspectGroup({
+  title,
+  empty,
+  children,
+}: {
+  title: string;
+  empty: string;
+  children: React.ReactNode;
+}) {
+  const items = React.Children.toArray(children).filter(Boolean);
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[10px] font-semibold uppercase text-muted-foreground">{title}</div>
+      {items.length ? <div className="space-y-1">{items}</div> : <Empty>{empty}</Empty>}
+    </div>
+  );
+}
+
+function InspectLinkRow({
+  link,
+  onPick,
+}: {
+  link: VaultInspectLink;
+  onPick: (path: string) => void;
+}) {
+  const content = (
+    <>
+      <div className="flex items-center gap-1">
+        <span className="min-w-0 flex-1 truncate font-medium">
+          {link.targetTitle ?? link.targetPath ?? link.target}
+        </span>
+        <Badge variant={link.broken ? "destructive" : "outline"} className="text-[9px] py-0">
+          {link.status}
+        </Badge>
+      </div>
+      <div className="font-mono text-[10px] text-muted-foreground truncate">
+        {link.targetPath ?? link.target}
+        {link.anchor ? `#${link.anchor}` : ""}
+      </div>
+      {link.alias && (
+        <div className="text-[10px] text-muted-foreground truncate">alias: {link.alias}</div>
+      )}
+    </>
+  );
+  if (!link.targetPath) {
+    return <div className="rounded px-2 py-1 bg-muted/20">{content}</div>;
+  }
+  return (
+    <button
+      className="w-full rounded px-2 py-1 text-left hover:bg-muted"
+      onClick={() => onPick(link.targetPath!)}
+    >
+      {content}
+    </button>
+  );
+}
+
 function SearchResults({
   results,
   onPick,
@@ -1609,6 +1870,54 @@ type IndexFilterResponse = {
   total: number;
   source: "machine-index";
   results: IndexFilterResult[];
+};
+
+type VaultInspectLink = {
+  target: string;
+  targetPath?: string;
+  targetTitle?: string;
+  anchor?: string;
+  alias?: string;
+  raw: string;
+  status: string;
+  broken: boolean;
+  targetPaths?: string[];
+};
+
+type VaultInspectBacklink = {
+  fromPath: string;
+  fromTitle: string;
+  anchor?: string;
+  alias?: string;
+};
+
+type VaultInspectDuplicateAnchor = {
+  anchor: string;
+  headings: { text: string; level: number; explicit: boolean }[];
+};
+
+type VaultInspectIssue = {
+  kind: string;
+  path: string;
+  message: string;
+  severity: "warning" | "error";
+};
+
+type VaultInspectResponse = {
+  source: "machine-index";
+  path: string;
+  title: string;
+  frontmatterId?: string;
+  tags: string[];
+  headings: { level: number; text: string; anchor: string; explicit: boolean }[];
+  anchors: string[];
+  outgoingLinks: VaultInspectLink[];
+  backlinks: VaultInspectBacklink[];
+  brokenOutgoingLinks: VaultInspectLink[];
+  duplicateId?: { id: string; paths: string[] };
+  duplicateAnchors: VaultInspectDuplicateAnchor[];
+  orphan: boolean;
+  issues: VaultInspectIssue[];
 };
 
 const INDEX_FILTER_OPTIONS: { value: IndexFilterKind; label: string; empty: string }[] = [

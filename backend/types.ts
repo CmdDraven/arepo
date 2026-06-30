@@ -153,6 +153,47 @@ export type IndexFilterResponse = {
   results: IndexFilterResult[];
 };
 
+export type VaultInspectLink = {
+  target: string;
+  targetPath?: string;
+  targetTitle?: string;
+  anchor?: string;
+  alias?: string;
+  raw: string;
+  status: string;
+  broken: boolean;
+  targetPaths?: string[];
+};
+
+export type VaultInspectBacklink = {
+  fromPath: string;
+  fromTitle: string;
+  anchor?: string;
+  alias?: string;
+};
+
+export type VaultInspectDuplicateAnchor = {
+  anchor: string;
+  headings: { text: string; level: number; explicit: boolean }[];
+};
+
+export type VaultInspectResponse = {
+  source: "machine-index";
+  path: string;
+  title: string;
+  frontmatterId?: string;
+  tags: string[];
+  headings: { level: number; text: string; anchor: string; explicit: boolean }[];
+  anchors: string[];
+  outgoingLinks: VaultInspectLink[];
+  backlinks: VaultInspectBacklink[];
+  brokenOutgoingLinks: VaultInspectLink[];
+  duplicateId?: { id: string; paths: string[] };
+  duplicateAnchors: VaultInspectDuplicateAnchor[];
+  orphan: boolean;
+  issues: ValidationIssue[];
+};
+
 export const DEFAULT_PERMISSIONS: VaultPermission = {
   readIndex: true,
   readContent: true,

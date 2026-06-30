@@ -284,6 +284,11 @@ notes, tags, folders, duplicate frontmatter IDs, and duplicate heading anchors.
 These filters query the generated machine index and do not persist new canonical
 search or graph state.
 
+The Inspect panel can show read-only file-level machine-index details for a
+selected note or structural filter result, including headings, anchors, outgoing
+links, backlinks, broken outgoing links, duplicate IDs, duplicate anchors, and
+orphan status.
+
 ## Storage Reporting
 
 `GET /api/vaults/:vaultId/storage` reports local storage use for a configured
