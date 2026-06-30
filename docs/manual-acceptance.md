@@ -296,7 +296,9 @@ views over the generated machine index; they must not modify source Markdown.
 13. Click a filter result row.
 14. Expected result: AREPO opens the matching note without editing it and the
     Inspect panel shows the file-level machine-index details for that result.
-15. Expected result: the panel does not offer AI analysis, semantic search,
+15. Expected result: the same file is selected for inspection if you switch to
+    Graph mode, rather than leaving the inspect panel on the previous note.
+16. Expected result: the panel does not offer AI analysis, semantic search,
     database persistence, sync, migration, federation, remote-node, or mutation
     controls.
 
@@ -304,25 +306,25 @@ Backend-owned index search is shown near the structural filters. It is a
 read-only, deterministic search over generated machine-index fields, not AI,
 semantic/vector search, or full document body search.
 
-16. Search for `Notes/note.md`.
-17. Expected result: a path match appears and clicking it opens the matching
+17. Search for `Notes/note.md`.
+18. Expected result: a path match appears and clicking it opens the matching
     note without editing it.
-18. Search for `Test Note`.
-19. Expected result: a title match appears.
-20. Search for `local` or another tag from the fixture.
-21. Expected result: tag matches appear with the matched field and value.
-22. Search for `Purpose` or a visible heading from `test-vault/`.
-23. Expected result: heading matches appear with heading text and anchors when
+19. Search for `Test Note`.
+20. Expected result: a title match appears.
+21. Search for `local` or another tag from the fixture.
+22. Expected result: tag matches appear with the matched field and value.
+23. Search for `Purpose` or a visible heading from `test-vault/`.
+24. Expected result: heading matches appear with heading text and anchors when
     available.
-24. Search for `valid-folder-links` or another heading anchor.
-25. Expected result: anchor matches appear.
-26. Search for `Reference/reference-note` or `missing-note`.
-27. Expected result: outgoing link target matches appear, including intentional
+25. Search for `valid-folder-links` or another heading anchor.
+26. Expected result: anchor matches appear.
+27. Search for `Reference/reference-note` or `missing-note`.
+28. Expected result: outgoing link target matches appear, including intentional
     broken-link targets when present in the generated index.
-28. Click a search result row.
-29. Expected result: the Inspect panel updates for that file and remains
+29. Click a search result row.
+30. Expected result: the Inspect panel updates for that file and remains
     read-only.
-30. Expected result: there are no AI analysis, embeddings, vector database,
+31. Expected result: there are no AI analysis, embeddings, vector database,
     full-text body search, sync, migration, federation, remote-node, or mutation
     controls in the search UI.
 
@@ -346,6 +348,11 @@ semantic/vector search, or full document body search.
 11. Hold Shift and click a single node without dragging.
 12. Expected result: that node is toggled in or out of the current graph
     selection.
+13. Expected result: a single selected graph note updates the Inspect panel for
+    that note. Multi-selection keeps the combined metadata view.
+14. Click a graph node normally.
+15. Expected result: the note opens and the Inspect panel stays aligned to that
+    note.
 
 ## 15. Inspect And Backlinks
 
@@ -356,21 +363,30 @@ semantic/vector search, or full document body search.
    orphan status.
 4. Expected result: headings and heading anchors are listed without rendering
    Markdown as HTML.
-5. Expected result: outgoing links show resolved destination paths and broken
+5. Click a heading or duplicate-anchor heading row.
+6. Expected result: AREPO switches to Preview and scrolls to the visible anchor
+   when practical.
+7. Expected result: outgoing links show resolved destination paths and broken
    outgoing links show the missing target clearly.
-6. Expected result: backlinks include `Notes/note.md` and can be clicked to
+8. Click a resolved outgoing-link row.
+9. Expected result: AREPO navigates to and inspects the resolved target file.
+10. Expected result: broken outgoing-link rows clearly state that there is no
+    resolved file target and do not create or open a file.
+11. Expected result: backlinks include `Notes/note.md` and can be clicked to
    navigate without editing either file.
-7. Select `Notes/note.md` or click an index-filter result for an intentional
+12. Select `Notes/note.md` or click an index-filter result for an intentional
    broken link.
-8. Expected result: validation issues and broken outgoing links appear in the
+13. Expected result: validation issues and broken outgoing links appear in the
    inspect view with clear error text.
-9. If the fixture contains duplicate frontmatter IDs or duplicate heading
+14. If the fixture contains duplicate frontmatter IDs or duplicate heading
    anchors, confirm the inspect view lists the duplicate key and participating
    paths/headings. If none are present, confirm the empty states are explicit.
-10. Optional: create a temporary note that nothing links to.
-11. Expected result: the inspect view reports `orphan: yes` and shows empty
+15. Click a duplicate frontmatter ID peer path if one is present.
+16. Expected result: AREPO navigates to and inspects that peer file.
+17. Optional: create a temporary note that nothing links to.
+18. Expected result: the inspect view reports `orphan: yes` and shows empty
     backlink/outgoing sections rather than an error.
-12. Expected result: the inspect view remains read-only and does not offer AI,
+19. Expected result: the inspect view remains read-only and does not offer AI,
     semantic search, full-text search, database persistence, sync, migration,
     federation, remote-node, or mutation controls.
 

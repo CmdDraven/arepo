@@ -247,10 +247,10 @@ function VaultApp() {
     return renderMarkdown(stripped, index);
   }, [buffer, index, activePath]);
 
-  const backlinks = activePath ? (index.backlinks[activePath] ?? []) : [];
+  const backlinks = metadataPath ? (index.backlinks[metadataPath] ?? []) : [];
   const fileIssues = useMemo(
-    () => (activePath ? issues.filter((i) => i.path === activePath) : []),
-    [issues, activePath],
+    () => (metadataPath ? issues.filter((i) => i.path === metadataPath) : []),
+    [issues, metadataPath],
   );
 
   const save = useCallback(async () => {
@@ -305,6 +305,55 @@ function VaultApp() {
       setActivePath(path);
     },
     [activePath, dirty],
+  );
+
+  const inspectPath = useCallback(
+    (path: string, nextMobileTab: "edit" | "preview" | "inspect" = "inspect") => {
+      if (!index.notes[path]) return;
+      if (
+        path !== activePath &&
+        dirty &&
+        !window.confirm("Discard unsaved changes and switch files?")
+      ) {
+        return;
+      }
+      setSelectedPaths(new Set([path]));
+      setActivePath(path);
+      if (isMobile) setMobileTab(nextMobileTab);
+    },
+    [activePath, dirty, index.notes, isMobile],
+  );
+
+  const openAnchor = useCallback(
+    (path: string, anchor: string) => {
+      if (!index.notes[path]) return;
+      if (
+        path !== activePath &&
+        dirty &&
+        !window.confirm("Discard unsaved changes and switch files?")
+      ) {
+        return;
+      }
+      setSelectedPaths(new Set([path]));
+      setActivePath(path);
+      setCenterTab("preview");
+      if (isMobile) setMobileTab("preview");
+      window.setTimeout(() => {
+        document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 50);
+    },
+    [activePath, dirty, index.notes, isMobile],
+  );
+
+  const handleGraphSelectionChange = useCallback(
+    (paths: string[]) => {
+      const notePaths = paths.filter((path) => Boolean(index.notes[path]));
+      setSelectedPaths(new Set(notePaths));
+      if (notePaths.length === 1 && notePaths[0] && notePaths[0] !== activePath && !dirty) {
+        setActivePath(notePaths[0]);
+      }
+    },
+    [activePath, dirty, index.notes],
   );
 
   const refreshIndexFilter = useCallback(async () => {
@@ -615,8 +664,7 @@ function VaultApp() {
               onQueryChange={setIndexSearchQuery}
               onRefresh={refreshIndexSearch}
               onPick={(path) => {
-                selectPath(path);
-                if (isMobile) setMobileTab("inspect");
+                inspectPath(path);
               }}
             />
             <IndexFiltersPanel
@@ -627,8 +675,7 @@ function VaultApp() {
               onFilterChange={setIndexFilter}
               onRefresh={refreshIndexFilter}
               onPick={(path) => {
-                selectPath(path);
-                if (isMobile) setMobileTab("inspect");
+                inspectPath(path);
               }}
             />
             {activeVault && !files["index.md"] && (
@@ -685,13 +732,12 @@ function VaultApp() {
               data={graphData}
               activePath={activePath}
               selectedPaths={selectedPaths}
-              onSelectionChange={(paths) => setSelectedPaths(new Set(paths))}
+              onSelectionChange={handleGraphSelectionChange}
               onSelect={(p) => {
-                selectPath(p);
-                if (isMobile) setMobileTab("edit");
+                inspectPath(p, "edit");
               }}
               onOpenPreview={(p) => {
-                selectPath(p);
+                inspectPath(p, "preview");
                 if (isMobile) setMobileTab("preview");
                 else setCenterTab("preview");
               }}
@@ -795,9 +841,9 @@ function VaultApp() {
           <InspectDetails
             data={inspectData}
             onPick={(path) => {
-              selectPath(path);
-              if (isMobile) setMobileTab("edit");
+              inspectPath(path);
             }}
+            onAnchor={openAnchor}
           />
         ) : (
           <Empty>No file selected.</Empty>
@@ -815,8 +861,7 @@ function VaultApp() {
                   <button
                     className="text-left text-xs hover:underline w-full truncate"
                     onClick={() => {
-                      selectPath(bl.fromPath);
-                      if (isMobile) setMobileTab("edit");
+                      inspectPath(bl.fromPath);
                     }}
                   >
                     <span className="font-medium">{from?.title ?? bl.fromPath}</span>
@@ -1312,9 +1357,11 @@ function Empty({ children }: { children: React.ReactNode }) {
 function InspectDetails({
   data,
   onPick,
+  onAnchor,
 }: {
   data: VaultInspectResponse;
   onPick: (path: string) => void;
+  onAnchor: (path: string, anchor: string) => void;
 }) {
   return (
     <div className="space-y-3 text-xs">
@@ -1347,7 +1394,12 @@ function InspectDetails({
 
       <InspectGroup title="Headings" empty="No headings found.">
         {data.headings.map((heading, index) => (
-          <div key={`${heading.anchor}-${index}`} className="rounded bg-muted/30 px-2 py-1">
+          <button
+            key={`${heading.anchor}-${index}`}
+            className="w-full rounded bg-muted/30 px-2 py-1 text-left hover:bg-muted"
+            onClick={() => onAnchor(data.path, heading.anchor)}
+            title={`Open #${heading.anchor} in preview`}
+          >
             <div className="truncate">
               {"#".repeat(heading.level)} {heading.text}
             </div>
@@ -1355,7 +1407,7 @@ function InspectDetails({
               #{heading.anchor}
               {heading.explicit ? " explicit" : " generated"}
             </div>
-          </div>
+          </button>
         ))}
       </InspectGroup>
 
@@ -1392,6 +1444,7 @@ function InspectDetails({
               Missing target: {link.target}
               {link.anchor ? `#${link.anchor}` : ""}
             </div>
+            <div className="text-[10px] text-destructive/80">No resolved file target.</div>
           </div>
         ))}
       </InspectGroup>
@@ -1407,6 +1460,7 @@ function InspectDetails({
                 key={path}
                 className="block w-full rounded px-2 py-1 text-left font-mono text-[10px] hover:bg-muted"
                 onClick={() => onPick(path)}
+                title={`Inspect ${path}`}
               >
                 {path}
               </button>
@@ -1421,8 +1475,14 @@ function InspectDetails({
             <div className="font-mono text-amber-600 dark:text-amber-400">#{duplicate.anchor}</div>
             <ul className="mt-1 space-y-0.5 text-[10px] text-muted-foreground">
               {duplicate.headings.map((heading, index) => (
-                <li key={`${heading.text}-${index}`} className="truncate">
-                  {"#".repeat(heading.level)} {heading.text}
+                <li key={`${heading.text}-${index}`}>
+                  <button
+                    className="w-full truncate rounded px-1 py-0.5 text-left hover:bg-muted"
+                    onClick={() => onAnchor(data.path, duplicate.anchor)}
+                    title={`Open #${duplicate.anchor} in preview`}
+                  >
+                    {"#".repeat(heading.level)} {heading.text}
+                  </button>
                 </li>
               ))}
             </ul>
