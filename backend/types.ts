@@ -153,6 +153,32 @@ export type IndexFilterResponse = {
   results: IndexFilterResult[];
 };
 
+export type IndexSearchMatchType =
+  "file" | "frontmatter-id" | "tag" | "heading" | "anchor" | "link-target" | "backlink";
+
+export type IndexSearchResult = {
+  id: string;
+  matchType: IndexSearchMatchType;
+  path: string;
+  title: string;
+  matchedField: string;
+  matchedValue: string;
+  headingText?: string;
+  anchor?: string;
+  tag?: string;
+  linkTarget?: string;
+  targetPath?: string;
+  fromPath?: string;
+  fromTitle?: string;
+};
+
+export type IndexSearchResponse = {
+  q: string;
+  total: number;
+  source: "machine-index";
+  results: IndexSearchResult[];
+};
+
 export type VaultInspectLink = {
   target: string;
   targetPath?: string;

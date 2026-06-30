@@ -91,6 +91,10 @@ function VaultApp() {
   const [indexFilterResponse, setIndexFilterResponse] = useState<IndexFilterResponse | null>(null);
   const [indexFilterLoading, setIndexFilterLoading] = useState(false);
   const [indexFilterError, setIndexFilterError] = useState<string | null>(null);
+  const [indexSearchQuery, setIndexSearchQuery] = useState("");
+  const [indexSearchResponse, setIndexSearchResponse] = useState<IndexSearchResponse | null>(null);
+  const [indexSearchLoading, setIndexSearchLoading] = useState(false);
+  const [indexSearchError, setIndexSearchError] = useState<string | null>(null);
   const [inspectData, setInspectData] = useState<VaultInspectResponse | null>(null);
   const [inspectLoading, setInspectLoading] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
@@ -326,6 +330,34 @@ function VaultApp() {
   useEffect(() => {
     void refreshIndexFilter();
   }, [refreshIndexFilter]);
+
+  const refreshIndexSearch = useCallback(async () => {
+    const q = indexSearchQuery.trim();
+    if (!activeVault || !q) {
+      setIndexSearchResponse(null);
+      setIndexSearchError(null);
+      setIndexSearchLoading(false);
+      return;
+    }
+    setIndexSearchLoading(true);
+    setIndexSearchError(null);
+    try {
+      const response = await settingsApi<IndexSearchResponse>(
+        `/api/vaults/${encodeURIComponent(activeVault.id)}/index/search?q=${encodeURIComponent(q)}`,
+      );
+      setIndexSearchResponse(response);
+    } catch (error) {
+      setIndexSearchResponse(null);
+      setIndexSearchError(errorMessage(error));
+    } finally {
+      setIndexSearchLoading(false);
+    }
+  }, [activeVault, indexSearchQuery]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => void refreshIndexSearch(), 250);
+    return () => window.clearTimeout(id);
+  }, [refreshIndexSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -575,6 +607,18 @@ function VaultApp() {
                 New folder
               </Button>
             </div>
+            <IndexSearchPanel
+              query={indexSearchQuery}
+              response={indexSearchResponse}
+              loading={indexSearchLoading}
+              error={indexSearchError}
+              onQueryChange={setIndexSearchQuery}
+              onRefresh={refreshIndexSearch}
+              onPick={(path) => {
+                selectPath(path);
+                if (isMobile) setMobileTab("inspect");
+              }}
+            />
             <IndexFiltersPanel
               filter={indexFilter}
               response={indexFilterResponse}
@@ -1511,6 +1555,106 @@ function SearchResults({
   );
 }
 
+function IndexSearchPanel({
+  query,
+  response,
+  loading,
+  error,
+  onQueryChange,
+  onRefresh,
+  onPick,
+}: {
+  query: string;
+  response: IndexSearchResponse | null;
+  loading: boolean;
+  error: string | null;
+  onQueryChange: (query: string) => void;
+  onRefresh: () => Promise<void>;
+  onPick: (path: string) => void;
+}) {
+  const trimmed = query.trim();
+  return (
+    <div className="rounded border bg-muted/20 px-2 py-2 text-xs space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">Index search</div>
+          <div className="text-muted-foreground">Non-semantic search over indexed structure.</div>
+        </div>
+        <Badge variant="outline" className="font-mono">
+          {response?.total ?? 0}
+        </Badge>
+      </div>
+      <form
+        className="flex gap-1"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onRefresh();
+        }}
+      >
+        <Input
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Search paths, headings, tags..."
+          className="h-8 min-w-0 flex-1 text-xs"
+        />
+        <Button variant="outline" size="sm" className="h-8 text-xs" disabled={loading || !trimmed}>
+          {loading ? "..." : "Go"}
+        </Button>
+      </form>
+      {error ? (
+        <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-destructive">
+          {error}
+        </div>
+      ) : !trimmed ? (
+        <div className="text-muted-foreground">
+          Search file paths, titles, IDs, tags, headings, anchors, and links.
+        </div>
+      ) : loading && !response ? (
+        <div className="text-muted-foreground">Searching machine index...</div>
+      ) : response && response.results.length > 0 ? (
+        <ul className="max-h-56 overflow-auto space-y-1 pr-1">
+          {response.results.map((result) => (
+            <li key={result.id}>
+              <button
+                className="w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+                onClick={() => onPick(result.path)}
+              >
+                <div className="flex items-center gap-1">
+                  <span className="min-w-0 flex-1 truncate font-medium">{result.title}</span>
+                  <IndexSearchBadge matchType={result.matchType} />
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground truncate">
+                  {result.path}
+                </div>
+                <div className="text-[10px] text-muted-foreground break-words">
+                  {result.matchedField}: {result.matchedValue}
+                </div>
+                {result.headingText && (
+                  <div className="text-[10px] text-muted-foreground truncate">
+                    Heading: {result.headingText}
+                    {result.anchor ? ` #${result.anchor}` : ""}
+                  </div>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="text-muted-foreground">No index search results found.</div>
+      )}
+    </div>
+  );
+}
+
+function IndexSearchBadge({ matchType }: { matchType: IndexSearchMatchType }) {
+  const label = matchType.replace(/-/g, " ");
+  return (
+    <Badge variant="outline" className="text-[9px] py-0 capitalize">
+      {label}
+    </Badge>
+  );
+}
+
 function IndexFiltersPanel({
   filter,
   response,
@@ -1870,6 +2014,32 @@ type IndexFilterResponse = {
   total: number;
   source: "machine-index";
   results: IndexFilterResult[];
+};
+
+type IndexSearchMatchType =
+  "file" | "frontmatter-id" | "tag" | "heading" | "anchor" | "link-target" | "backlink";
+
+type IndexSearchResult = {
+  id: string;
+  matchType: IndexSearchMatchType;
+  path: string;
+  title: string;
+  matchedField: string;
+  matchedValue: string;
+  headingText?: string;
+  anchor?: string;
+  tag?: string;
+  linkTarget?: string;
+  targetPath?: string;
+  fromPath?: string;
+  fromTitle?: string;
+};
+
+type IndexSearchResponse = {
+  q: string;
+  total: number;
+  source: "machine-index";
+  results: IndexSearchResult[];
 };
 
 type VaultInspectLink = {

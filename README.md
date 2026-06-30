@@ -284,6 +284,11 @@ notes, tags, folders, duplicate frontmatter IDs, and duplicate heading anchors.
 These filters query the generated machine index and do not persist new canonical
 search or graph state.
 
+The UI also includes backend-owned, non-semantic index search over structural
+fields such as file paths, titles, frontmatter IDs, tags, headings, anchors,
+outgoing link targets, and backlinks. It is not AI search, vector search, or
+full document body search.
+
 The Inspect panel can show read-only file-level machine-index details for a
 selected note or structural filter result, including headings, anchors, outgoing
 links, backlinks, broken outgoing links, duplicate IDs, duplicate anchors, and

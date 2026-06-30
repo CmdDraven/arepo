@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { addVault } from "./config.js";
 import { buildIndexFilterResponse, parseIndexFilterKind } from "./indexFilters.js";
 import { buildVaultInspectResponse } from "./indexInspect.js";
+import { buildIndexSearchResponse } from "./indexSearch.js";
 import { getMachineIndex, rebuildMachineIndex } from "./indexCache.js";
 import {
   getLocalNodeHealth,
@@ -171,6 +172,12 @@ export async function routeRequest(
           buildIndexFilterResponse(data, parseIndexFilterKind(url.searchParams.get("filter"))),
           cors.headers,
         );
+      }
+
+      if (method === "GET" && action === "index" && segments[4] === "search") {
+        const data = await getMachineIndex(vault, cwd);
+        await recordVaultIndexed(vault, cwd);
+        return json(200, buildIndexSearchResponse(data, url.searchParams.get("q")), cors.headers);
       }
 
       if (method === "GET" && action === "index" && segments[4] === "inspect") {

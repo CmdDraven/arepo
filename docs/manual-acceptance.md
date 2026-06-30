@@ -300,6 +300,32 @@ views over the generated machine index; they must not modify source Markdown.
     database persistence, sync, migration, federation, remote-node, or mutation
     controls.
 
+Backend-owned index search is shown near the structural filters. It is a
+read-only, deterministic search over generated machine-index fields, not AI,
+semantic/vector search, or full document body search.
+
+16. Search for `Notes/note.md`.
+17. Expected result: a path match appears and clicking it opens the matching
+    note without editing it.
+18. Search for `Test Note`.
+19. Expected result: a title match appears.
+20. Search for `local` or another tag from the fixture.
+21. Expected result: tag matches appear with the matched field and value.
+22. Search for `Purpose` or a visible heading from `test-vault/`.
+23. Expected result: heading matches appear with heading text and anchors when
+    available.
+24. Search for `valid-folder-links` or another heading anchor.
+25. Expected result: anchor matches appear.
+26. Search for `Reference/reference-note` or `missing-note`.
+27. Expected result: outgoing link target matches appear, including intentional
+    broken-link targets when present in the generated index.
+28. Click a search result row.
+29. Expected result: the Inspect panel updates for that file and remains
+    read-only.
+30. Expected result: there are no AI analysis, embeddings, vector database,
+    full-text body search, sync, migration, federation, remote-node, or mutation
+    controls in the search UI.
+
 ## 14. Graph Mode
 
 1. Switch the left vault panel from Tree to Graph.

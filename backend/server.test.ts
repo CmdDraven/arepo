@@ -9,6 +9,7 @@ import { buildGraph } from "../src/lib/vault/graph.js";
 import type {
   IndexFilterKind,
   IndexFilterResponse,
+  IndexSearchResponse,
   LocalNodeRuntimeStatus,
   VaultIndexResponse,
   VaultInspectResponse,
@@ -325,6 +326,88 @@ test("index structural filters expose read-only machine-index views", async () =
     ).length,
     2,
   );
+});
+
+test("index search endpoint finds structural machine-index fields", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  await fs.mkdir(path.join(rootPath, "Topics"), { recursive: true });
+  await fs.writeFile(
+    path.join(rootPath, "Topics", "alpha-note.md"),
+    "---\nid: alpha-id\ntitle: Alpha Note\ntags: [project-map]\n---\n# Alpha Note\n\n## Roadmap Section {#roadmap-anchor}\n\n[[target-note]]\n",
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(rootPath, "target-note.md"),
+    "---\nid: target-id\ntitle: Target Note\ntags: []\n---\n# Target Note\n",
+    "utf8",
+  );
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+
+  async function search(q: string): Promise<IndexSearchResponse> {
+    const response = await routeRequest(
+      request("GET", `/api/vaults/${vault.id}/index/search?q=${encodeURIComponent(q)}`),
+      cwd,
+    );
+    assert.equal(response.status, 200);
+    return response.body as IndexSearchResponse;
+  }
+
+  const pathResults = await search("Topics/alpha-note.md");
+  assert.equal(pathResults.source, "machine-index");
+  assert.ok(
+    pathResults.results.some(
+      (result) => result.matchType === "file" && result.matchedField === "path",
+    ),
+  );
+
+  const titleResults = await search("Alpha Note");
+  assert.ok(
+    titleResults.results.some(
+      (result) => result.matchType === "file" && result.matchedField === "title",
+    ),
+  );
+  assert.equal(titleResults.results[0]?.matchedField, "title");
+
+  const idResults = await search("alpha-id");
+  assert.ok(idResults.results.some((result) => result.matchType === "frontmatter-id"));
+
+  const tagResults = await search("project-map");
+  assert.ok(tagResults.results.some((result) => result.matchType === "tag"));
+
+  const headingResults = await search("Roadmap Section");
+  assert.ok(
+    headingResults.results.some(
+      (result) => result.matchType === "heading" && result.headingText === "Roadmap Section",
+    ),
+  );
+
+  const anchorResults = await search("roadmap-anchor");
+  assert.ok(
+    anchorResults.results.some(
+      (result) => result.matchType === "anchor" && result.anchor === "roadmap-anchor",
+    ),
+  );
+
+  const linkResults = await search("target-note");
+  assert.ok(
+    linkResults.results.some(
+      (result) => result.matchType === "link-target" && result.targetPath === "target-note.md",
+    ),
+  );
+
+  const backlinkResults = await search("alpha-note");
+  assert.ok(
+    backlinkResults.results.some(
+      (result) => result.matchType === "backlink" && result.path === "target-note.md",
+    ),
+  );
+
+  const empty = await search("body-only-text-that-is-not-indexed");
+  assert.equal(empty.total, 0);
 });
 
 test("index inspect endpoint exposes file-level machine-index details", async () => {
