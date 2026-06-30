@@ -271,7 +271,35 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
    ignored and do not appear as validation issues.
 6. Expected result: the app does not create missing files silently.
 
-## 13. Graph Mode
+## 13. Structural Index Filters
+
+Use the `Index filters` panel in the vault sidebar. These filters are read-only
+views over the generated machine index; they must not modify source Markdown.
+
+1. Select `Broken links`.
+2. Expected result: intentional broken links from `test-vault/` are listed as
+   navigable rows with source file path and missing target details.
+3. Select `Orphan notes`.
+4. Expected result: orphan notes are listed if present, or the UI shows `No
+   orphan notes found.`
+5. Select `Tags`.
+6. Expected result: tagged notes from the fixture appear with tag labels.
+7. Select `Folders`.
+8. Expected result: notes are listed with their vault-root-relative folder, such
+   as `Notes` or `Reference`.
+9. Select `Duplicate IDs`.
+10. Expected result: duplicate frontmatter IDs are listed if present, or the UI
+    shows `No duplicate IDs found.`
+11. Select `Duplicate anchors`.
+12. Expected result: duplicate heading anchors are listed if present, or the UI
+    shows `No duplicate heading anchors found.`
+13. Click a filter result row.
+14. Expected result: AREPO opens the matching note without editing it.
+15. Expected result: the panel does not offer AI analysis, semantic search,
+    database persistence, sync, migration, federation, remote-node, or mutation
+    controls.
+
+## 14. Graph Mode
 
 1. Switch the left vault panel from Tree to Graph.
 2. Expected result: graph mode renders nodes for notes in the vault.
@@ -292,7 +320,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 12. Expected result: that node is toggled in or out of the current graph
     selection.
 
-## 14. Inspect And Backlinks
+## 15. Inspect And Backlinks
 
 1. Select `Reference/reference-note.md`.
 2. Open Inspect mode.
@@ -302,7 +330,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 5. Optional: create a temporary note that nothing links to.
 6. Expected result: the UI shows an empty backlink state rather than an error.
 
-## 15. External Edit Conflict Detection
+## 16. External Edit Conflict Detection
 
 This case protects safe coexistence with other editors. Use Kate, VSCodium, or
 another local editor for the external-edit steps.
@@ -348,7 +376,7 @@ another local editor for the external-edit steps.
 25. Expected result: the conflict does not re-trigger from AREPO's own
     overwrite.
 
-## 16. Unsafe Path Rejection
+## 17. Unsafe Path Rejection
 
 Use the UI where possible, and use direct HTTP calls only against the local
 backend.
@@ -369,7 +397,7 @@ backend.
 7. Expected result: the backend rejects the request and does not read outside
    the configured vault root.
 
-## 17. Delete Permission Default
+## 18. Delete Permission Default
 
 1. Open the Add vault form.
 2. Expected result: `deleteFiles` is disabled by default.
@@ -381,7 +409,7 @@ backend.
 7. Expected result: delete operations are rejected by the backend unless the
    vault permission explicitly allows deletes.
 
-## 18. Security And Scope Expectations
+## 19. Security And Scope Expectations
 
 Confirm the following throughout local-mode acceptance:
 
@@ -404,11 +432,13 @@ Confirm the following throughout local-mode acceptance:
   must include the new frontend origin; wildcard CORS is not acceptable.
 - Vault Settings shows unsupported V1 capabilities as disabled, not as features
   that can be enabled.
+- Index filters are read-only views over the generated machine index and do not
+  modify source Markdown files.
 - No UI or API flow in this checklist enables auth, sync, AI/vector features,
   database support, migrations, federation, remote node registration, reverse
   proxy setup, or LAN exposure.
 
-## 19. Storage Reporting
+## 20. Storage Reporting
 
 1. Select `Notes/note.md`.
 2. Expected result: the Metadata panel shows the selected file's size.

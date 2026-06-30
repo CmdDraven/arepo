@@ -6,7 +6,13 @@ import path from "node:path";
 import { routeRequest, type RequestLike } from "./server.js";
 import { machineIndexPath } from "./indexCache.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
-import type { LocalNodeRuntimeStatus, VaultIndexResponse, VaultInfo } from "./types.js";
+import type {
+  IndexFilterKind,
+  IndexFilterResponse,
+  LocalNodeRuntimeStatus,
+  VaultIndexResponse,
+  VaultInfo,
+} from "./types.js";
 
 function request(
   method: string,
@@ -248,6 +254,76 @@ test("vault indexing works without a user-authored index.md", async () => {
     graph.edges.some((edge) => edge.source === "Home.md" && edge.target === "Projects/Alpha.md"),
   );
   assert.ok(graph.nodes.some((node) => node.id === "missing:Missing Note"));
+});
+
+test("index structural filters expose read-only machine-index views", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  await fs.mkdir(path.join(rootPath, "A"), { recursive: true });
+  await fs.mkdir(path.join(rootPath, "B"), { recursive: true });
+  await fs.writeFile(
+    path.join(rootPath, "A", "note.md"),
+    "---\nid: same\ntitle: Note\ntags: [alpha, shared]\n---\n# Note\n\n## One {#dup}\n## Two {#dup}\n[[Missing]]\n",
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(rootPath, "B", "other.md"),
+    "---\nid: same\ntitle: Other\ntags: [beta]\n---\n# Other\n\n[[A/note]]\n",
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(rootPath, "Orphan.md"),
+    "---\nid: orphan\ntitle: Orphan\ntags: []\n---\n# Orphan\n",
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(rootPath, "RootTagged.md"),
+    "---\nid: root\ntitle: Root Tagged\ntags: [alpha]\n---\n# Root Tagged\n",
+    "utf8",
+  );
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+
+  async function filter(kind: IndexFilterKind): Promise<IndexFilterResponse> {
+    const response = await routeRequest(
+      request("GET", `/api/vaults/${vault.id}/index/filters?filter=${kind}`),
+      cwd,
+    );
+    assert.equal(response.status, 200);
+    return response.body as IndexFilterResponse;
+  }
+
+  const broken = await filter("broken-links");
+  assert.equal(broken.source, "machine-index");
+  assert.ok(
+    broken.results.some((result) => result.path === "A/note.md" && result.target === "Missing"),
+  );
+
+  const orphans = await filter("orphan-notes");
+  assert.ok(orphans.results.some((result) => result.path === "Orphan.md"));
+
+  const tags = await filter("tags");
+  assert.ok(tags.results.some((result) => result.path === "A/note.md" && result.tag === "alpha"));
+  assert.ok(tags.results.some((result) => result.path === "B/other.md" && result.tag === "beta"));
+
+  const folders = await filter("folders");
+  assert.ok(folders.results.some((result) => result.path === "A/note.md" && result.folder === "A"));
+  assert.ok(
+    folders.results.some((result) => result.path === "RootTagged.md" && result.folder === "/"),
+  );
+
+  const duplicateIds = await filter("duplicate-ids");
+  assert.equal(duplicateIds.results.filter((result) => result.duplicateKey === "same").length, 2);
+
+  const duplicateAnchors = await filter("duplicate-anchors");
+  assert.equal(
+    duplicateAnchors.results.filter(
+      (result) => result.path === "A/note.md" && result.anchor === "dup",
+    ).length,
+    2,
+  );
 });
 
 test("user-authored index.md is indexed as a normal note when present", async () => {

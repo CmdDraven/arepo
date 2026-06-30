@@ -129,6 +129,30 @@ export type VaultIndexResponse = {
   issues: ValidationIssue[];
 };
 
+export type IndexFilterKind =
+  "broken-links" | "orphan-notes" | "tags" | "folders" | "duplicate-ids" | "duplicate-anchors";
+
+export type IndexFilterResult = {
+  id: string;
+  filter: IndexFilterKind;
+  path: string;
+  title: string;
+  reason: string;
+  target?: string;
+  tag?: string;
+  folder?: string;
+  duplicateKey?: string;
+  headingText?: string;
+  anchor?: string;
+};
+
+export type IndexFilterResponse = {
+  filter: IndexFilterKind;
+  total: number;
+  source: "machine-index";
+  results: IndexFilterResult[];
+};
+
 export const DEFAULT_PERMISSIONS: VaultPermission = {
   readIndex: true,
   readContent: true,

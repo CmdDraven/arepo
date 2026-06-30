@@ -87,6 +87,10 @@ function VaultApp() {
   const [savedSnapshot, setSavedSnapshot] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["Notes", "Reference"]));
   const [query, setQuery] = useState("");
+  const [indexFilter, setIndexFilter] = useState<IndexFilterKind>("broken-links");
+  const [indexFilterResponse, setIndexFilterResponse] = useState<IndexFilterResponse | null>(null);
+  const [indexFilterLoading, setIndexFilterLoading] = useState(false);
+  const [indexFilterError, setIndexFilterError] = useState<string | null>(null);
   const [centerTab, setCenterTab] = useState<"edit" | "preview">("edit");
   const [mobileTab, setMobileTab] = useState<"vault" | "edit" | "preview" | "inspect">("vault");
   const [vaultMode, setVaultMode] = useState<"tree" | "graph">("tree");
@@ -295,6 +299,30 @@ function VaultApp() {
     },
     [activePath, dirty],
   );
+
+  const refreshIndexFilter = useCallback(async () => {
+    if (!activeVault) {
+      setIndexFilterResponse(null);
+      return;
+    }
+    setIndexFilterLoading(true);
+    setIndexFilterError(null);
+    try {
+      const response = await settingsApi<IndexFilterResponse>(
+        `/api/vaults/${encodeURIComponent(activeVault.id)}/index/filters?filter=${indexFilter}`,
+      );
+      setIndexFilterResponse(response);
+    } catch (error) {
+      setIndexFilterResponse(null);
+      setIndexFilterError(errorMessage(error));
+    } finally {
+      setIndexFilterLoading(false);
+    }
+  }, [activeVault, indexFilter]);
+
+  useEffect(() => {
+    void refreshIndexFilter();
+  }, [refreshIndexFilter]);
 
   const onPreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
@@ -514,6 +542,18 @@ function VaultApp() {
                 New folder
               </Button>
             </div>
+            <IndexFiltersPanel
+              filter={indexFilter}
+              response={indexFilterResponse}
+              loading={indexFilterLoading}
+              error={indexFilterError}
+              onFilterChange={setIndexFilter}
+              onRefresh={refreshIndexFilter}
+              onPick={(path) => {
+                selectPath(path);
+                if (isMobile) setMobileTab("edit");
+              }}
+            />
             {activeVault && !files["index.md"] && (
               <div className="rounded border bg-muted/30 px-2 py-2 text-xs space-y-2">
                 <div>
@@ -1210,6 +1250,111 @@ function SearchResults({
   );
 }
 
+function IndexFiltersPanel({
+  filter,
+  response,
+  loading,
+  error,
+  onFilterChange,
+  onRefresh,
+  onPick,
+}: {
+  filter: IndexFilterKind;
+  response: IndexFilterResponse | null;
+  loading: boolean;
+  error: string | null;
+  onFilterChange: (filter: IndexFilterKind) => void;
+  onRefresh: () => Promise<void>;
+  onPick: (path: string) => void;
+}) {
+  const selected = INDEX_FILTER_OPTIONS.find((option) => option.value === filter);
+  return (
+    <div className="rounded border bg-muted/20 px-2 py-2 text-xs space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">Index filters</div>
+          <div className="text-muted-foreground">Read-only structure from the machine index.</div>
+        </div>
+        <Badge variant="outline" className="font-mono">
+          {response?.total ?? 0}
+        </Badge>
+      </div>
+      <div className="flex gap-1">
+        <select
+          value={filter}
+          onChange={(event) => onFilterChange(event.target.value as IndexFilterKind)}
+          className="h-8 min-w-0 flex-1 rounded border bg-background px-2 text-xs"
+          title="Select structural index filter"
+        >
+          {INDEX_FILTER_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => void onRefresh()}
+          disabled={loading}
+        >
+          {loading ? "..." : "Refresh"}
+        </Button>
+      </div>
+      {error ? (
+        <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-destructive">
+          {error}
+        </div>
+      ) : loading && !response ? (
+        <div className="text-muted-foreground">Loading filter results...</div>
+      ) : response && response.results.length > 0 ? (
+        <ul className="max-h-56 overflow-auto space-y-1 pr-1">
+          {response.results.map((result) => (
+            <li key={result.id}>
+              <button
+                className="w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+                onClick={() => onPick(result.path)}
+              >
+                <div className="flex items-center gap-1">
+                  <span className="min-w-0 flex-1 truncate font-medium">{result.title}</span>
+                  <IndexFilterBadge result={result} />
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground truncate">
+                  {result.path}
+                </div>
+                <div className="text-[10px] text-muted-foreground break-words">{result.reason}</div>
+                {result.headingText && (
+                  <div className="text-[10px] text-muted-foreground truncate">
+                    Heading: {result.headingText}
+                  </div>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="text-muted-foreground">{selected?.empty ?? "No results found."}</div>
+      )}
+    </div>
+  );
+}
+
+function IndexFilterBadge({ result }: { result: IndexFilterResult }) {
+  const label =
+    result.tag ??
+    result.folder ??
+    result.duplicateKey ??
+    result.target ??
+    result.anchor ??
+    result.filter;
+  return (
+    <Badge variant="secondary" className="max-w-[110px] truncate font-mono text-[9px] py-0">
+      {label}
+    </Badge>
+  );
+}
+
 function DiffReviewPanel({
   path,
   yourText,
@@ -1441,6 +1586,43 @@ type LocalNodeRuntimeStatus = {
     migrationSupport: false;
   };
 };
+
+type IndexFilterKind =
+  "broken-links" | "orphan-notes" | "tags" | "folders" | "duplicate-ids" | "duplicate-anchors";
+
+type IndexFilterResult = {
+  id: string;
+  filter: IndexFilterKind;
+  path: string;
+  title: string;
+  reason: string;
+  target?: string;
+  tag?: string;
+  folder?: string;
+  duplicateKey?: string;
+  headingText?: string;
+  anchor?: string;
+};
+
+type IndexFilterResponse = {
+  filter: IndexFilterKind;
+  total: number;
+  source: "machine-index";
+  results: IndexFilterResult[];
+};
+
+const INDEX_FILTER_OPTIONS: { value: IndexFilterKind; label: string; empty: string }[] = [
+  { value: "broken-links", label: "Broken links", empty: "No broken links found." },
+  { value: "orphan-notes", label: "Orphan notes", empty: "No orphan notes found." },
+  { value: "tags", label: "Tags", empty: "No tags found." },
+  { value: "folders", label: "Folders", empty: "No folder results found." },
+  { value: "duplicate-ids", label: "Duplicate IDs", empty: "No duplicate IDs found." },
+  {
+    value: "duplicate-anchors",
+    label: "Duplicate anchors",
+    empty: "No duplicate heading anchors found.",
+  },
+];
 
 function VaultSettingsPanel({
   vaults,

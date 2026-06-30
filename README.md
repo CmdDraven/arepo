@@ -279,6 +279,11 @@ or search work.
 The frontend still owns preview rendering and graph layout, but note content
 and the index now come from the local backend.
 
+The UI includes read-only structural index filters for broken links, orphan
+notes, tags, folders, duplicate frontmatter IDs, and duplicate heading anchors.
+These filters query the generated machine index and do not persist new canonical
+search or graph state.
+
 ## Storage Reporting
 
 `GET /api/vaults/:vaultId/storage` reports local storage use for a configured
