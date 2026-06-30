@@ -817,162 +817,21 @@ function VaultApp() {
   );
 
   const inspectorPane = (
-    <div className="flex flex-col min-h-0 h-full overflow-auto">
-      <Section
-        icon={<Info className="size-3.5" />}
-        title="Index inspect"
-        count={
-          inspectData
-            ? inspectData.issues.length + inspectData.brokenOutgoingLinks.length
-            : undefined
-        }
-      >
-        {selectedNotePaths.length > 1 ? (
-          <Empty>
-            Multi-select shows combined metadata below. Select one file for index inspection.
-          </Empty>
-        ) : inspectLoading ? (
-          <Empty>Loading machine-index details...</Empty>
-        ) : inspectError ? (
-          <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
-            {inspectError}
-          </div>
-        ) : inspectData ? (
-          <InspectDetails
-            data={inspectData}
-            onPick={(path) => {
-              inspectPath(path);
-            }}
-            onAnchor={openAnchor}
-          />
-        ) : (
-          <Empty>No file selected.</Empty>
-        )}
-      </Section>
-      <Section icon={<Link2 className="size-3.5" />} title="Backlinks" count={backlinks.length}>
-        {backlinks.length === 0 ? (
-          <Empty>No notes link here.</Empty>
-        ) : (
-          <ul className="space-y-1">
-            {backlinks.map((bl, i) => {
-              const from = index.notes[bl.fromPath];
-              return (
-                <li key={i}>
-                  <button
-                    className="text-left text-xs hover:underline w-full truncate"
-                    onClick={() => {
-                      inspectPath(bl.fromPath);
-                    }}
-                  >
-                    <span className="font-medium">{from?.title ?? bl.fromPath}</span>
-                    {bl.anchor && <span className="text-muted-foreground"> #{bl.anchor}</span>}
-                    <span className="text-muted-foreground"> — {bl.fromPath}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Section>
-      <Section
-        icon={<AlertTriangle className="size-3.5" />}
-        title="Validation (this file)"
-        count={fileIssues.length}
-      >
-        {fileIssues.length === 0 ? (
-          <Empty>No issues.</Empty>
-        ) : (
-          <ul className="space-y-1">
-            {fileIssues.map((iss, i) => (
-              <li
-                key={i}
-                className={cn(
-                  "text-xs break-words",
-                  iss.severity === "error"
-                    ? "text-destructive"
-                    : "text-amber-600 dark:text-amber-400",
-                )}
-              >
-                <span className="font-mono opacity-70">[{iss.kind}]</span> {iss.message}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-      <Section
-        icon={<FileText className="size-3.5" />}
-        title={combinedMetadata ? "Combined metadata" : "Metadata"}
-        count={combinedMetadata?.fileCount}
-      >
-        {combinedMetadata ? (
-          <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-            <dt className="text-muted-foreground">files</dt>
-            <dd>{combinedMetadata.fileCount}</dd>
-            <dt className="text-muted-foreground">total size</dt>
-            <dd>{formatBytes(combinedMetadata.totalBytes)}</dd>
-            <dt className="text-muted-foreground">tags</dt>
-            <dd className="flex flex-wrap gap-1">
-              {combinedMetadata.tags.length ? (
-                combinedMetadata.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-[10px] py-0">
-                    {tag}
-                  </Badge>
-                ))
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </dd>
-            <dt className="text-muted-foreground">headings</dt>
-            <dd>{combinedMetadata.headings}</dd>
-            <dt className="text-muted-foreground">outgoing</dt>
-            <dd>{combinedMetadata.outgoing}</dd>
-            <dt className="text-muted-foreground">backlinks</dt>
-            <dd>{combinedMetadata.backlinks}</dd>
-            <dt className="text-muted-foreground">issues</dt>
-            <dd>{combinedMetadata.issueCount}</dd>
-            <dt className="text-muted-foreground">paths</dt>
-            <dd className="space-y-0.5">
-              {combinedMetadata.paths.map((path) => (
-                <div key={path} className="font-mono truncate" title={path}>
-                  {path}
-                </div>
-              ))}
-            </dd>
-          </dl>
-        ) : metadataNote ? (
-          <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-            <dt className="text-muted-foreground">title</dt>
-            <dd className="truncate">{metadataNote.title}</dd>
-            <dt className="text-muted-foreground">path</dt>
-            <dd className="font-mono truncate" title={metadataPath ?? undefined}>
-              {metadataPath}
-            </dd>
-            <dt className="text-muted-foreground">size</dt>
-            <dd>{metadataFileMeta ? formatBytes(metadataFileMeta.size) : "checking"}</dd>
-            <dt className="text-muted-foreground">id</dt>
-            <dd className="font-mono truncate">{(metadataNote.frontmatter.id as string) ?? "—"}</dd>
-            <dt className="text-muted-foreground">tags</dt>
-            <dd className="flex flex-wrap gap-1">
-              {metadataNote.tags.length ? (
-                metadataNote.tags.map((t) => (
-                  <Badge key={t} variant="secondary" className="text-[10px] py-0">
-                    {t}
-                  </Badge>
-                ))
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </dd>
-            <dt className="text-muted-foreground">headings</dt>
-            <dd>{metadataNote.headings.length}</dd>
-            <dt className="text-muted-foreground">outgoing</dt>
-            <dd>{metadataNote.wikilinks.length}</dd>
-          </dl>
-        ) : (
-          <Empty>No file selected.</Empty>
-        )}
-      </Section>
-    </div>
+    <IndexInspectPanel
+      selectedCount={selectedNotePaths.length}
+      inspectData={inspectData}
+      inspectLoading={inspectLoading}
+      inspectError={inspectError}
+      backlinks={backlinks}
+      noteTitles={index.notes}
+      fileIssues={fileIssues}
+      combinedMetadata={combinedMetadata}
+      metadataNote={metadataNote}
+      metadataPath={metadataPath}
+      metadataFileMeta={metadataFileMeta}
+      onPick={inspectPath}
+      onAnchor={openAnchor}
+    />
   );
 
   return (
@@ -1352,6 +1211,213 @@ function Section({
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <div className="text-xs text-muted-foreground italic">{children}</div>;
+}
+
+function IndexInspectPanel({
+  selectedCount,
+  inspectData,
+  inspectLoading,
+  inspectError,
+  backlinks,
+  noteTitles,
+  fileIssues,
+  combinedMetadata,
+  metadataNote,
+  metadataPath,
+  metadataFileMeta,
+  onPick,
+  onAnchor,
+}: IndexInspectPanelProps) {
+  return (
+    <div className="flex flex-col min-h-0 h-full overflow-auto">
+      <Section
+        icon={<Info className="size-3.5" />}
+        title="Index inspect"
+        count={
+          inspectData
+            ? inspectData.issues.length + inspectData.brokenOutgoingLinks.length
+            : undefined
+        }
+      >
+        {selectedCount > 1 ? (
+          <Empty>
+            Multi-select shows combined metadata below. Select one file for index inspection.
+          </Empty>
+        ) : inspectLoading ? (
+          <Empty>Loading machine-index details...</Empty>
+        ) : inspectError ? (
+          <ErrorMessage>{inspectError}</ErrorMessage>
+        ) : inspectData ? (
+          <InspectDetails data={inspectData} onPick={onPick} onAnchor={onAnchor} />
+        ) : (
+          <Empty>No file selected.</Empty>
+        )}
+      </Section>
+
+      <Section icon={<Link2 className="size-3.5" />} title="Backlinks" count={backlinks.length}>
+        <BacklinkList backlinks={backlinks} noteTitles={noteTitles} onPick={onPick} />
+      </Section>
+
+      <Section
+        icon={<AlertTriangle className="size-3.5" />}
+        title="Validation (this file)"
+        count={fileIssues.length}
+      >
+        <ValidationIssueList issues={fileIssues} />
+      </Section>
+
+      <Section
+        icon={<FileText className="size-3.5" />}
+        title={combinedMetadata ? "Combined metadata" : "Metadata"}
+        count={combinedMetadata?.fileCount}
+      >
+        {combinedMetadata ? (
+          <CombinedMetadataDetails metadata={combinedMetadata} />
+        ) : metadataNote ? (
+          <SingleMetadataDetails
+            note={metadataNote}
+            path={metadataPath}
+            fileMeta={metadataFileMeta}
+          />
+        ) : (
+          <Empty>No file selected.</Empty>
+        )}
+      </Section>
+    </div>
+  );
+}
+
+function ErrorMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+      {children}
+    </div>
+  );
+}
+
+function BacklinkList({
+  backlinks,
+  noteTitles,
+  onPick,
+}: {
+  backlinks: InspectBacklink[];
+  noteTitles: Record<string, { title: string }>;
+  onPick: (path: string) => void;
+}) {
+  if (backlinks.length === 0) return <Empty>No notes link here.</Empty>;
+  return (
+    <ul className="space-y-1">
+      {backlinks.map((backlink, index) => {
+        const from = noteTitles[backlink.fromPath];
+        return (
+          <li key={`${backlink.fromPath}-${index}`}>
+            <button
+              className="text-left text-xs hover:underline w-full truncate"
+              onClick={() => onPick(backlink.fromPath)}
+            >
+              <span className="font-medium">{from?.title ?? backlink.fromPath}</span>
+              {backlink.anchor && (
+                <span className="text-muted-foreground"> #{backlink.anchor}</span>
+              )}
+              <span className="text-muted-foreground"> — {backlink.fromPath}</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function ValidationIssueList({ issues }: { issues: VaultInspectIssue[] }) {
+  if (issues.length === 0) return <Empty>No issues.</Empty>;
+  return (
+    <ul className="space-y-1">
+      {issues.map((issue, index) => (
+        <li
+          key={`${issue.kind}-${index}`}
+          className={cn(
+            "text-xs break-words",
+            issue.severity === "error" ? "text-destructive" : "text-amber-600 dark:text-amber-400",
+          )}
+        >
+          <span className="font-mono opacity-70">[{issue.kind}]</span> {issue.message}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CombinedMetadataDetails({ metadata }: { metadata: CombinedInspectMetadata }) {
+  return (
+    <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+      <dt className="text-muted-foreground">files</dt>
+      <dd>{metadata.fileCount}</dd>
+      <dt className="text-muted-foreground">total size</dt>
+      <dd>{formatBytes(metadata.totalBytes)}</dd>
+      <dt className="text-muted-foreground">tags</dt>
+      <dd className="flex flex-wrap gap-1">
+        <TagBadges tags={metadata.tags} />
+      </dd>
+      <dt className="text-muted-foreground">headings</dt>
+      <dd>{metadata.headings}</dd>
+      <dt className="text-muted-foreground">outgoing</dt>
+      <dd>{metadata.outgoing}</dd>
+      <dt className="text-muted-foreground">backlinks</dt>
+      <dd>{metadata.backlinks}</dd>
+      <dt className="text-muted-foreground">issues</dt>
+      <dd>{metadata.issueCount}</dd>
+      <dt className="text-muted-foreground">paths</dt>
+      <dd className="space-y-0.5">
+        {metadata.paths.map((path) => (
+          <div key={path} className="font-mono truncate" title={path}>
+            {path}
+          </div>
+        ))}
+      </dd>
+    </dl>
+  );
+}
+
+function SingleMetadataDetails({
+  note,
+  path,
+  fileMeta,
+}: {
+  note: MetadataNote;
+  path: string | null;
+  fileMeta?: { size: number };
+}) {
+  return (
+    <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+      <dt className="text-muted-foreground">title</dt>
+      <dd className="truncate">{note.title}</dd>
+      <dt className="text-muted-foreground">path</dt>
+      <dd className="font-mono truncate" title={path ?? undefined}>
+        {path}
+      </dd>
+      <dt className="text-muted-foreground">size</dt>
+      <dd>{fileMeta ? formatBytes(fileMeta.size) : "checking"}</dd>
+      <dt className="text-muted-foreground">id</dt>
+      <dd className="font-mono truncate">{(note.frontmatter.id as string) ?? "—"}</dd>
+      <dt className="text-muted-foreground">tags</dt>
+      <dd className="flex flex-wrap gap-1">
+        <TagBadges tags={note.tags} />
+      </dd>
+      <dt className="text-muted-foreground">headings</dt>
+      <dd>{note.headings.length}</dd>
+      <dt className="text-muted-foreground">outgoing</dt>
+      <dd>{note.wikilinks.length}</dd>
+    </dl>
+  );
+}
+
+function TagBadges({ tags }: { tags: string[] }) {
+  if (!tags.length) return <span className="text-muted-foreground">—</span>;
+  return tags.map((tag) => (
+    <Badge key={tag} variant="secondary" className="text-[10px] py-0">
+      {tag}
+    </Badge>
+  ));
 }
 
 function InspectDetails({
@@ -2148,6 +2214,47 @@ type VaultInspectResponse = {
   duplicateAnchors: VaultInspectDuplicateAnchor[];
   orphan: boolean;
   issues: VaultInspectIssue[];
+};
+
+type InspectBacklink = {
+  fromPath: string;
+  anchor?: string;
+  alias?: string;
+};
+
+type MetadataNote = {
+  title: string;
+  frontmatter: Record<string, unknown>;
+  tags: string[];
+  headings: unknown[];
+  wikilinks: unknown[];
+};
+
+type CombinedInspectMetadata = {
+  fileCount: number;
+  totalBytes: number;
+  headings: number;
+  outgoing: number;
+  backlinks: number;
+  issueCount: number;
+  tags: string[];
+  paths: string[];
+};
+
+type IndexInspectPanelProps = {
+  selectedCount: number;
+  inspectData: VaultInspectResponse | null;
+  inspectLoading: boolean;
+  inspectError: string | null;
+  backlinks: InspectBacklink[];
+  noteTitles: Record<string, { title: string }>;
+  fileIssues: VaultInspectIssue[];
+  combinedMetadata: CombinedInspectMetadata | null;
+  metadataNote: MetadataNote | null;
+  metadataPath: string | null;
+  metadataFileMeta?: { size: number };
+  onPick: (path: string) => void;
+  onAnchor: (path: string, anchor: string) => void;
 };
 
 const INDEX_FILTER_OPTIONS: { value: IndexFilterKind; label: string; empty: string }[] = [
