@@ -1,5 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Children, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Children,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   AlertTriangle,
   Database,
@@ -48,6 +56,33 @@ export const Route = createFileRoute("/")({
   }),
   component: VaultApp,
 });
+
+const LEFT_PANE_DEFAULT = 260;
+const LEFT_PANE_MIN = 220;
+const LEFT_PANE_MAX = 520;
+const RIGHT_PANE_DEFAULT = 320;
+const RIGHT_PANE_MIN = 260;
+const RIGHT_PANE_MAX = 560;
+const CENTER_PANE_MIN = 0;
+const CENTER_PANE_FALLBACK_MIN = 0;
+const PANE_TUCK_THRESHOLD = 64;
+const TAB_DRAG_CLICK_THRESHOLD = 6;
+
+function clampPaneWidth(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function effectiveCenterMin(
+  totalWidth: number,
+  leftMinimum = LEFT_PANE_MIN,
+  rightMinimum = RIGHT_PANE_MIN,
+): number {
+  const availableAfterMinimumSidebars = totalWidth - leftMinimum - rightMinimum;
+  return Math.min(
+    CENTER_PANE_MIN,
+    Math.max(CENTER_PANE_FALLBACK_MIN, availableAfterMinimumSidebars),
+  );
+}
 
 function VaultApp() {
   const vault = useVault();
@@ -118,10 +153,16 @@ function VaultApp() {
   } | null>(null);
   const [handledVaultChangeAt, setHandledVaultChangeAt] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [leftPaneWidth, setLeftPaneWidth] = useState(LEFT_PANE_DEFAULT);
+  const [rightPaneWidth, setRightPaneWidth] = useState(RIGHT_PANE_DEFAULT);
+  const [leftPaneTucked, setLeftPaneTucked] = useState(false);
+  const [rightPaneTucked, setRightPaneTucked] = useState(false);
   const isMobile = useIsMobile();
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [themeHydrated, setThemeHydrated] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const suppressTuckedTabClickRef = useRef(false);
   const autoOpenedVaultRef = useRef<string | null>(null);
   const selfWriteSuppressionRef = useRef<{ path: string; content: string; until: number } | null>(
     null,
@@ -138,6 +179,168 @@ function VaultApp() {
     document.documentElement.classList.toggle("dark", theme === "dark");
     localStorage.setItem("vault:theme", theme);
   }, [theme, themeHydrated]);
+
+  useEffect(() => {
+    const clampWidthsForViewport = () => {
+      const totalWidth = workspaceRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+      const leftMinimum = leftPaneTucked ? 0 : LEFT_PANE_MIN;
+      const rightMinimum = rightPaneTucked ? 0 : RIGHT_PANE_MIN;
+      const centerMin = effectiveCenterMin(totalWidth, leftMinimum, rightMinimum);
+      if (!leftPaneTucked) {
+        setLeftPaneWidth((current) =>
+          clampPaneWidth(current, LEFT_PANE_MIN, totalWidth - rightMinimum - centerMin),
+        );
+      }
+      if (!rightPaneTucked) {
+        setRightPaneWidth((current) =>
+          clampPaneWidth(current, RIGHT_PANE_MIN, totalWidth - leftMinimum - centerMin),
+        );
+      }
+    };
+
+    clampWidthsForViewport();
+    window.addEventListener("resize", clampWidthsForViewport);
+    return () => window.removeEventListener("resize", clampWidthsForViewport);
+  }, [leftPaneTucked, rightPaneTucked]);
+
+  const startPaneResize = useCallback(
+    (pane: "left" | "right", event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const totalWidth = workspaceRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+      const centerMin = effectiveCenterMin(
+        totalWidth,
+        pane === "left" ? 0 : leftPaneTucked ? 0 : LEFT_PANE_MIN,
+        pane === "right" ? 0 : rightPaneTucked ? 0 : RIGHT_PANE_MIN,
+      );
+      const startX = event.clientX;
+      const startLeft = leftPaneTucked ? 0 : leftPaneWidth;
+      const startRight = rightPaneTucked ? 0 : rightPaneWidth;
+      const previousUserSelect = document.body.style.userSelect;
+      const previousCursor = document.body.style.cursor;
+
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "col-resize";
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        moveEvent.preventDefault();
+        if (pane === "left") {
+          const maxLeft = totalWidth - startRight - centerMin;
+          const nextLeft = startLeft + moveEvent.clientX - startX;
+          if (nextLeft <= PANE_TUCK_THRESHOLD) {
+            setLeftPaneTucked(true);
+            return;
+          }
+          setLeftPaneTucked(false);
+          setLeftPaneWidth(clampPaneWidth(nextLeft, LEFT_PANE_MIN, maxLeft));
+        } else {
+          const maxRight = totalWidth - startLeft - centerMin;
+          const nextRight = startRight + startX - moveEvent.clientX;
+          if (nextRight <= PANE_TUCK_THRESHOLD) {
+            setRightPaneTucked(true);
+            return;
+          }
+          setRightPaneTucked(false);
+          setRightPaneWidth(clampPaneWidth(nextRight, RIGHT_PANE_MIN, maxRight));
+        }
+      };
+
+      const onPointerUp = () => {
+        document.body.style.userSelect = previousUserSelect;
+        document.body.style.cursor = previousCursor;
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+    },
+    [leftPaneTucked, leftPaneWidth, rightPaneTucked, rightPaneWidth],
+  );
+
+  const startTuckedTabResize = useCallback(
+    (pane: "left" | "right", event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const totalWidth = workspaceRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+      const otherPaneWidth =
+        pane === "left"
+          ? rightPaneTucked
+            ? 0
+            : rightPaneWidth
+          : leftPaneTucked
+            ? 0
+            : leftPaneWidth;
+      const centerMin = effectiveCenterMin(
+        totalWidth,
+        pane === "left" ? 0 : leftPaneTucked ? 0 : LEFT_PANE_MIN,
+        pane === "right" ? 0 : rightPaneTucked ? 0 : RIGHT_PANE_MIN,
+      );
+      const startX = event.clientX;
+      const previousUserSelect = document.body.style.userSelect;
+      const previousCursor = document.body.style.cursor;
+      let dragged = false;
+      let finalWidth = 0;
+
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "col-resize";
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        moveEvent.preventDefault();
+        const distance = pane === "left" ? moveEvent.clientX - startX : startX - moveEvent.clientX;
+        if (Math.abs(distance) > TAB_DRAG_CLICK_THRESHOLD) dragged = true;
+        const maxWidth = totalWidth - otherPaneWidth - centerMin;
+        finalWidth = clampPaneWidth(Math.max(0, distance), 0, maxWidth);
+
+        if (pane === "left") {
+          setLeftPaneWidth(finalWidth);
+          setLeftPaneTucked(finalWidth === 0);
+        } else {
+          setRightPaneWidth(finalWidth);
+          setRightPaneTucked(finalWidth === 0);
+        }
+      };
+
+      const onPointerUp = () => {
+        suppressTuckedTabClickRef.current = true;
+        if (!dragged) {
+          if (pane === "left") {
+            setLeftPaneWidth(LEFT_PANE_DEFAULT);
+            setLeftPaneTucked(false);
+          } else {
+            setRightPaneWidth(RIGHT_PANE_DEFAULT);
+            setRightPaneTucked(false);
+          }
+        } else if (pane === "left") {
+          if (finalWidth <= PANE_TUCK_THRESHOLD) {
+            setLeftPaneTucked(true);
+          } else {
+            setLeftPaneWidth(Math.max(finalWidth, LEFT_PANE_MIN));
+            setLeftPaneTucked(false);
+          }
+        } else if (finalWidth <= PANE_TUCK_THRESHOLD) {
+          setRightPaneTucked(true);
+        } else {
+          setRightPaneWidth(Math.max(finalWidth, RIGHT_PANE_MIN));
+          setRightPaneTucked(false);
+        }
+        document.body.style.userSelect = previousUserSelect;
+        document.body.style.cursor = previousCursor;
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+    },
+    [leftPaneTucked, leftPaneWidth, rightPaneTucked, rightPaneWidth],
+  );
 
   // Load buffer when active file changes
   useEffect(() => {
@@ -1118,9 +1321,79 @@ function VaultApp() {
       {!showSettings && activeVault && (
         <>
           {/* Desktop: 3-pane with center editor/preview tabs */}
-          <div className="flex-1 min-h-0 hidden md:grid md:grid-cols-[260px_minmax(0,1fr)_320px]">
-            <aside className="border-r min-h-0">{vaultPane}</aside>
-            <section className="flex flex-col min-h-0 border-r">
+          <div
+            ref={workspaceRef}
+            className="relative flex-1 min-h-0 hidden md:flex overflow-hidden"
+          >
+            {leftPaneTucked && (
+              <button
+                type="button"
+                aria-label="Restore left sidebar"
+                title="Restore left sidebar"
+                className="absolute left-0 top-1/2 z-30 flex h-14 w-10 -translate-y-1/2 cursor-col-resize touch-none select-none items-center justify-start rounded-r-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onPointerDown={(event) => startTuckedTabResize("left", event)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (suppressTuckedTabClickRef.current) {
+                    suppressTuckedTabClickRef.current = false;
+                    return;
+                  }
+                  setLeftPaneWidth(LEFT_PANE_DEFAULT);
+                  setLeftPaneTucked(false);
+                }}
+              >
+                <span
+                  className="block h-11 w-8 border border-primary/80 bg-primary/90 shadow-lg shadow-black/25 ring-1 ring-background transition-colors hover:bg-primary dark:border-primary-foreground/70 dark:bg-primary dark:ring-background"
+                  style={{ clipPath: "polygon(0 0, 100% 22%, 100% 78%, 0 100%)" }}
+                />
+              </button>
+            )}
+            {rightPaneTucked && (
+              <button
+                type="button"
+                aria-label="Restore right inspector"
+                title="Restore right inspector"
+                className="absolute right-0 top-1/2 z-30 flex h-14 w-10 -translate-y-1/2 cursor-col-resize touch-none select-none items-center justify-end rounded-l-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onPointerDown={(event) => startTuckedTabResize("right", event)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (suppressTuckedTabClickRef.current) {
+                    suppressTuckedTabClickRef.current = false;
+                    return;
+                  }
+                  setRightPaneWidth(RIGHT_PANE_DEFAULT);
+                  setRightPaneTucked(false);
+                }}
+              >
+                <span
+                  className="block h-11 w-8 border border-primary/80 bg-primary/90 shadow-lg shadow-black/25 ring-1 ring-background transition-colors hover:bg-primary dark:border-primary-foreground/70 dark:bg-primary dark:ring-background"
+                  style={{ clipPath: "polygon(100% 0, 0 22%, 0 78%, 100% 100%)" }}
+                />
+              </button>
+            )}
+            <aside
+              className="min-h-0 shrink-0 overflow-hidden"
+              aria-hidden={leftPaneTucked}
+              style={{ width: leftPaneTucked ? 0 : leftPaneWidth }}
+            >
+              {!leftPaneTucked && vaultPane}
+            </aside>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={leftPaneTucked ? "Show vault column" : "Resize vault column"}
+              title={leftPaneTucked ? "Drag right to show vault column" : "Resize vault column"}
+              className={cn(
+                "group relative z-10 w-2 shrink-0 cursor-col-resize touch-none select-none border-x bg-border/20 hover:bg-primary/15 focus:outline-none focus-visible:bg-primary/20",
+                leftPaneTucked && "bg-primary/20 hover:bg-primary/25",
+              )}
+              onPointerDown={(event) => startPaneResize("left", event)}
+            >
+              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-border group-hover:bg-primary/50" />
+            </div>
+            <section className="flex flex-1 flex-col min-h-0 border-r" style={{ minWidth: 0 }}>
               <div className="h-9 shrink-0 border-b flex items-center gap-1 px-2">
                 <SegBtn active={centerTab === "edit"} onClick={() => setCenterTab("edit")}>
                   <Pencil className="size-3.5" /> Edit
@@ -1131,7 +1404,26 @@ function VaultApp() {
               </div>
               <div className="flex-1 min-h-0">{centerPane}</div>
             </section>
-            <aside className="min-h-0">{inspectorPane}</aside>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={rightPaneTucked ? "Show inspect column" : "Resize inspect column"}
+              title={rightPaneTucked ? "Drag left to show inspect column" : "Resize inspect column"}
+              className={cn(
+                "group relative z-10 w-2 shrink-0 cursor-col-resize touch-none select-none border-x bg-border/20 hover:bg-primary/15 focus:outline-none focus-visible:bg-primary/20",
+                rightPaneTucked && "bg-primary/20 hover:bg-primary/25",
+              )}
+              onPointerDown={(event) => startPaneResize("right", event)}
+            >
+              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-border group-hover:bg-primary/50" />
+            </div>
+            <aside
+              className="min-h-0 shrink-0 overflow-hidden"
+              aria-hidden={rightPaneTucked}
+              style={{ width: rightPaneTucked ? 0 : rightPaneWidth }}
+            >
+              {!rightPaneTucked && inspectorPane}
+            </aside>
           </div>
 
           {/* Mobile: single-view tabbed */}

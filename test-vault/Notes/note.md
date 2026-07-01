@@ -58,14 +58,6 @@ The indexer and preview renderer should also ignore inline code like `[[Referenc
 | Broken link | `missing-note` appears as an issue |
 | Code link | `Reference/fake-code-link` is ignored |
 
-## Manual Test
+## Manual Test Section
 
-This section is being created while the file is open in AREPO, to test behavior with live changes.
-
-During further testing, edits or addendums to this section will suffice.
-
-Testing live update in this line.
-
-This line conflicts from the live edit data in AREPO. Intended to test the Live Buffer is not overwritten.
-
-Next is testing that buffer writes can be chosen in favour of the local change.
+This section is provided as a reference point for manual testing of features as seen fit.

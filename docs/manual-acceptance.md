@@ -214,6 +214,76 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 12. Expected result: the document closes without writing to disk, deleting the
     file, or renaming the file.
 
+### Resize Workspace Columns
+
+Run this on a desktop-width browser window.
+
+1. With a vault open, drag the vertical handle between the left vault column and
+   the center workspace.
+2. Expected result: the left column resizes, the center workspace adjusts, and
+   the left border can be dragged all the way to the right column border.
+3. Drag the vertical handle between the center workspace and the right
+   inspect/metadata column.
+4. Expected result: the right column resizes, the center workspace adjusts, and
+   the right border can be dragged all the way to the left column border.
+5. Drag the left column handle all the way toward the left edge.
+6. Expected result: the vault column tucks away and leaves only a narrow
+   pull-tab/resize strip visible plus a small tapered restore tab protruding
+   into the workspace.
+7. Click the left tapered restore tab.
+8. Expected result: the vault column returns to a usable width.
+9. Tuck the left column again, then drag the left tapered restore tab rightward.
+10. Expected result: the vault column begins expanding immediately from the
+    edge and resizes continuously from the drag.
+11. Before releasing the pointer, drag the same tab back left toward the edge.
+12. Expected result: the vault column shrinks and can tuck again in the same
+    gesture.
+13. Tuck the left column again, then drag the border pull-tab back to the right.
+14. Expected result: border-based untuck still works.
+15. Drag the right column handle all the way toward the right edge.
+16. Expected result: the inspect/metadata column tucks away and leaves only a
+    narrow pull-tab/resize strip visible plus a small tapered restore tab
+    protruding into the workspace.
+17. Click the right tapered restore tab.
+18. Expected result: the inspect/metadata column returns to a usable width.
+19. Tuck the right column again, then drag the right tapered restore tab
+    leftward.
+20. Expected result: the inspect/metadata column begins expanding immediately
+    from the edge and resizes continuously from the drag.
+21. Before releasing the pointer, drag the same tab back right toward the edge.
+22. Expected result: the inspect/metadata column shrinks and can tuck again in
+    the same gesture.
+23. Tuck the right column again, then drag the border pull-tab back to the left.
+24. Expected result: border-based untuck still works.
+25. Tuck the right column, then drag the left column border toward the right
+    edge.
+26. Expected result: the left border can still reach the tucked right pane's
+    pull-tab/edge.
+27. Tuck the left column, then drag the right column border toward the left
+    edge.
+28. Expected result: the right border can still reach the tucked left pane's
+    pull-tab/edge.
+29. Toggle between dark and light mode if available.
+30. Expected result: both tapered restore tabs have visible contrast, border,
+    raised background, hover state, and focus state in both themes.
+31. Expected result: resizing or tucking does not open files, select graph
+    nodes, type in the editor, or trigger a save.
+32. Confirm an open document remains open after resizing and tucking.
+33. Close the document, resize both side columns again, and reopen
+   `Notes/note.md`.
+34. Expected result: close/reopen behavior still works and no file is changed on
+   disk by resizing.
+35. Switch between Tree and Graph, then resize/tuck both side columns.
+36. Expected result: Tree navigation, Graph view, graph selection, and graph
+    multi-select metadata remain usable.
+37. Use Index search, Index filters, Index inspect, backlinks, outgoing links,
+    and Local Node Diagnostics after resizing.
+38. Expected result: those read-only mapping and diagnostics surfaces remain
+    visible and usable.
+39. Refresh the page.
+40. Expected result: column widths and tucked state may reset. Layout
+    persistence is not part of AREPO V1 yet.
+
 ## 7. Confirm Disk Persistence
 
 1. In a terminal, inspect the file:
