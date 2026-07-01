@@ -81,7 +81,7 @@ function VaultApp() {
   } = vault;
 
   const paths = useMemo(() => Object.keys(files), [files]);
-  const [activePath, setActivePath] = useState<string | null>(() => paths[0] ?? null);
+  const [activePath, setActivePath] = useState<string | null>(null);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const [buffer, setBuffer] = useState<string>("");
   const [savedSnapshot, setSavedSnapshot] = useState<string>("");
@@ -122,6 +122,7 @@ function VaultApp() {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [themeHydrated, setThemeHydrated] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const autoOpenedVaultRef = useRef<string | null>(null);
   const selfWriteSuppressionRef = useRef<{ path: string; content: string; until: number } | null>(
     null,
   );
@@ -143,14 +144,20 @@ function VaultApp() {
     if (activePath && files[activePath] !== undefined) {
       setBuffer(files[activePath]);
       setSavedSnapshot(files[activePath]);
-    } else if (paths.length) {
+    } else if (
+      activeVault &&
+      paths.length &&
+      autoOpenedVaultRef.current !== activeVault.id &&
+      activePath === null
+    ) {
+      autoOpenedVaultRef.current = activeVault.id;
       setActivePath(paths[0]);
     } else {
       setActivePath(null);
       setBuffer("");
       setSavedSnapshot("");
     }
-  }, [activePath, files, paths]);
+  }, [activePath, activeVault, files, paths]);
 
   const dirty = buffer !== savedSnapshot;
   const dirtyPaths = useMemo(
@@ -311,6 +318,23 @@ function VaultApp() {
     },
     [activePath, dirty],
   );
+
+  const closeDocument = useCallback(() => {
+    if (!activePath) return;
+    if (dirty && !window.confirm("Discard unsaved changes and close this document?")) {
+      return;
+    }
+    setActivePath(null);
+    setSelectedPaths(new Set());
+    setBuffer("");
+    setSavedSnapshot("");
+    setExternalNotice(null);
+    setDiffReview(null);
+    setDiffError(null);
+    setConflictMessage(null);
+    setSuppressedConflict(null);
+    void refreshVaultStatus(null);
+  }, [activePath, dirty, refreshVaultStatus]);
 
   const inspectPath = useCallback(
     (path: string, nextMobileTab: "edit" | "preview" | "inspect" = "inspect") => {
@@ -777,6 +801,15 @@ function VaultApp() {
         variant="ghost"
         size="sm"
         className="h-7 text-xs shrink-0"
+        onClick={closeDocument}
+        disabled={!activePath}
+      >
+        Close
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 text-xs shrink-0"
         onClick={() => void handleRename()}
         disabled={!activePath}
       >
@@ -820,6 +853,24 @@ function VaultApp() {
       />
     </div>
   );
+
+  const emptyDocumentPane = (
+    <div className="h-full min-h-0 flex items-center justify-center p-6 text-center">
+      <div className="space-y-1">
+        <FileText className="mx-auto size-5 text-muted-foreground" />
+        <div className="text-sm font-medium">No document open</div>
+        <div className="text-xs text-muted-foreground">
+          Select a Markdown file from the tree, graph, search, or index views to open it here.
+        </div>
+      </div>
+    </div>
+  );
+
+  const centerPane = activePath
+    ? centerTab === "edit"
+      ? editorPane
+      : previewPane
+    : emptyDocumentPane;
 
   const inspectorPane = (
     <IndexInspectPanel
@@ -1078,9 +1129,7 @@ function VaultApp() {
                   <Eye className="size-3.5" /> Preview
                 </SegBtn>
               </div>
-              <div className="flex-1 min-h-0">
-                {centerTab === "edit" ? editorPane : previewPane}
-              </div>
+              <div className="flex-1 min-h-0">{centerPane}</div>
             </section>
             <aside className="min-h-0">{inspectorPane}</aside>
           </div>
@@ -1091,10 +1140,10 @@ function VaultApp() {
               {vaultPane}
             </div>
             <div className="h-full" hidden={mobileTab !== "edit"}>
-              {editorPane}
+              {activePath ? editorPane : emptyDocumentPane}
             </div>
             <div className="h-full" hidden={mobileTab !== "preview"}>
-              {previewPane}
+              {activePath ? previewPane : emptyDocumentPane}
             </div>
             <div className="h-full" hidden={mobileTab !== "inspect"}>
               {inspectorPane}

@@ -194,6 +194,26 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 6. Expected result: no browser localStorage note copy becomes the source of
    truth.
 
+### Close Document Workspace
+
+1. With `Notes/note.md` open and no unsaved edits, click `Close` in the document
+   action bar near `Rename` and `Save`.
+2. Expected result: the central editor/preview workspace changes to `No document
+   open`.
+3. Expected result: the file remains present in the Tree view and on disk.
+4. Expected result: AREPO does not automatically open another document.
+5. Select `Notes/note.md` again from the Tree, Graph, Index search, or Index
+   filters.
+6. Expected result: the normal editor/preview workflow returns.
+7. Make an unsaved edit, then click `Close`.
+8. Expected result: AREPO asks for confirmation before discarding the in-memory
+   edit buffer.
+9. Cancel the confirmation.
+10. Expected result: the document remains open and dirty.
+11. Click `Close` again and confirm.
+12. Expected result: the document closes without writing to disk, deleting the
+    file, or renaming the file.
+
 ## 7. Confirm Disk Persistence
 
 1. In a terminal, inspect the file:
