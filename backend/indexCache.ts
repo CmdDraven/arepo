@@ -6,6 +6,7 @@ import { buildVaultIndex } from "./vaultFs.js";
 import type { VaultIndexResponse, VaultInfo } from "./types.js";
 
 const MACHINE_INDEX_VERSION = 1;
+const indexWriteLocks = new Map<string, Promise<void>>();
 
 export type StoredMachineIndex = {
   kind: "arepo.machineIndex";
@@ -41,21 +42,32 @@ export async function writeMachineIndex(
   cwd = process.cwd(),
 ): Promise<string> {
   const file = await machineIndexPath(vault, cwd);
-  const stored: StoredMachineIndex = {
-    kind: "arepo.machineIndex",
-    version: MACHINE_INDEX_VERSION,
-    generatedAt: new Date().toISOString(),
-    vault: {
-      id: vault.id,
-      displayName: vault.displayName,
-      rootPathHash: await vaultRootHash(vault),
-    },
-    data,
-  };
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tmp, `${JSON.stringify(stored, null, 2)}\n`, "utf8");
-  await fs.rename(tmp, file);
+  await withIndexWriteLock(file, async () => {
+    const stored: StoredMachineIndex = {
+      kind: "arepo.machineIndex",
+      version: MACHINE_INDEX_VERSION,
+      generatedAt: new Date().toISOString(),
+      vault: {
+        id: vault.id,
+        displayName: vault.displayName,
+        rootPathHash: await vaultRootHash(vault),
+      },
+      data,
+    };
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const tmp = `${file}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
+    try {
+      await writeTempFileForRename(tmp, `${JSON.stringify(stored, null, 2)}\n`);
+      await fs.rename(tmp, file);
+    } catch (error) {
+      await fs.unlink(tmp).catch((unlinkError: NodeJS.ErrnoException) => {
+        if (unlinkError.code !== "ENOENT") {
+          throw unlinkError;
+        }
+      });
+      throw error;
+    }
+  });
   return file;
 }
 
@@ -75,4 +87,34 @@ export async function vaultRootHash(vault: VaultInfo): Promise<string> {
 
 function safeVaultKey(vaultId: string): string {
   return vaultId.replace(/[^a-zA-Z0-9_-]/g, "-") || "vault";
+}
+
+async function writeTempFileForRename(file: string, content: string): Promise<void> {
+  const handle = await fs.open(file, "w", 0o600);
+  try {
+    await handle.writeFile(content, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function withIndexWriteLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = indexWriteLocks.get(key) ?? Promise.resolve();
+  let releaseCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const queued = previous.catch(() => undefined).then(() => current);
+  indexWriteLocks.set(key, queued);
+  await previous.catch(() => undefined);
+
+  try {
+    return await work();
+  } finally {
+    releaseCurrent();
+    if (indexWriteLocks.get(key) === queued) {
+      indexWriteLocks.delete(key);
+    }
+  }
 }

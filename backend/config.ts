@@ -21,6 +21,7 @@ const DEFAULT_CONFIG: VaultConfigFile = {
 };
 
 const APP_DATA_ENV = "AREPO_APP_DATA_DIR";
+const configWriteLocks = new Map<string, Promise<void>>();
 
 export function configPath(cwd = process.cwd()): string {
   return path.join(cwd, ".arepo", "config.json");
@@ -69,10 +70,21 @@ export async function loadConfig(cwd = process.cwd()): Promise<VaultConfigFile> 
 export async function saveConfig(config: VaultConfigFile, cwd = process.cwd()): Promise<void> {
   await validateConfig(config, configPath(cwd));
   const file = configPath(cwd);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tmp, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-  await fs.rename(tmp, file);
+  await withConfigWriteLock(file, async () => {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const tmp = `${file}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
+    try {
+      await writeTempFileForRename(tmp, `${JSON.stringify(config, null, 2)}\n`);
+      await fs.rename(tmp, file);
+    } catch (error) {
+      await fs.unlink(tmp).catch((unlinkError: NodeJS.ErrnoException) => {
+        if (unlinkError.code !== "ENOENT") {
+          throw unlinkError;
+        }
+      });
+      throw error;
+    }
+  });
 }
 
 export async function getNodeInfo(cwd = process.cwd()): Promise<NodeInfo> {
@@ -274,6 +286,36 @@ function expandHome(value: string): string {
   if (value === "~") return os.homedir();
   if (value.startsWith("~/")) return path.join(os.homedir(), value.slice(2));
   return value;
+}
+
+async function writeTempFileForRename(file: string, content: string): Promise<void> {
+  const handle = await fs.open(file, "w", 0o600);
+  try {
+    await handle.writeFile(content, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function withConfigWriteLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = configWriteLocks.get(key) ?? Promise.resolve();
+  let releaseCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const queued = previous.catch(() => undefined).then(() => current);
+  configWriteLocks.set(key, queued);
+  await previous.catch(() => undefined);
+
+  try {
+    return await work();
+  } finally {
+    releaseCurrent();
+    if (configWriteLocks.get(key) === queued) {
+      configWriteLocks.delete(key);
+    }
+  }
 }
 
 function isProjectDevDirectory(cwd: string): boolean {
