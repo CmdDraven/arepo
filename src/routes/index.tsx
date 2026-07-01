@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 import {
   AlertTriangle,
@@ -38,6 +39,7 @@ import { buildGraph } from "@/lib/vault/graph";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { type NoteIndex } from "@/lib/vault/indexer";
 import { useVault, type VaultInfo, type VaultPermission } from "@/lib/vault/store";
 import { renderMarkdown } from "@/lib/vault/render";
 import { cn } from "@/lib/utils";
@@ -57,6 +59,32 @@ export const Route = createFileRoute("/")({
   component: VaultApp,
 });
 
+type CenterWorkspaceView = "empty" | "document" | "tree" | "graph";
+type NonDocumentCenterView = Extract<CenterWorkspaceView, "tree" | "graph">;
+type TreePlacement = "sidebar" | "center";
+
+type TreeUiState = {
+  query: string;
+  indexFilter: IndexFilterKind;
+  indexFilterResponse: IndexFilterResponse | null;
+  indexFilterLoading: boolean;
+  indexFilterError: string | null;
+  indexSearchQuery: string;
+  indexSearchResponse: IndexSearchResponse | null;
+  indexSearchLoading: boolean;
+  indexSearchError: string | null;
+  searchCollapsed: boolean;
+  filtersCollapsed: boolean;
+  homepageCollapsed: boolean;
+};
+
+type LocalSearchResult = {
+  note: NoteIndex;
+  inName: boolean;
+  inBody: boolean;
+  inTags: boolean;
+};
+
 const LEFT_PANE_DEFAULT = 260;
 const LEFT_PANE_MIN = 220;
 const LEFT_PANE_MAX = 520;
@@ -67,6 +95,24 @@ const CENTER_PANE_MIN = 0;
 const CENTER_PANE_FALLBACK_MIN = 0;
 const PANE_TUCK_THRESHOLD = 64;
 const TAB_DRAG_CLICK_THRESHOLD = 6;
+const SIDE_PANE_CONTENT_MIN = 144;
+
+function createTreeUiState(collapsed = false): TreeUiState {
+  return {
+    query: "",
+    indexFilter: "broken-links",
+    indexFilterResponse: null,
+    indexFilterLoading: false,
+    indexFilterError: null,
+    indexSearchQuery: "",
+    indexSearchResponse: null,
+    indexSearchLoading: false,
+    indexSearchError: null,
+    searchCollapsed: collapsed,
+    filtersCollapsed: collapsed,
+    homepageCollapsed: collapsed,
+  };
+}
 
 function clampPaneWidth(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
@@ -121,18 +167,18 @@ function VaultApp() {
   const [buffer, setBuffer] = useState<string>("");
   const [savedSnapshot, setSavedSnapshot] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["Notes", "Reference"]));
-  const [query, setQuery] = useState("");
-  const [indexFilter, setIndexFilter] = useState<IndexFilterKind>("broken-links");
-  const [indexFilterResponse, setIndexFilterResponse] = useState<IndexFilterResponse | null>(null);
-  const [indexFilterLoading, setIndexFilterLoading] = useState(false);
-  const [indexFilterError, setIndexFilterError] = useState<string | null>(null);
-  const [indexSearchQuery, setIndexSearchQuery] = useState("");
-  const [indexSearchResponse, setIndexSearchResponse] = useState<IndexSearchResponse | null>(null);
-  const [indexSearchLoading, setIndexSearchLoading] = useState(false);
-  const [indexSearchError, setIndexSearchError] = useState<string | null>(null);
+  const [sidebarTreeState, setSidebarTreeState] = useState<TreeUiState>(() =>
+    createTreeUiState(false),
+  );
+  const [centerTreeState, setCenterTreeState] = useState<TreeUiState>(() =>
+    createTreeUiState(true),
+  );
   const [inspectData, setInspectData] = useState<VaultInspectResponse | null>(null);
   const [inspectLoading, setInspectLoading] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
+  const [centerWorkspaceView, setCenterWorkspaceView] = useState<CenterWorkspaceView>("empty");
+  const [lastNonDocumentCenterView, setLastNonDocumentCenterView] =
+    useState<NonDocumentCenterView | null>(null);
   const [centerTab, setCenterTab] = useState<"edit" | "preview">("edit");
   const [mobileTab, setMobileTab] = useState<"vault" | "edit" | "preview" | "inspect">("vault");
   const [vaultMode, setVaultMode] = useState<"tree" | "graph">("tree");
@@ -354,6 +400,7 @@ function VaultApp() {
       activePath === null
     ) {
       autoOpenedVaultRef.current = activeVault.id;
+      setCenterWorkspaceView("document");
       setActivePath(paths[0]);
     } else {
       setActivePath(null);
@@ -510,6 +557,25 @@ function VaultApp() {
     return () => window.removeEventListener("keydown", handler);
   }, [save]);
 
+  const assignCenterView = useCallback(
+    (view: NonDocumentCenterView) => {
+      setLastNonDocumentCenterView(view);
+      if (!activePath) setCenterWorkspaceView(view);
+    },
+    [activePath],
+  );
+
+  const openDocumentInCenter = useCallback(
+    (path: string) => {
+      if (centerWorkspaceView === "tree" || centerWorkspaceView === "graph") {
+        setLastNonDocumentCenterView(centerWorkspaceView);
+      }
+      setCenterWorkspaceView("document");
+      setActivePath(path);
+    },
+    [centerWorkspaceView],
+  );
+
   const selectPath = useCallback(
     (path: string) => {
       if (path === activePath) return;
@@ -517,9 +583,9 @@ function VaultApp() {
         return;
       }
       setSelectedPaths(new Set());
-      setActivePath(path);
+      openDocumentInCenter(path);
     },
-    [activePath, dirty],
+    [activePath, dirty, openDocumentInCenter],
   );
 
   const closeDocument = useCallback(() => {
@@ -528,6 +594,7 @@ function VaultApp() {
       return;
     }
     setActivePath(null);
+    setCenterWorkspaceView(lastNonDocumentCenterView ?? "empty");
     setSelectedPaths(new Set());
     setBuffer("");
     setSavedSnapshot("");
@@ -537,7 +604,7 @@ function VaultApp() {
     setConflictMessage(null);
     setSuppressedConflict(null);
     void refreshVaultStatus(null);
-  }, [activePath, dirty, refreshVaultStatus]);
+  }, [activePath, dirty, lastNonDocumentCenterView, refreshVaultStatus]);
 
   const inspectPath = useCallback(
     (path: string, nextMobileTab: "edit" | "preview" | "inspect" = "inspect") => {
@@ -550,10 +617,10 @@ function VaultApp() {
         return;
       }
       setSelectedPaths(new Set([path]));
-      setActivePath(path);
+      openDocumentInCenter(path);
       if (isMobile) setMobileTab(nextMobileTab);
     },
-    [activePath, dirty, index.notes, isMobile],
+    [activePath, dirty, index.notes, isMobile, openDocumentInCenter],
   );
 
   const openAnchor = useCallback(
@@ -567,14 +634,14 @@ function VaultApp() {
         return;
       }
       setSelectedPaths(new Set([path]));
-      setActivePath(path);
+      openDocumentInCenter(path);
       setCenterTab("preview");
       if (isMobile) setMobileTab("preview");
       window.setTimeout(() => {
         document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 50);
     },
-    [activePath, dirty, index.notes, isMobile],
+    [activePath, dirty, index.notes, isMobile, openDocumentInCenter],
   );
 
   const handleGraphSelectionChange = useCallback(
@@ -582,63 +649,107 @@ function VaultApp() {
       const notePaths = paths.filter((path) => Boolean(index.notes[path]));
       setSelectedPaths(new Set(notePaths));
       if (notePaths.length === 1 && notePaths[0] && notePaths[0] !== activePath && !dirty) {
-        setActivePath(notePaths[0]);
+        openDocumentInCenter(notePaths[0]);
       }
     },
-    [activePath, dirty, index.notes],
+    [activePath, dirty, index.notes, openDocumentInCenter],
   );
 
-  const refreshIndexFilter = useCallback(async () => {
-    if (!activeVault) {
-      setIndexFilterResponse(null);
-      return;
-    }
-    setIndexFilterLoading(true);
-    setIndexFilterError(null);
-    try {
-      const response = await settingsApi<IndexFilterResponse>(
-        `/api/vaults/${encodeURIComponent(activeVault.id)}/index/filters?filter=${indexFilter}`,
-      );
-      setIndexFilterResponse(response);
-    } catch (error) {
-      setIndexFilterResponse(null);
-      setIndexFilterError(errorMessage(error));
-    } finally {
-      setIndexFilterLoading(false);
-    }
-  }, [activeVault, indexFilter]);
+  const updateTreeState = useCallback(
+    (placement: TreePlacement, updater: (state: TreeUiState) => TreeUiState) => {
+      if (placement === "sidebar") setSidebarTreeState(updater);
+      else setCenterTreeState(updater);
+    },
+    [],
+  );
+
+  const refreshIndexFilter = useCallback(
+    async (placement: TreePlacement, filter: IndexFilterKind) => {
+      if (!activeVault) {
+        updateTreeState(placement, (state) => ({ ...state, indexFilterResponse: null }));
+        return;
+      }
+      updateTreeState(placement, (state) => ({
+        ...state,
+        indexFilterLoading: true,
+        indexFilterError: null,
+      }));
+      try {
+        const response = await settingsApi<IndexFilterResponse>(
+          `/api/vaults/${encodeURIComponent(activeVault.id)}/index/filters?filter=${filter}`,
+        );
+        updateTreeState(placement, (state) => ({ ...state, indexFilterResponse: response }));
+      } catch (error) {
+        updateTreeState(placement, (state) => ({
+          ...state,
+          indexFilterResponse: null,
+          indexFilterError: errorMessage(error),
+        }));
+      } finally {
+        updateTreeState(placement, (state) => ({ ...state, indexFilterLoading: false }));
+      }
+    },
+    [activeVault, updateTreeState],
+  );
 
   useEffect(() => {
-    void refreshIndexFilter();
-  }, [refreshIndexFilter]);
-
-  const refreshIndexSearch = useCallback(async () => {
-    const q = indexSearchQuery.trim();
-    if (!activeVault || !q) {
-      setIndexSearchResponse(null);
-      setIndexSearchError(null);
-      setIndexSearchLoading(false);
-      return;
-    }
-    setIndexSearchLoading(true);
-    setIndexSearchError(null);
-    try {
-      const response = await settingsApi<IndexSearchResponse>(
-        `/api/vaults/${encodeURIComponent(activeVault.id)}/index/search?q=${encodeURIComponent(q)}`,
-      );
-      setIndexSearchResponse(response);
-    } catch (error) {
-      setIndexSearchResponse(null);
-      setIndexSearchError(errorMessage(error));
-    } finally {
-      setIndexSearchLoading(false);
-    }
-  }, [activeVault, indexSearchQuery]);
+    void refreshIndexFilter("sidebar", sidebarTreeState.indexFilter);
+  }, [refreshIndexFilter, sidebarTreeState.indexFilter]);
 
   useEffect(() => {
-    const id = window.setTimeout(() => void refreshIndexSearch(), 250);
+    void refreshIndexFilter("center", centerTreeState.indexFilter);
+  }, [refreshIndexFilter, centerTreeState.indexFilter]);
+
+  const refreshIndexSearch = useCallback(
+    async (placement: TreePlacement, query: string) => {
+      const q = query.trim();
+      if (!activeVault || !q) {
+        updateTreeState(placement, (state) => ({
+          ...state,
+          indexSearchResponse: null,
+          indexSearchError: null,
+          indexSearchLoading: false,
+        }));
+        return;
+      }
+      updateTreeState(placement, (state) => ({
+        ...state,
+        indexSearchLoading: true,
+        indexSearchError: null,
+      }));
+      try {
+        const response = await settingsApi<IndexSearchResponse>(
+          `/api/vaults/${encodeURIComponent(activeVault.id)}/index/search?q=${encodeURIComponent(q)}`,
+        );
+        updateTreeState(placement, (state) => ({ ...state, indexSearchResponse: response }));
+      } catch (error) {
+        updateTreeState(placement, (state) => ({
+          ...state,
+          indexSearchResponse: null,
+          indexSearchError: errorMessage(error),
+        }));
+      } finally {
+        updateTreeState(placement, (state) => ({ ...state, indexSearchLoading: false }));
+      }
+    },
+    [activeVault, updateTreeState],
+  );
+
+  useEffect(() => {
+    const id = window.setTimeout(
+      () => void refreshIndexSearch("sidebar", sidebarTreeState.indexSearchQuery),
+      250,
+    );
     return () => window.clearTimeout(id);
-  }, [refreshIndexSearch]);
+  }, [refreshIndexSearch, sidebarTreeState.indexSearchQuery]);
+
+  useEffect(() => {
+    const id = window.setTimeout(
+      () => void refreshIndexSearch("center", centerTreeState.indexSearchQuery),
+      250,
+    );
+    return () => window.clearTimeout(id);
+  }, [refreshIndexSearch, centerTreeState.indexSearchQuery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -703,13 +814,13 @@ function VaultApp() {
     const path = parent ? `${parent}/${safe}.md` : `${safe}.md`;
     const ok = await createFile(path);
     if (!ok) return;
-    setActivePath(path);
+    openDocumentInCenter(path);
     if (isMobile) setMobileTab("edit");
   };
   const handleNewIndexNote = async () => {
     const ok = await createFile("index.md");
     if (!ok) return;
-    setActivePath("index.md");
+    openDocumentInCenter("index.md");
     if (isMobile) setMobileTab("edit");
   };
   const handleNewFolder = async (parent: string) => {
@@ -731,7 +842,7 @@ function VaultApp() {
     const next = window.prompt("Rename to (full path)", activePath);
     if (!next || next === activePath) return;
     const ok = await rename(activePath, next);
-    if (ok) setActivePath(next);
+    if (ok) openDocumentInCenter(next);
   };
   const openSettings = () => setShowSettings(true);
   const handleSaveAsNew = async () => {
@@ -740,7 +851,7 @@ function VaultApp() {
     if (!next || next === activePath) return;
     const ok = await createFileWithContent(next, buffer);
     if (!ok) return;
-    setActivePath(next);
+    openDocumentInCenter(next);
     setSavedSnapshot(buffer);
     setExternalNotice(null);
     setDiffReview(null);
@@ -769,6 +880,7 @@ function VaultApp() {
   const handleCloseDeletedBuffer = async () => {
     await refreshActiveVault();
     setActivePath(null);
+    setCenterWorkspaceView(lastNonDocumentCenterView ?? "empty");
     setExternalNotice(null);
     setDiffReview(null);
     setConflictMessage(null);
@@ -814,174 +926,244 @@ function VaultApp() {
     await refreshVaultStatus(activePath);
   };
 
-  // Search results
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return null;
-    return Object.values(index.notes)
-      .map((n) => {
-        const inName = n.path.toLowerCase().includes(q);
-        const inBody = n.body.toLowerCase().includes(q);
-        const inTags = n.tags.some((t) => t.toLowerCase().includes(q));
-        if (!inName && !inBody && !inTags) return null;
-        return { note: n, inName, inBody, inTags };
-      })
-      .filter(Boolean) as {
-      note: (typeof index.notes)[string];
-      inName: boolean;
-      inBody: boolean;
-      inTags: boolean;
-    }[];
-  }, [query, index]);
+  const buildLocalSearchResults = useCallback(
+    (rawQuery: string): LocalSearchResult[] | null => {
+      const q = rawQuery.trim().toLowerCase();
+      if (!q) return null;
+      return Object.values(index.notes).reduce<LocalSearchResult[]>((results, note) => {
+        const inName = note.path.toLowerCase().includes(q);
+        const inBody = note.body.toLowerCase().includes(q);
+        const inTags = note.tags.some((tag) => tag.toLowerCase().includes(q));
+        if (inName || inBody || inTags) {
+          results.push({ note, inName, inBody, inTags });
+        }
+        return results;
+      }, []);
+    },
+    [index],
+  );
+
+  const sidebarResults = useMemo(
+    () => buildLocalSearchResults(sidebarTreeState.query),
+    [buildLocalSearchResults, sidebarTreeState.query],
+  );
+  const centerResults = useMemo(
+    () => buildLocalSearchResults(centerTreeState.query),
+    [buildLocalSearchResults, centerTreeState.query],
+  );
 
   const totalIssues = issues.length;
   const errorCount = issues.filter((i) => i.severity === "error").length;
 
-  const graphData = useMemo(
-    () => (vaultMode === "graph" ? buildGraph(index, issues) : null),
-    [vaultMode, index, issues],
-  );
+  const graphData = useMemo(() => buildGraph(index, issues), [index, issues]);
   const suppressedActiveConflict =
     Boolean(activePath) &&
     Boolean(suppressedConflict) &&
     suppressedConflict?.path === activePath &&
     suppressedConflict.hash === vaultStatus?.file?.hash;
+  const showLeftPaneContent = !leftPaneTucked && leftPaneWidth >= SIDE_PANE_CONTENT_MIN;
+  const showRightPaneContent = !rightPaneTucked && rightPaneWidth >= SIDE_PANE_CONTENT_MIN;
 
   // ----- shared pane content -----
+  const renderTreePaneContent = (
+    placement: TreePlacement,
+    state: TreeUiState,
+    results: typeof sidebarResults,
+  ) => (
+    <>
+      <div className="p-2 border-b space-y-2 shrink-0">
+        <div className="relative">
+          <Search className="size-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={state.query}
+            onChange={(e) =>
+              updateTreeState(placement, (current) => ({ ...current, query: e.target.value }))
+            }
+            placeholder="Search files, text, tags…"
+            className="h-8 pl-7 text-xs"
+          />
+        </div>
+        <div className="flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 flex-1 text-xs"
+            onClick={() => void handleNewFile("")}
+          >
+            New file
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 flex-1 text-xs"
+            onClick={() => void handleNewFolder("")}
+          >
+            New folder
+          </Button>
+        </div>
+        <TreeUtilityPanel
+          title="Index search"
+          description="Non-semantic search over indexed structure."
+          badge={state.indexSearchResponse?.total ?? 0}
+          collapsed={state.searchCollapsed}
+          onToggle={() =>
+            updateTreeState(placement, (current) => ({
+              ...current,
+              searchCollapsed: !current.searchCollapsed,
+            }))
+          }
+        >
+          <IndexSearchPanel
+            query={state.indexSearchQuery}
+            response={state.indexSearchResponse}
+            loading={state.indexSearchLoading}
+            error={state.indexSearchError}
+            hideHeader
+            onQueryChange={(query) =>
+              updateTreeState(placement, (current) => ({ ...current, indexSearchQuery: query }))
+            }
+            onRefresh={() => refreshIndexSearch(placement, state.indexSearchQuery)}
+            onPick={(path) => {
+              inspectPath(path);
+            }}
+          />
+        </TreeUtilityPanel>
+        <TreeUtilityPanel
+          title="Index filters"
+          description={`Read-only structure: ${INDEX_FILTER_OPTIONS.find((option) => option.value === state.indexFilter)?.label ?? state.indexFilter}.`}
+          badge={state.indexFilterResponse?.total ?? 0}
+          collapsed={state.filtersCollapsed}
+          onToggle={() =>
+            updateTreeState(placement, (current) => ({
+              ...current,
+              filtersCollapsed: !current.filtersCollapsed,
+            }))
+          }
+        >
+          <IndexFiltersPanel
+            filter={state.indexFilter}
+            response={state.indexFilterResponse}
+            loading={state.indexFilterLoading}
+            error={state.indexFilterError}
+            hideHeader
+            onFilterChange={(filter) =>
+              updateTreeState(placement, (current) => ({ ...current, indexFilter: filter }))
+            }
+            onRefresh={() => refreshIndexFilter(placement, state.indexFilter)}
+            onPick={(path) => {
+              inspectPath(path);
+            }}
+          />
+        </TreeUtilityPanel>
+        {activeVault && !files["index.md"] && (
+          <TreeUtilityPanel
+            title="Optional homepage note"
+            description="index.md is optional and treated as a normal note."
+            collapsed={state.homepageCollapsed}
+            onToggle={() =>
+              updateTreeState(placement, (current) => ({
+                ...current,
+                homepageCollapsed: !current.homepageCollapsed,
+              }))
+            }
+          >
+            <div className="text-muted-foreground">
+              AREPO indexes this vault automatically; `index.md` is only a normal note.
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => void handleNewIndexNote()}
+            >
+              Create index.md
+            </Button>
+          </TreeUtilityPanel>
+        )}
+      </div>
+      <div className="flex-1 min-h-0 overflow-auto p-2">
+        {results ? (
+          <SearchResults
+            results={results}
+            onPick={(p) => {
+              selectPath(p);
+              updateTreeState(placement, (current) => ({ ...current, query: "" }));
+              if (isMobile) setMobileTab("edit");
+            }}
+          />
+        ) : (
+          <FileTree
+            paths={paths}
+            folders={vault.folders}
+            activePath={activePath}
+            dirtyPaths={dirtyPaths}
+            expanded={expanded}
+            onToggleFolder={toggleFolder}
+            onSelect={(p) => {
+              selectPath(p);
+              if (isMobile) setMobileTab("edit");
+            }}
+            onNewFile={handleNewFile}
+            onNewFolder={handleNewFolder}
+          />
+        )}
+      </div>
+    </>
+  );
+
+  const renderGraphPaneContent = (placement: "sidebar" | "center") => (
+    <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+      <VaultGraph
+        key={placement}
+        data={graphData}
+        activePath={activePath}
+        selectedPaths={selectedPaths}
+        onSelectionChange={handleGraphSelectionChange}
+        onSelect={(p) => {
+          inspectPath(p, "edit");
+        }}
+        onOpenPreview={(p) => {
+          inspectPath(p, "preview");
+          if (isMobile) setMobileTab("preview");
+          else setCenterTab("preview");
+        }}
+      />
+    </div>
+  );
+
   const vaultPane = (
-    <div className="flex flex-col min-h-0 h-full">
-      <div className="p-2 border-b shrink-0 flex gap-1">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      <div className="flex shrink-0 gap-1 overflow-hidden border-b p-2">
         <SegBtn active={vaultMode === "tree"} onClick={() => setVaultMode("tree")}>
           <FolderTree className="size-3.5" /> Tree
         </SegBtn>
         <SegBtn active={vaultMode === "graph"} onClick={() => setVaultMode("graph")}>
           <Network className="size-3.5" /> Graph
         </SegBtn>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto hidden h-7 px-2 text-xs md:inline-flex"
+          onClick={() => assignCenterView(vaultMode)}
+          title={`Show ${vaultMode} in center workspace`}
+        >
+          Center
+        </Button>
       </div>
-      {vaultMode === "tree" ? (
-        <>
-          <div className="p-2 border-b space-y-2 shrink-0">
-            <div className="relative">
-              <Search className="size-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search files, text, tags…"
-                className="h-8 pl-7 text-xs"
-              />
-            </div>
-            <div className="flex gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 flex-1 text-xs"
-                onClick={() => void handleNewFile("")}
-              >
-                New file
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 flex-1 text-xs"
-                onClick={() => void handleNewFolder("")}
-              >
-                New folder
-              </Button>
-            </div>
-            <IndexSearchPanel
-              query={indexSearchQuery}
-              response={indexSearchResponse}
-              loading={indexSearchLoading}
-              error={indexSearchError}
-              onQueryChange={setIndexSearchQuery}
-              onRefresh={refreshIndexSearch}
-              onPick={(path) => {
-                inspectPath(path);
-              }}
-            />
-            <IndexFiltersPanel
-              filter={indexFilter}
-              response={indexFilterResponse}
-              loading={indexFilterLoading}
-              error={indexFilterError}
-              onFilterChange={setIndexFilter}
-              onRefresh={refreshIndexFilter}
-              onPick={(path) => {
-                inspectPath(path);
-              }}
-            />
-            {activeVault && !files["index.md"] && (
-              <div className="rounded border bg-muted/30 px-2 py-2 text-xs space-y-2">
-                <div>
-                  <div className="font-medium">Optional homepage note</div>
-                  <div className="text-muted-foreground">
-                    AREPO indexes this vault automatically; `index.md` is only a normal note.
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => void handleNewIndexNote()}
-                >
-                  Create index.md
-                </Button>
-              </div>
-            )}
-          </div>
-          <div className="flex-1 min-h-0 overflow-auto p-2">
-            {results ? (
-              <SearchResults
-                results={results}
-                onPick={(p) => {
-                  selectPath(p);
-                  setQuery("");
-                  if (isMobile) setMobileTab("edit");
-                }}
-              />
-            ) : (
-              <FileTree
-                paths={paths}
-                folders={vault.folders}
-                activePath={activePath}
-                dirtyPaths={dirtyPaths}
-                expanded={expanded}
-                onToggleFolder={toggleFolder}
-                onSelect={(p) => {
-                  selectPath(p);
-                  if (isMobile) setMobileTab("edit");
-                }}
-                onNewFile={handleNewFile}
-                onNewFolder={handleNewFolder}
-              />
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="flex-1 min-h-0">
-          {graphData && (
-            <VaultGraph
-              data={graphData}
-              activePath={activePath}
-              selectedPaths={selectedPaths}
-              onSelectionChange={handleGraphSelectionChange}
-              onSelect={(p) => {
-                inspectPath(p, "edit");
-              }}
-              onOpenPreview={(p) => {
-                inspectPath(p, "preview");
-                if (isMobile) setMobileTab("preview");
-                else setCenterTab("preview");
-              }}
-            />
-          )}
-        </div>
-      )}
+      {vaultMode === "tree"
+        ? renderTreePaneContent("sidebar", sidebarTreeState, sidebarResults)
+        : renderGraphPaneContent("sidebar")}
     </div>
   );
 
   const fileActionBar = (
-    <div className="h-10 shrink-0 border-b flex items-center gap-2 px-3 text-xs">
+    <div className="flex h-10 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b px-3 text-xs">
+      <SegBtn active={centerTab === "edit"} onClick={() => setCenterTab("edit")}>
+        <Pencil className="size-3.5" /> Edit
+      </SegBtn>
+      <SegBtn active={centerTab === "preview"} onClick={() => setCenterTab("preview")}>
+        <Eye className="size-3.5" /> Preview
+      </SegBtn>
       <FileText className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="font-mono truncate min-w-0 flex-1">{activePath ?? "—"}</span>
       {dirty && <span className="text-amber-500 font-medium shrink-0">●</span>}
@@ -1033,24 +1215,24 @@ function VaultApp() {
   );
 
   const editorPane = (
-    <div className="flex flex-col min-h-0 h-full">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {fileActionBar}
       <textarea
         ref={editorRef}
         spellCheck={false}
         value={buffer}
         onChange={(e) => setBuffer(e.target.value)}
-        className="flex-1 min-h-0 resize-none w-full p-4 bg-background text-foreground font-mono text-[13px] leading-relaxed outline-none"
+        className="min-h-0 min-w-0 flex-1 resize-none bg-background p-4 font-mono text-[13px] leading-relaxed text-foreground outline-none"
         placeholder={activePath ? "" : "Select or create a file to start editing."}
       />
     </div>
   );
 
   const previewPane = (
-    <div className="flex flex-col min-h-0 h-full">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {fileActionBar}
       <div
-        className="flex-1 min-h-0 overflow-auto p-4 prose-vault"
+        className="prose-vault min-h-0 min-w-0 flex-1 overflow-auto p-4"
         onClick={onPreviewClick}
         dangerouslySetInnerHTML={{ __html: previewBody }}
       />
@@ -1058,7 +1240,7 @@ function VaultApp() {
   );
 
   const emptyDocumentPane = (
-    <div className="h-full min-h-0 flex items-center justify-center p-6 text-center">
+    <div className="flex h-full min-h-0 min-w-0 items-center justify-center overflow-hidden p-6 text-center">
       <div className="space-y-1">
         <FileText className="mx-auto size-5 text-muted-foreground" />
         <div className="text-sm font-medium">No document open</div>
@@ -1069,11 +1251,43 @@ function VaultApp() {
     </div>
   );
 
+  const centerModeBar = (
+    <div className="flex h-9 min-w-0 shrink-0 items-center gap-1 overflow-hidden border-b px-2">
+      <SegBtn active={centerWorkspaceView === "tree"} onClick={() => assignCenterView("tree")}>
+        <FolderTree className="size-3.5" /> Tree
+      </SegBtn>
+      <SegBtn active={centerWorkspaceView === "graph"} onClick={() => assignCenterView("graph")}>
+        <Network className="size-3.5" /> Graph
+      </SegBtn>
+      <span className="ml-auto text-[11px] text-muted-foreground hidden lg:inline">
+        Center workspace
+      </span>
+    </div>
+  );
+
+  const centerTreePane = (
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      {centerModeBar}
+      {renderTreePaneContent("center", centerTreeState, centerResults)}
+    </div>
+  );
+
+  const centerGraphPane = (
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      {centerModeBar}
+      {renderGraphPaneContent("center")}
+    </div>
+  );
+
   const centerPane = activePath
     ? centerTab === "edit"
       ? editorPane
       : previewPane
-    : emptyDocumentPane;
+    : centerWorkspaceView === "tree"
+      ? centerTreePane
+      : centerWorkspaceView === "graph"
+        ? centerGraphPane
+        : emptyDocumentPane;
 
   const inspectorPane = (
     <IndexInspectPanel
@@ -1374,11 +1588,15 @@ function VaultApp() {
               </button>
             )}
             <aside
-              className="min-h-0 shrink-0 overflow-hidden"
-              aria-hidden={leftPaneTucked}
-              style={{ width: leftPaneTucked ? 0 : leftPaneWidth }}
+              className="relative min-h-0 min-w-0 shrink-0 overflow-hidden"
+              aria-hidden={!showLeftPaneContent}
+              style={{
+                width: leftPaneTucked ? 0 : leftPaneWidth,
+                flexBasis: leftPaneTucked ? 0 : leftPaneWidth,
+                maxWidth: leftPaneTucked ? 0 : leftPaneWidth,
+              }}
             >
-              {!leftPaneTucked && vaultPane}
+              {showLeftPaneContent && vaultPane}
             </aside>
             <div
               role="separator"
@@ -1393,16 +1611,8 @@ function VaultApp() {
             >
               <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-border group-hover:bg-primary/50" />
             </div>
-            <section className="flex flex-1 flex-col min-h-0 border-r" style={{ minWidth: 0 }}>
-              <div className="h-9 shrink-0 border-b flex items-center gap-1 px-2">
-                <SegBtn active={centerTab === "edit"} onClick={() => setCenterTab("edit")}>
-                  <Pencil className="size-3.5" /> Edit
-                </SegBtn>
-                <SegBtn active={centerTab === "preview"} onClick={() => setCenterTab("preview")}>
-                  <Eye className="size-3.5" /> Preview
-                </SegBtn>
-              </div>
-              <div className="flex-1 min-h-0">{centerPane}</div>
+            <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-r">
+              <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{centerPane}</div>
             </section>
             <div
               role="separator"
@@ -1418,26 +1628,30 @@ function VaultApp() {
               <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-border group-hover:bg-primary/50" />
             </div>
             <aside
-              className="min-h-0 shrink-0 overflow-hidden"
-              aria-hidden={rightPaneTucked}
-              style={{ width: rightPaneTucked ? 0 : rightPaneWidth }}
+              className="relative min-h-0 min-w-0 shrink-0 overflow-hidden"
+              aria-hidden={!showRightPaneContent}
+              style={{
+                width: rightPaneTucked ? 0 : rightPaneWidth,
+                flexBasis: rightPaneTucked ? 0 : rightPaneWidth,
+                maxWidth: rightPaneTucked ? 0 : rightPaneWidth,
+              }}
             >
-              {!rightPaneTucked && inspectorPane}
+              {showRightPaneContent && inspectorPane}
             </aside>
           </div>
 
           {/* Mobile: single-view tabbed */}
-          <main className="flex-1 min-h-0 md:hidden">
-            <div className="h-full" hidden={mobileTab !== "vault"}>
+          <main className="min-h-0 min-w-0 flex-1 overflow-hidden md:hidden">
+            <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "vault"}>
               {vaultPane}
             </div>
-            <div className="h-full" hidden={mobileTab !== "edit"}>
+            <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "edit"}>
               {activePath ? editorPane : emptyDocumentPane}
             </div>
-            <div className="h-full" hidden={mobileTab !== "preview"}>
+            <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "preview"}>
               {activePath ? previewPane : emptyDocumentPane}
             </div>
-            <div className="h-full" hidden={mobileTab !== "inspect"}>
+            <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "inspect"}>
               {inspectorPane}
             </div>
           </main>
@@ -1482,7 +1696,7 @@ function SegBtn({
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
@@ -1549,19 +1763,21 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border-b last:border-b-0">
-      <div className="px-3 py-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+    <div className="min-w-0 overflow-hidden border-b last:border-b-0">
+      <div className="flex min-w-0 items-center gap-1.5 overflow-hidden px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {icon}
         {title}
         {typeof count === "number" && <span className="font-mono normal-case">({count})</span>}
       </div>
-      <div className="px-3 pb-3">{children}</div>
+      <div className="min-w-0 overflow-hidden px-3 pb-3">{children}</div>
     </div>
   );
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="text-xs text-muted-foreground italic">{children}</div>;
+  return (
+    <div className="min-w-0 overflow-hidden text-xs italic text-muted-foreground">{children}</div>
+  );
 }
 
 function IndexInspectPanel({
@@ -1580,7 +1796,7 @@ function IndexInspectPanel({
   onAnchor,
 }: IndexInspectPanelProps) {
   return (
-    <div className="flex flex-col min-h-0 h-full overflow-auto">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-auto">
       <Section
         icon={<Info className="size-3.5" />}
         title="Index inspect"
@@ -1640,7 +1856,7 @@ function IndexInspectPanel({
 
 function ErrorMessage({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+    <div className="min-w-0 overflow-hidden rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
       {children}
     </div>
   );
@@ -1657,7 +1873,7 @@ function BacklinkList({
 }) {
   if (backlinks.length === 0) return <Empty>No notes link here.</Empty>;
   return (
-    <ul className="space-y-1">
+    <ul className="min-w-0 space-y-1 overflow-hidden">
       {backlinks.map((backlink, index) => {
         const from = noteTitles[backlink.fromPath];
         return (
@@ -1682,7 +1898,7 @@ function BacklinkList({
 function ValidationIssueList({ issues }: { issues: VaultInspectIssue[] }) {
   if (issues.length === 0) return <Empty>No issues.</Empty>;
   return (
-    <ul className="space-y-1">
+    <ul className="min-w-0 space-y-1 overflow-hidden">
       {issues.map((issue, index) => (
         <li
           key={`${issue.kind}-${index}`}
@@ -1700,7 +1916,7 @@ function ValidationIssueList({ issues }: { issues: VaultInspectIssue[] }) {
 
 function CombinedMetadataDetails({ metadata }: { metadata: CombinedInspectMetadata }) {
   return (
-    <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+    <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
       <dt className="text-muted-foreground">files</dt>
       <dd>{metadata.fileCount}</dd>
       <dt className="text-muted-foreground">total size</dt>
@@ -1739,7 +1955,7 @@ function SingleMetadataDetails({
   fileMeta?: { size: number };
 }) {
   return (
-    <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+    <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
       <dt className="text-muted-foreground">title</dt>
       <dd className="truncate">{note.title}</dd>
       <dt className="text-muted-foreground">path</dt>
@@ -1781,8 +1997,8 @@ function InspectDetails({
   onAnchor: (path: string, anchor: string) => void;
 }) {
   return (
-    <div className="space-y-3 text-xs">
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+    <div className="min-w-0 space-y-3 overflow-hidden text-xs">
+      <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
         <dt className="text-muted-foreground">source</dt>
         <dd className="font-mono">{data.source}</dd>
         <dt className="text-muted-foreground">title</dt>
@@ -1838,7 +2054,7 @@ function InspectDetails({
         {data.backlinks.map((backlink, index) => (
           <button
             key={`${backlink.fromPath}-${index}`}
-            className="w-full rounded px-2 py-1 text-left hover:bg-muted"
+            className="w-full min-w-0 rounded px-2 py-1 text-left hover:bg-muted"
             onClick={() => onPick(backlink.fromPath)}
           >
             <div className="truncate font-medium">{backlink.fromTitle}</div>
@@ -1875,7 +2091,7 @@ function InspectDetails({
             {data.duplicateId.paths.map((path) => (
               <button
                 key={path}
-                className="block w-full rounded px-2 py-1 text-left font-mono text-[10px] hover:bg-muted"
+                className="block w-full min-w-0 truncate rounded px-2 py-1 text-left font-mono text-[10px] hover:bg-muted"
                 onClick={() => onPick(path)}
                 title={`Inspect ${path}`}
               >
@@ -1937,9 +2153,13 @@ function InspectGroup({
 }) {
   const items = Children.toArray(children).filter(Boolean);
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5 overflow-hidden">
       <div className="text-[10px] font-semibold uppercase text-muted-foreground">{title}</div>
-      {items.length ? <div className="space-y-1">{items}</div> : <Empty>{empty}</Empty>}
+      {items.length ? (
+        <div className="min-w-0 space-y-1 overflow-hidden">{items}</div>
+      ) : (
+        <Empty>{empty}</Empty>
+      )}
     </div>
   );
 }
@@ -1975,7 +2195,7 @@ function InspectLinkRow({
   }
   return (
     <button
-      className="w-full rounded px-2 py-1 text-left hover:bg-muted"
+      className="w-full min-w-0 rounded px-2 py-1 text-left hover:bg-muted"
       onClick={() => onPick(link.targetPath!)}
     >
       {content}
@@ -1987,22 +2207,18 @@ function SearchResults({
   results,
   onPick,
 }: {
-  results: {
-    note: { path: string; title: string; tags: string[] };
-    inName: boolean;
-    inBody: boolean;
-    inTags: boolean;
-  }[];
+  results: LocalSearchResult[];
   onPick: (path: string) => void;
 }) {
-  if (!results.length) return <div className="text-xs text-muted-foreground p-2">No matches.</div>;
+  if (!results.length)
+    return <div className="overflow-hidden p-2 text-xs text-muted-foreground">No matches.</div>;
   return (
-    <ul className="space-y-1">
+    <ul className="min-w-0 space-y-1 overflow-hidden">
       {results.map((r) => (
         <li key={r.note.path}>
           <button
             onClick={() => onPick(r.note.path)}
-            className="w-full text-left rounded px-2 py-1.5 hover:bg-muted"
+            className="w-full min-w-0 rounded px-2 py-1.5 text-left hover:bg-muted"
           >
             <div className="text-xs font-medium truncate">{r.note.title}</div>
             <div className="text-[10px] text-muted-foreground font-mono truncate">
@@ -2032,11 +2248,53 @@ function SearchResults({
   );
 }
 
+function TreeUtilityPanel({
+  title,
+  description,
+  badge,
+  collapsed,
+  onToggle,
+  children,
+}: {
+  title: string;
+  description: string;
+  badge?: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="min-w-0 overflow-hidden rounded border bg-muted/20 text-xs">
+      <button
+        type="button"
+        className="flex w-full min-w-0 items-center gap-2 overflow-hidden px-2 py-2 text-left hover:bg-muted/50"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium">{title}</span>
+          <span className="block truncate text-muted-foreground">{description}</span>
+        </span>
+        {badge !== undefined && (
+          <Badge variant="outline" className="font-mono">
+            {badge}
+          </Badge>
+        )}
+        <span className="font-mono text-[10px] text-muted-foreground">{collapsed ? "+" : "-"}</span>
+      </button>
+      {!collapsed && (
+        <div className="min-w-0 space-y-2 overflow-hidden border-t px-2 py-2">{children}</div>
+      )}
+    </div>
+  );
+}
+
 function IndexSearchPanel({
   query,
   response,
   loading,
   error,
+  hideHeader = false,
   onQueryChange,
   onRefresh,
   onPick,
@@ -2045,24 +2303,32 @@ function IndexSearchPanel({
   response: IndexSearchResponse | null;
   loading: boolean;
   error: string | null;
+  hideHeader?: boolean;
   onQueryChange: (query: string) => void;
   onRefresh: () => Promise<void>;
   onPick: (path: string) => void;
 }) {
   const trimmed = query.trim();
   return (
-    <div className="rounded border bg-muted/20 px-2 py-2 text-xs space-y-2">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="font-medium">Index search</div>
-          <div className="text-muted-foreground">Non-semantic search over indexed structure.</div>
+    <div
+      className={cn(
+        "min-w-0 space-y-2 overflow-hidden text-xs",
+        !hideHeader && "rounded border bg-muted/20 px-2 py-2",
+      )}
+    >
+      {!hideHeader && (
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">Index search</div>
+            <div className="text-muted-foreground">Non-semantic search over indexed structure.</div>
+          </div>
+          <Badge variant="outline" className="font-mono">
+            {response?.total ?? 0}
+          </Badge>
         </div>
-        <Badge variant="outline" className="font-mono">
-          {response?.total ?? 0}
-        </Badge>
-      </div>
+      )}
       <form
-        className="flex gap-1"
+        className="flex min-w-0 gap-1"
         onSubmit={(event) => {
           event.preventDefault();
           void onRefresh();
@@ -2089,11 +2355,11 @@ function IndexSearchPanel({
       ) : loading && !response ? (
         <div className="text-muted-foreground">Searching machine index...</div>
       ) : response && response.results.length > 0 ? (
-        <ul className="max-h-56 overflow-auto space-y-1 pr-1">
+        <ul className="max-h-56 min-w-0 space-y-1 overflow-auto pr-1">
           {response.results.map((result) => (
             <li key={result.id}>
               <button
-                className="w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+                className="w-full min-w-0 rounded px-2 py-1.5 text-left hover:bg-muted"
                 onClick={() => onPick(result.path)}
               >
                 <div className="flex items-center gap-1">
@@ -2137,6 +2403,7 @@ function IndexFiltersPanel({
   response,
   loading,
   error,
+  hideHeader = false,
   onFilterChange,
   onRefresh,
   onPick,
@@ -2145,23 +2412,31 @@ function IndexFiltersPanel({
   response: IndexFilterResponse | null;
   loading: boolean;
   error: string | null;
+  hideHeader?: boolean;
   onFilterChange: (filter: IndexFilterKind) => void;
   onRefresh: () => Promise<void>;
   onPick: (path: string) => void;
 }) {
   const selected = INDEX_FILTER_OPTIONS.find((option) => option.value === filter);
   return (
-    <div className="rounded border bg-muted/20 px-2 py-2 text-xs space-y-2">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="font-medium">Index filters</div>
-          <div className="text-muted-foreground">Read-only structure from the machine index.</div>
+    <div
+      className={cn(
+        "min-w-0 space-y-2 overflow-hidden text-xs",
+        !hideHeader && "rounded border bg-muted/20 px-2 py-2",
+      )}
+    >
+      {!hideHeader && (
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">Index filters</div>
+            <div className="text-muted-foreground">Read-only structure from the machine index.</div>
+          </div>
+          <Badge variant="outline" className="font-mono">
+            {response?.total ?? 0}
+          </Badge>
         </div>
-        <Badge variant="outline" className="font-mono">
-          {response?.total ?? 0}
-        </Badge>
-      </div>
-      <div className="flex gap-1">
+      )}
+      <div className="flex min-w-0 gap-1">
         <select
           value={filter}
           onChange={(event) => onFilterChange(event.target.value as IndexFilterKind)}
@@ -2191,11 +2466,11 @@ function IndexFiltersPanel({
       ) : loading && !response ? (
         <div className="text-muted-foreground">Loading filter results...</div>
       ) : response && response.results.length > 0 ? (
-        <ul className="max-h-56 overflow-auto space-y-1 pr-1">
+        <ul className="max-h-56 min-w-0 space-y-1 overflow-auto pr-1">
           {response.results.map((result) => (
             <li key={result.id}>
               <button
-                className="w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+                className="w-full min-w-0 rounded px-2 py-1.5 text-left hover:bg-muted"
                 onClick={() => onPick(result.path)}
               >
                 <div className="flex items-center gap-1">

@@ -214,6 +214,59 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 12. Expected result: the document closes without writing to disk, deleting the
     file, or renaming the file.
 
+### Center Tree And Graph Assignment
+
+Run this on a desktop-width browser window.
+
+1. With no document open, set the left vault pane to `Tree` and click `Center`.
+2. Expected result: Tree appears in the central workspace without opening a
+   document.
+3. Open `Notes/note.md` from the center Tree.
+4. Expected result: the document editor/preview takes over the center
+   workspace.
+5. Click `Close` in the document action bar.
+6. Expected result: the center Tree view is restored.
+7. Set the left vault pane to `Graph` and click `Center`.
+8. Expected result: Graph appears in the central workspace without opening a
+   document.
+9. Select a graph node in the center Graph.
+10. Expected result: existing graph selection, inspect, and navigation behavior
+    still works.
+11. Open a graph node in preview.
+12. Expected result: the document preview takes over the center workspace.
+13. Click `Close`.
+14. Expected result: the center Graph view is restored.
+15. In the center Tree, confirm `Index search`, `Index filters`, and
+    `Optional homepage note` can collapse and expand.
+16. Expected result: collapsing these utility panels does not clear existing
+    results, and the actual file tree remains easy to reach without excessive
+    scrolling.
+17. Type a file search query in the sidebar Tree, then switch to the center
+    Tree.
+18. Expected result: the center Tree file search input does not mirror the
+    sidebar query.
+19. Type a different file search query in the center Tree.
+20. Expected result: the sidebar Tree query remains unchanged.
+21. Change the sidebar Index filter kind or search query, then inspect the
+    center Tree controls.
+22. Expected result: center Index filter/search state remains independent.
+23. Change the center Index filter kind or search query, then inspect the
+    sidebar controls.
+24. Expected result: sidebar Index filter/search state remains independent.
+25. If both sidebar Graph and center Graph are visible, change a graph-local
+    control or viewport in one placement.
+26. Expected result: the other graph placement does not unintentionally mirror
+    that local control state.
+27. With no Tree or Graph center view assigned, open and close a document.
+28. Expected result: closing returns to the neutral `No document open` center
+    state.
+29. Use Index search, Index filters, backlinks, or outgoing links to open a
+    document.
+30. Expected result: the document opens in the center workspace and closing it
+    restores the prior center Tree/Graph view when one was assigned.
+31. Expected result: side Tree/Graph navigation, resizable/tuckable panes,
+    diagnostics, edit/preview, save, rename, and close behavior remain intact.
+
 ### Resize Workspace Columns
 
 Run this on a desktop-width browser window.
@@ -276,12 +329,25 @@ Run this on a desktop-width browser window.
 35. Switch between Tree and Graph, then resize/tuck both side columns.
 36. Expected result: Tree navigation, Graph view, graph selection, and graph
     multi-select metadata remain usable.
-37. Use Index search, Index filters, Index inspect, backlinks, outgoing links,
+37. Drag the left and right pane borders until they meet or nearly meet in the
+    middle, including cases where the opposite pane is tucked.
+38. Expected result: the center workspace may become extremely narrow, but Tree,
+    Graph, document controls, editor text, preview content, inspect data,
+    backlinks, metadata, Index search, and Index filters do not bleed outside
+    their assigned panes.
+39. While panes are extremely narrow, confirm resize handles and tapered restore
+    tabs remain visible and usable.
+40. Expected result: no horizontal artifact lines, ghost labels, floating text,
+    or overlapping controls appear outside pane bounds.
+41. Return both side panes to normal widths.
+42. Expected result: normal content returns cleanly and all Tree, Graph, Index
+    inspect, backlink, metadata, and document controls work as before.
+43. Use Index search, Index filters, Index inspect, backlinks, outgoing links,
     and Local Node Diagnostics after resizing.
-38. Expected result: those read-only mapping and diagnostics surfaces remain
+44. Expected result: those read-only mapping and diagnostics surfaces remain
     visible and usable.
-39. Refresh the page.
-40. Expected result: column widths and tucked state may reset. Layout
+45. Refresh the page.
+46. Expected result: column widths and tucked state may reset. Layout
     persistence is not part of AREPO V1 yet.
 
 ## 7. Confirm Disk Persistence
