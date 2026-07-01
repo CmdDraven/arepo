@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Children, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Database,
@@ -119,19 +119,24 @@ function VaultApp() {
   const [handledVaultChangeAt, setHandledVaultChangeAt] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const isMobile = useIsMobile();
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") return "light";
-    return (localStorage.getItem("vault:theme") as "light" | "dark") || "light";
-  });
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [themeHydrated, setThemeHydrated] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const selfWriteSuppressionRef = useRef<{ path: string; content: string; until: number } | null>(
     null,
   );
 
   useEffect(() => {
+    const stored = localStorage.getItem("vault:theme");
+    if (stored === "light" || stored === "dark") setTheme(stored);
+    setThemeHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!themeHydrated) return;
     document.documentElement.classList.toggle("dark", theme === "dark");
     localStorage.setItem("vault:theme", theme);
-  }, [theme]);
+  }, [theme, themeHydrated]);
 
   // Load buffer when active file changes
   useEffect(() => {
@@ -921,9 +926,14 @@ function VaultApp() {
             size="sm"
             className="h-7 w-7 p-0"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            disabled={!themeHydrated}
             title="Toggle theme"
           >
-            {theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+            {!themeHydrated || theme === "dark" ? (
+              <Sun className="size-3.5" />
+            ) : (
+              <Moon className="size-3.5" />
+            )}
           </Button>
         </div>
       </header>
@@ -1584,7 +1594,7 @@ function InspectGroup({
   empty: string;
   children: React.ReactNode;
 }) {
-  const items = React.Children.toArray(children).filter(Boolean);
+  const items = Children.toArray(children).filter(Boolean);
   return (
     <div className="space-y-1.5">
       <div className="text-[10px] font-semibold uppercase text-muted-foreground">{title}</div>
