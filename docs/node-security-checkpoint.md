@@ -7,6 +7,48 @@ This document is not an implementation plan for exposing the current backend.
 AREPO V1 remains a local-only, unauthenticated Node backend. It binds to
 `127.0.0.1` by default and must not be exposed to untrusted networks.
 
+## Current Phase 4 Implementation Status
+
+Phase 4 is in progress. AREPO now has security design documents and inert
+backend scaffolding for future protected mode, but protected mode is not
+implemented.
+
+Implemented but inert:
+
+- Auth posture/config/status reporting: omitted auth config defaults to
+  `auth.mode = "disabled"`, and `/api/node/status` reports disabled auth with
+  no enforcement.
+- `backend/routePermissions.ts`: type-only future route permission inventory.
+- `backend/authPlanner.ts`: pure dry-run authorization planner for hypothetical
+  credentials and route policies.
+- `backend/credentialStore.ts`: inert credential metadata, app-data auth path,
+  and storage-boundary validation helpers.
+- `backend/authAudit.ts`: inert audit event types plus JSONL serialize, parse,
+  append, and read helpers.
+- `backend/authRevocation.ts`: inert revocation planning helpers for
+  credentials, token verifiers, browser sessions, node-secret rotation, and
+  emergency local-only reset.
+- `backend/browserSecurityPolicy.ts`: inert browser request security policy
+  planner for origin, CSRF, credential posture, reduced status, and stronger
+  confirmation decisions.
+
+None of these modules enforce authentication, authorization, CSRF, origin
+checks, token/session validation, revocation, or audit logging in active request
+handling. They do not generate credentials, bearer tokens, sessions, pairing
+codes, or node registrations. They do not make LAN, reverse-proxy, or internet
+exposure safe.
+
+Current runtime behavior remains V1 local-node/no-auth behavior unless existing
+local configuration changes the bind address or vault list. The backend binds
+to localhost by default, uses configured vault roots only, treats CORS as a
+browser-origin filter rather than authentication, and keeps non-local binding
+unsafe with a no-auth warning.
+
+Protected-mode enforcement is still blocked on real credential creation and
+verification, session lifecycle, CSRF/origin enforcement, route authorization
+middleware, audit wiring, revocation checks, startup safety checks, and
+regression tests that cover protected and disabled-auth modes.
+
 ## Current V1 Security Posture
 
 - AREPO V1 is a local-node-only app.

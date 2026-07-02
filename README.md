@@ -47,8 +47,9 @@ registration.
 See [docs/roadmap.md](docs/roadmap.md) for the current local-node roadmap and
 [docs/local-node-self-host.md](docs/local-node-self-host.md) for single-node
 self-host notes. Phase 4 security design work is tracked in
-[docs/node-security-checkpoint.md](docs/node-security-checkpoint.md); it does
-not mean authentication or LAN-safe deployment is implemented.
+[docs/node-security-checkpoint.md](docs/node-security-checkpoint.md). Current
+Phase 4 protected-mode helpers are inert and do not mean authentication or
+LAN-safe deployment is implemented.
 
 ## Run Locally
 
@@ -230,6 +231,12 @@ in V1.
 - The backend binds to `127.0.0.1` by default.
 - There is no authentication yet. Do not expose the backend to a LAN or the
   internet.
+- `GET /api/node/status` reports auth posture. In V1 it should report disabled
+  auth, no enforcement, and protected mode unavailable.
+- Phase 4 includes inert protected-mode policy, planner, credential-store,
+  audit, revocation, and browser-security helpers, but no credentials, sessions,
+  bearer tokens, CSRF/origin enforcement, auth middleware, or authorization
+  enforcement are active.
 - Non-local binding requires explicit `AREPO_HOST` configuration and prints a
   startup warning.
 - CORS is restricted to the local frontend dev origins by default:
