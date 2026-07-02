@@ -292,7 +292,26 @@ full document body search.
 The Inspect panel can show read-only file-level machine-index details for a
 selected note or structural filter result, including headings, anchors, outgoing
 links, backlinks, broken outgoing links, duplicate IDs, duplicate anchors, and
-orphan status.
+orphan status. Backlink and outgoing-link rows can navigate to related notes
+without modifying Markdown files.
+
+Graph selection can show combined metadata for multiple selected notes,
+including selected file count, combined file size, tags, headings, outgoing
+links, backlinks, issue count, and selected paths.
+
+## Workspace UI
+
+The local UI includes a document close workflow that clears the central document
+workspace without modifying files. If the editor has unsaved changes, AREPO asks
+for confirmation before discarding the in-memory buffer.
+
+The desktop workspace has resizable and tuckable left and right panes. Tucked
+panes keep narrow resize strips and tapered restore tabs available, and the
+center workspace clips content when panes are resized to extreme widths.
+
+Tree and Graph views can be assigned to the center workspace. Opening a document
+takes over the center workspace; closing it restores the previously assigned
+Tree or Graph center view when one was set.
 
 ## Storage Reporting
 
@@ -351,6 +370,7 @@ selected vault id. It is not used as canonical note storage.
 
 ```bash
 npm run backend:test
+npm run frontend:test
 npm run lint
 npm run build
 ```
@@ -364,7 +384,8 @@ Use this before treating a local build as daily-driver ready:
 3. Start the frontend with `npm run dev` and open `http://localhost:8733`.
 4. Add the absolute path to `test-vault/` through Vault Settings.
 5. Run the manual acceptance checklist in `docs/manual-acceptance.md`.
-6. Run `npm run backend:test`, `npm run lint`, and `npm run build`.
+6. Run `npm run backend:test`, `npm run frontend:test`, `npm run lint`, and
+   `npm run build`.
 7. Confirm `.arepo/`, generated app data, `dist/`, `dist-backend/`, and
    `node_modules/` are not being committed.
 

@@ -52,17 +52,26 @@ network presence as trust.
 
 ## Phase 5: Mapping Improvements
 
-After local-node stability, improve mapping without AI:
+Status: in progress. The current local V1 now has the first read-only mapping
+surface built from the generated machine index:
 
-- backend-owned search
+- backend-owned, non-semantic structural index search
 - filters for broken links, orphans, tags, folders, duplicate IDs, and duplicate
   anchors
-- richer inspect views for selected graph nodes
-- better backlink and outgoing-link navigation
+- richer file-level Index inspect details for selected notes, graph selections,
+  and structural filter results
+- backlink and outgoing-link navigation
+- graph multi-selection metadata
+- center Tree/Graph workspace views for map inspection
 
-Graph, search, and index data must remain rebuildable from Markdown files. Any
-future database/cache must remain disposable unless it stores explicit user
-decisions or provenance records.
+This phase is still non-AI and local-only. Graph, search, inspect, and index data
+remain rebuildable from Markdown files. No database, vector store, federation,
+sync layer, remote node registration, or Markdown rewrite behavior is part of
+Phase 5.
+
+Likely next mapping work should stay read-only and incremental: polish navigation
+between map surfaces, improve empty/error states, and broaden tests around the
+existing generated-index helpers before adding new feature areas.
 
 ## Deferred Work
 
@@ -73,4 +82,3 @@ decisions or provenance records.
 - mdAtlas migration support
 - hosted auth, hosted databases, analytics, telemetry, or cloud storage
 - remote node registration before the node security checkpoint
-
