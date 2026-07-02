@@ -3,6 +3,7 @@ import {
   Children,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -981,8 +982,8 @@ function VaultApp() {
     state: WorkspaceTreeUiState,
     results: typeof sidebarResults,
   ) => (
-    <>
-      <div className="p-2 border-b space-y-2 shrink-0">
+    <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+      <div className="p-2 border-b space-y-2">
         <div className="relative">
           <Search className="size-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -1092,7 +1093,7 @@ function VaultApp() {
           </TreeUtilityPanel>
         )}
       </div>
-      <div className="flex-1 min-h-0 overflow-auto p-2">
+      <div className="min-w-0 p-2">
         {results ? (
           <SearchResults
             results={results}
@@ -1119,7 +1120,7 @@ function VaultApp() {
           />
         )}
       </div>
-    </>
+    </div>
   );
 
   const renderGraphPaneContent = (placement: "sidebar" | "center") => (
@@ -1749,11 +1750,11 @@ function WorkspaceSidePane({
 }) {
   return (
     <aside
-      className="relative min-h-0 min-w-0 shrink-0 overflow-hidden"
+      className="relative flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden"
       aria-hidden={!showContent}
       style={{ width, flexBasis: width, maxWidth: width }}
     >
-      {showContent && children}
+      {showContent && <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</div>}
     </aside>
   );
 }
@@ -1794,22 +1795,61 @@ function Section({
   icon,
   title,
   count,
+  collapsed,
+  onToggle,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   count?: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  const contentId = useId();
+  return (
+    <div className="min-w-0 overflow-hidden border-b last:border-b-0">
+      <CollapseToggleButton
+        contentId={contentId}
+        collapsed={collapsed}
+        onToggle={onToggle}
+        className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:bg-muted/50"
+      >
+        {icon}
+        <span>{title}</span>
+        {typeof count === "number" && <span className="font-mono normal-case">({count})</span>}
+      </CollapseToggleButton>
+      <div id={contentId} hidden={collapsed} className="min-w-0 overflow-hidden px-3 pb-3">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function CollapseToggleButton({
+  contentId,
+  collapsed,
+  onToggle,
+  className,
+  children,
+}: {
+  contentId: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 overflow-hidden border-b last:border-b-0">
-      <div className="flex min-w-0 items-center gap-1.5 overflow-hidden px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {icon}
-        {title}
-        {typeof count === "number" && <span className="font-mono normal-case">({count})</span>}
-      </div>
-      <div className="min-w-0 overflow-hidden px-3 pb-3">{children}</div>
-    </div>
+    <button
+      type="button"
+      className={cn("flex w-full min-w-0 items-center gap-2 overflow-hidden text-left", className)}
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      aria-controls={contentId}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">{children}</span>
+      <span className="font-mono text-[10px] text-muted-foreground">{collapsed ? "+" : "-"}</span>
+    </button>
   );
 }
 
@@ -1856,8 +1896,13 @@ function IndexInspectPanel({
   onPick,
   onAnchor,
 }: IndexInspectPanelProps) {
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const sectionCollapsed = (key: string) => Boolean(collapsedSections[key]);
+  const toggleSection = (key: string) =>
+    setCollapsedSections((current) => ({ ...current, [key]: !current[key] }));
+
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-auto">
+    <div className="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain">
       <Section
         icon={<Info className="size-3.5" />}
         title="Index inspect"
@@ -1866,6 +1911,8 @@ function IndexInspectPanel({
             ? inspectData.issues.length + inspectData.brokenOutgoingLinks.length
             : undefined
         }
+        collapsed={sectionCollapsed("index")}
+        onToggle={() => toggleSection("index")}
       >
         {selectedCount > 1 ? (
           <Empty>
@@ -1892,7 +1939,13 @@ function IndexInspectPanel({
         )}
       </Section>
 
-      <Section icon={<Link2 className="size-3.5" />} title="Backlinks" count={backlinks.length}>
+      <Section
+        icon={<Link2 className="size-3.5" />}
+        title="Backlinks"
+        count={backlinks.length}
+        collapsed={sectionCollapsed("backlinks")}
+        onToggle={() => toggleSection("backlinks")}
+      >
         {metadataPath ? (
           <BacklinkList backlinks={backlinks} noteTitles={noteTitles} onPick={onPick} />
         ) : (
@@ -1904,6 +1957,8 @@ function IndexInspectPanel({
         icon={<AlertTriangle className="size-3.5" />}
         title="Validation (this file)"
         count={fileIssues.length}
+        collapsed={sectionCollapsed("validation")}
+        onToggle={() => toggleSection("validation")}
       >
         {metadataPath ? (
           <ValidationIssueList issues={fileIssues} />
@@ -1916,6 +1971,8 @@ function IndexInspectPanel({
         icon={<FileText className="size-3.5" />}
         title={combinedMetadata ? "Combined metadata" : "Metadata"}
         count={combinedMetadata?.fileCount}
+        collapsed={sectionCollapsed("metadata")}
+        onToggle={() => toggleSection("metadata")}
       >
         {combinedMetadata ? (
           <CombinedMetadataDetails metadata={combinedMetadata} />
@@ -2236,15 +2293,26 @@ function InspectGroup({
   empty: string;
   children: React.ReactNode;
 }) {
+  const contentId = useId();
+  const [collapsed, setCollapsed] = useState(false);
   const items = Children.toArray(children).filter(Boolean);
   return (
-    <div className="min-w-0 space-y-1.5 overflow-hidden">
-      <div className="text-[10px] font-semibold uppercase text-muted-foreground">{title}</div>
-      {items.length ? (
-        <div className="min-w-0 space-y-1 overflow-hidden">{items}</div>
-      ) : (
-        <Empty>{empty}</Empty>
-      )}
+    <div className="min-w-0 overflow-hidden rounded border bg-muted/10">
+      <CollapseToggleButton
+        contentId={contentId}
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((current) => !current)}
+        className="px-2 py-1.5 text-[10px] font-semibold uppercase text-muted-foreground hover:bg-muted/50"
+      >
+        <span className="truncate">{title}</span>
+      </CollapseToggleButton>
+      <div id={contentId} hidden={collapsed} className="min-w-0 px-2 pb-2">
+        {items.length ? (
+          <div className="min-w-0 space-y-1 overflow-hidden">{items}</div>
+        ) : (
+          <Empty>{empty}</Empty>
+        )}
+      </div>
     </div>
   );
 }
@@ -2348,13 +2416,14 @@ function TreeUtilityPanel({
   onToggle: () => void;
   children: ReactNode;
 }) {
+  const contentId = useId();
   return (
     <div className="min-w-0 overflow-hidden rounded border bg-muted/20 text-xs">
-      <button
-        type="button"
-        className="flex w-full min-w-0 items-center gap-2 overflow-hidden px-2 py-2 text-left hover:bg-muted/50"
-        onClick={onToggle}
-        aria-expanded={!collapsed}
+      <CollapseToggleButton
+        contentId={contentId}
+        collapsed={collapsed}
+        onToggle={onToggle}
+        className="px-2 py-2 hover:bg-muted/50"
       >
         <span className="min-w-0 flex-1">
           <span className="block font-medium">{title}</span>
@@ -2365,11 +2434,14 @@ function TreeUtilityPanel({
             {badge}
           </Badge>
         )}
-        <span className="font-mono text-[10px] text-muted-foreground">{collapsed ? "+" : "-"}</span>
-      </button>
-      {!collapsed && (
-        <div className="min-w-0 space-y-2 overflow-hidden border-t px-2 py-2">{children}</div>
-      )}
+      </CollapseToggleButton>
+      <div
+        id={contentId}
+        hidden={collapsed}
+        className="min-w-0 space-y-2 overflow-hidden border-t px-2 py-2"
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -2439,7 +2511,7 @@ function IndexSearchPanel({
       ) : loading && !response ? (
         <StateMessage tone="loading">Searching the generated machine index...</StateMessage>
       ) : response && response.results.length > 0 ? (
-        <ul className="max-h-56 min-w-0 space-y-1 overflow-auto pr-1">
+        <ul className="min-w-0 space-y-1 pr-1">
           {response.results.map((result) => (
             <li key={result.id}>
               <button
@@ -2553,7 +2625,7 @@ function IndexFiltersPanel({
           Loading read-only filter results from the generated index...
         </StateMessage>
       ) : response && response.results.length > 0 ? (
-        <ul className="max-h-56 min-w-0 space-y-1 overflow-auto pr-1">
+        <ul className="min-w-0 space-y-1 pr-1">
           {response.results.map((result) => (
             <li key={result.id}>
               <button
