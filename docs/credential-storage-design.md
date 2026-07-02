@@ -80,13 +80,18 @@ Implemented helper names:
 - `verifySuppliedTokenCredential` and
   `verifySuppliedBrowserSessionCredential` in
   `backend/credentialVerificationService.ts`
+- `buildCredentialVerificationAuditEvent` and
+  `appendCredentialVerificationAuditEvent` in
+  `backend/credentialVerificationAudit.ts`
 
 These helpers read, validate, and atomically write the JSON files above. They
 are not imported by request handling and do not generate credentials, accept
 tokens or session secrets from HTTP requests, create active sessions, set
 cookies, verify request credentials, or enforce auth. The verification service
 operates only on explicitly supplied material and already-loaded metadata
-stores; it does not read `Authorization` headers or cookies.
+stores; it does not read `Authorization` headers or cookies. The audit
+integration helper appends sanitized verification events only when called
+explicitly; it is not active HTTP request logging.
 
 File and directory handling:
 
