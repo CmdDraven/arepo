@@ -152,6 +152,120 @@ The future model should avoid multi-user RBAC unless a later design explicitly
 introduces it. AREPO's first protected mode should be device/node scoped, not a
 hosted user-management system.
 
+## Protected-Mode Route Authorization Map
+
+This route map is design only. AREPO does not enforce these checks yet. V1 still
+has no authentication and must not be exposed to untrusted networks.
+
+Future protected mode should evaluate authorization after authentication and
+after CORS/origin handling. CORS must not replace these checks. A request from an
+allowed browser origin still needs a valid credential and the required node,
+vault, and operation permission.
+
+Planned permission vocabulary:
+
+- `readIndex`: read generated index metadata, structural map data, validation
+  results, watcher/index status, and generated storage/cache summaries for an
+  authorized vault.
+- `readContent`: read source Markdown file content or source-file-derived data
+  that is close enough to content to require source access.
+- `writeContent`: create or modify source files, source folders, filenames, or
+  generated index state for an authorized vault.
+- `deleteFiles`: delete source files. This should remain separate from general
+  write access.
+- `manageVaults`: add, remove, or change configured vault registrations and
+  vault-level permissions.
+- `manageNode`: view or change node-level diagnostics and runtime posture that
+  is broader than a single vault.
+- `manageAuth`: change auth mode, create credentials, revoke credentials, rotate
+  node secrets, and manage protected-mode security state.
+- `readAudit`: read future auth, node, vault, and mutation audit events.
+
+Generated-index access is not the same as source-content access. Generated
+index endpoints may expose paths, titles, headings, tags, wikilinks, backlinks,
+broken links, duplicate IDs, duplicate anchors, issue messages, and generated
+metadata. They should require `readIndex`, but not automatically require
+`readContent`. Direct source file reads require `readContent`. Source file
+mutations require `writeContent`, and deletes require `deleteFiles`.
+
+| Current endpoint | Current behavior | Future protected-mode requirement | Notes |
+| --- | --- | --- | --- |
+| `OPTIONS *` | CORS preflight response | No content permission; origin policy only | A successful preflight must never authorize the following request. |
+| `GET /api/health` | Local node health and node identity | Anonymous reduced response only, or `manageNode` for current full node identity | In protected mode, anonymous health should expose only service liveness and that auth is required. Full node identity should require auth. |
+| `GET /api/node/status` | Node diagnostics, runtime posture, startup warnings, vault counts, capability flags, auth posture | `manageNode` for the full current response | A reduced anonymous status may report only liveness, protected-mode requirement, and safe public warnings. It must not expose vault names, roots, counts, origins, or detailed runtime diagnostics. |
+| `GET /api/vaults` | List configured vaults and permissions | `readIndex` for each returned vault, plus `manageVaults` for full registration metadata | A non-admin credential should see only vaults it can access and should not receive filesystem roots unless explicitly allowed. |
+| `POST /api/vaults` | Register a local vault and build its generated index | `manageVaults` and local-operator confirmation | Adding a vault expands AREPO filesystem reach and should be treated as administrative. |
+| `GET /api/vaults/:vaultId/files` | List Markdown files and folders in a vault | `readIndex` on that vault | File and folder names are index-like metadata, not source body content. |
+| `GET /api/vaults/:vaultId/file?path=...` | Read source Markdown file content and metadata | `readContent` on that vault | Path safety checks still apply before and after auth enforcement. |
+| `GET /api/vaults/:vaultId/status` | Vault watcher/index status; optional file status for `path` | `readIndex`; require `readContent` when a specific source `path` is requested | File-level status can reveal existence, size, timestamp, hash, and conflict state for a source file. |
+| `GET /api/vaults/:vaultId/storage` | Storage summary for vault content and generated cache | `readIndex` on that vault | It exposes aggregate sizes and generated-cache paths, not file bodies. Future per-file storage details may need stronger checks. |
+| `PUT /api/vaults/:vaultId/file?path=...` | Write source Markdown file content; may overwrite after conflict parameters | `writeContent` and `readContent` on that vault | Conflict overwrite should require a fresh confirmation token or equivalent explicit user confirmation in addition to permission. |
+| `POST /api/vaults/:vaultId/file` | Create a source Markdown file | `writeContent` and `readContent` on that vault | Creation writes source content and should keep path safety and collision checks. |
+| `POST /api/vaults/:vaultId/folder` | Create a source folder | `writeContent` on that vault | Folder creation changes source tree shape but does not require reading file bodies. |
+| `POST /api/vaults/:vaultId/rename` | Rename source file or folder | `writeContent` and `readContent` on that vault | Rename can overwrite namespace expectations and should preserve conflict/path checks. |
+| `DELETE /api/vaults/:vaultId/file?path=...` | Delete a source file | `deleteFiles`, plus `writeContent` and `readContent` on that vault | Delete should require stronger confirmation or a delete-specific grant; `writeContent` alone is not enough. |
+| `POST /api/vaults/:vaultId/reindex` | Rebuild generated machine index from source Markdown | `readIndex` and `readContent` on that vault | Reindex reads source files to produce generated metadata. It does not write source Markdown. |
+| `GET /api/vaults/:vaultId/index` | Read generated machine index | `readIndex` on that vault | Generated index data is rebuildable and non-canonical, but can reveal sensitive metadata. |
+| `GET /api/vaults/:vaultId/index/filters?filter=...` | Read generated structural filter results | `readIndex` on that vault | Includes broken links, orphan notes, tags, folders, duplicate IDs, and duplicate anchors. |
+| `GET /api/vaults/:vaultId/index/search?q=...` | Search generated index fields | `readIndex` on that vault | Searches index metadata, not full source content. Future full-text search should require `readContent`. |
+| `GET /api/vaults/:vaultId/index/inspect?path=...` | Inspect generated metadata for one indexed note | `readIndex` on that vault | Includes headings, anchors, links, backlinks, tags, duplicate metadata, and issues; it should not return source body content. |
+| Future auth management routes | Not implemented | `manageAuth` | Token creation, pairing, revocation, auth mode changes, and node secret rotation should never be covered by vault permissions. |
+| Future audit routes | Not implemented | `readAudit`, with `manageNode` or `manageAuth` for sensitive audit scopes | Audit may reveal paths, node identities, denied operations, and security events. |
+
+### Reduced Anonymous Status
+
+Protected mode should not keep the current full anonymous status responses. A
+future protected backend may expose:
+
+- `GET /api/health`: anonymous liveness, API version, and a boolean such as
+  `authRequired`.
+- `GET /api/node/status`: either require `manageNode` for the current full
+  diagnostics response, or return a reduced anonymous response with no vault
+  details, no filesystem paths, no configured CORS origins, and no credential
+  inventory.
+
+The current unauthenticated full status is acceptable only in local-only V1
+because the backend binds to localhost by default and still warns against
+non-local exposure.
+
+### Least-Privilege Credential Defaults
+
+- Read-only archive credential: `readIndex` by default for selected vaults;
+  optionally `readContent`; never `writeContent`, `deleteFiles`, `manageVaults`,
+  `manageNode`, `manageAuth`, or `readAudit`.
+- Normal trusted browser credential: `readIndex`, `readContent`, and
+  `writeContent` for selected vaults; no `deleteFiles` unless explicitly added;
+  no `manageAuth`; limited or no `manageNode` unless diagnostics are deliberately
+  part of the trusted-browser role.
+- Admin/local operator credential: `manageNode`, `manageVaults`, `readAudit`,
+  and selected vault permissions; `manageAuth` only when the operator is
+  changing protected-mode state; `deleteFiles` remains explicit.
+- Future enrichment node credential: `readIndex` plus narrowly scoped
+  `readContent` for eligible vaults or paths; future enrichment-write
+  permissions for generated data only; no source `writeContent`, `deleteFiles`,
+  `manageVaults`, `manageNode`, or `manageAuth` by default.
+
+### Stronger Confirmation Operations
+
+Some operations should require more than a valid credential carrying a broad
+permission:
+
+- Delete: require `deleteFiles`, a delete-specific confirmation, and audit.
+- Overwrite after conflict: require `writeContent`, `readContent`, current
+  conflict context, and explicit user confirmation.
+- Vault registration, removal, root path changes, and vault permission changes:
+  require `manageVaults`, local-operator intent, and audit.
+- Auth mode changes, token creation, token revocation, session revocation, and
+  node secret rotation: require `manageAuth`, local-operator intent, and audit.
+- Non-local bind with disabled auth: should remain warned or refused depending
+  on future protected-mode policy; it must never be considered safe because of
+  CORS.
+
+The next implementation slice should be a type-only route permission inventory
+or tests around a pure authorization planner. It should not enforce requests
+until credential parsing, auth storage, audit, revocation, and CSRF/origin
+policy are designed.
+
 ## Audit And Event Model
 
 Protected modes need a local audit trail before AREPO can support revocation and
