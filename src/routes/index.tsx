@@ -62,6 +62,7 @@ export const Route = createFileRoute("/")({
 type CenterWorkspaceView = "empty" | "document" | "tree" | "graph";
 type NonDocumentCenterView = Extract<CenterWorkspaceView, "tree" | "graph">;
 type TreePlacement = "sidebar" | "center";
+type PaneSide = "left" | "right";
 
 type TreeUiState = {
   query: string;
@@ -964,6 +965,29 @@ function VaultApp() {
   const showLeftPaneContent = !leftPaneTucked && leftPaneWidth >= SIDE_PANE_CONTENT_MIN;
   const showRightPaneContent = !rightPaneTucked && rightPaneWidth >= SIDE_PANE_CONTENT_MIN;
 
+  const restorePane = useCallback((pane: PaneSide) => {
+    if (pane === "left") {
+      setLeftPaneWidth(LEFT_PANE_DEFAULT);
+      setLeftPaneTucked(false);
+    } else {
+      setRightPaneWidth(RIGHT_PANE_DEFAULT);
+      setRightPaneTucked(false);
+    }
+  }, []);
+
+  const handleTuckedTabClick = useCallback(
+    (pane: PaneSide, event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (suppressTuckedTabClickRef.current) {
+        suppressTuckedTabClickRef.current = false;
+        return;
+      }
+      restorePane(pane);
+    },
+    [restorePane],
+  );
+
   // ----- shared pane content -----
   const renderTreePaneContent = (
     placement: TreePlacement,
@@ -1540,104 +1564,44 @@ function VaultApp() {
             className="relative flex-1 min-h-0 hidden md:flex overflow-hidden"
           >
             {leftPaneTucked && (
-              <button
-                type="button"
-                aria-label="Restore left sidebar"
-                title="Restore left sidebar"
-                className="absolute left-0 top-1/2 z-30 flex h-14 w-10 -translate-y-1/2 cursor-col-resize touch-none select-none items-center justify-start rounded-r-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              <TuckedPaneRestoreTab
+                side="left"
                 onPointerDown={(event) => startTuckedTabResize("left", event)}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (suppressTuckedTabClickRef.current) {
-                    suppressTuckedTabClickRef.current = false;
-                    return;
-                  }
-                  setLeftPaneWidth(LEFT_PANE_DEFAULT);
-                  setLeftPaneTucked(false);
-                }}
-              >
-                <span
-                  className="block h-11 w-8 border border-primary/80 bg-primary/90 shadow-lg shadow-black/25 ring-1 ring-background transition-colors hover:bg-primary dark:border-primary-foreground/70 dark:bg-primary dark:ring-background"
-                  style={{ clipPath: "polygon(0 0, 100% 22%, 100% 78%, 0 100%)" }}
-                />
-              </button>
+                onClick={(event) => handleTuckedTabClick("left", event)}
+              />
             )}
             {rightPaneTucked && (
-              <button
-                type="button"
-                aria-label="Restore right inspector"
-                title="Restore right inspector"
-                className="absolute right-0 top-1/2 z-30 flex h-14 w-10 -translate-y-1/2 cursor-col-resize touch-none select-none items-center justify-end rounded-l-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              <TuckedPaneRestoreTab
+                side="right"
                 onPointerDown={(event) => startTuckedTabResize("right", event)}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (suppressTuckedTabClickRef.current) {
-                    suppressTuckedTabClickRef.current = false;
-                    return;
-                  }
-                  setRightPaneWidth(RIGHT_PANE_DEFAULT);
-                  setRightPaneTucked(false);
-                }}
-              >
-                <span
-                  className="block h-11 w-8 border border-primary/80 bg-primary/90 shadow-lg shadow-black/25 ring-1 ring-background transition-colors hover:bg-primary dark:border-primary-foreground/70 dark:bg-primary dark:ring-background"
-                  style={{ clipPath: "polygon(100% 0, 0 22%, 0 78%, 100% 100%)" }}
-                />
-              </button>
+                onClick={(event) => handleTuckedTabClick("right", event)}
+              />
             )}
-            <aside
-              className="relative min-h-0 min-w-0 shrink-0 overflow-hidden"
-              aria-hidden={!showLeftPaneContent}
-              style={{
-                width: leftPaneTucked ? 0 : leftPaneWidth,
-                flexBasis: leftPaneTucked ? 0 : leftPaneWidth,
-                maxWidth: leftPaneTucked ? 0 : leftPaneWidth,
-              }}
+            <WorkspaceSidePane
+              width={leftPaneTucked ? 0 : leftPaneWidth}
+              showContent={showLeftPaneContent}
             >
-              {showLeftPaneContent && vaultPane}
-            </aside>
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={leftPaneTucked ? "Show vault column" : "Resize vault column"}
-              title={leftPaneTucked ? "Drag right to show vault column" : "Resize vault column"}
-              className={cn(
-                "group relative z-10 w-2 shrink-0 cursor-col-resize touch-none select-none border-x bg-border/20 hover:bg-primary/15 focus:outline-none focus-visible:bg-primary/20",
-                leftPaneTucked && "bg-primary/20 hover:bg-primary/25",
-              )}
+              {vaultPane}
+            </WorkspaceSidePane>
+            <PaneResizeHandle
+              side="left"
+              tucked={leftPaneTucked}
               onPointerDown={(event) => startPaneResize("left", event)}
-            >
-              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-border group-hover:bg-primary/50" />
-            </div>
+            />
             <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-r">
               <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{centerPane}</div>
             </section>
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={rightPaneTucked ? "Show inspect column" : "Resize inspect column"}
-              title={rightPaneTucked ? "Drag left to show inspect column" : "Resize inspect column"}
-              className={cn(
-                "group relative z-10 w-2 shrink-0 cursor-col-resize touch-none select-none border-x bg-border/20 hover:bg-primary/15 focus:outline-none focus-visible:bg-primary/20",
-                rightPaneTucked && "bg-primary/20 hover:bg-primary/25",
-              )}
+            <PaneResizeHandle
+              side="right"
+              tucked={rightPaneTucked}
               onPointerDown={(event) => startPaneResize("right", event)}
+            />
+            <WorkspaceSidePane
+              width={rightPaneTucked ? 0 : rightPaneWidth}
+              showContent={showRightPaneContent}
             >
-              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-border group-hover:bg-primary/50" />
-            </div>
-            <aside
-              className="relative min-h-0 min-w-0 shrink-0 overflow-hidden"
-              aria-hidden={!showRightPaneContent}
-              style={{
-                width: rightPaneTucked ? 0 : rightPaneWidth,
-                flexBasis: rightPaneTucked ? 0 : rightPaneWidth,
-                maxWidth: rightPaneTucked ? 0 : rightPaneWidth,
-              }}
-            >
-              {showRightPaneContent && inspectorPane}
-            </aside>
+              {inspectorPane}
+            </WorkspaceSidePane>
           </div>
 
           {/* Mobile: single-view tabbed */}
@@ -1748,6 +1712,94 @@ function TabBtn({
         <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 bg-foreground rounded-full" />
       )}
     </button>
+  );
+}
+
+function TuckedPaneRestoreTab({
+  side,
+  onPointerDown,
+  onClick,
+}: {
+  side: PaneSide;
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+  const isLeft = side === "left";
+  return (
+    <button
+      type="button"
+      aria-label={isLeft ? "Restore left sidebar" : "Restore right inspector"}
+      title={isLeft ? "Restore left sidebar" : "Restore right inspector"}
+      className={cn(
+        "absolute top-1/2 z-30 flex h-14 w-10 -translate-y-1/2 cursor-col-resize touch-none select-none text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        isLeft
+          ? "left-0 items-center justify-start rounded-r-sm"
+          : "right-0 items-center justify-end rounded-l-sm",
+      )}
+      onPointerDown={onPointerDown}
+      onClick={onClick}
+    >
+      <span
+        className="block h-11 w-8 border border-primary/80 bg-primary/90 shadow-lg shadow-black/25 ring-1 ring-background transition-colors hover:bg-primary dark:border-primary-foreground/70 dark:bg-primary dark:ring-background"
+        style={{
+          clipPath: isLeft
+            ? "polygon(0 0, 100% 22%, 100% 78%, 0 100%)"
+            : "polygon(100% 0, 0 22%, 0 78%, 100% 100%)",
+        }}
+      />
+    </button>
+  );
+}
+
+function WorkspaceSidePane({
+  width,
+  showContent,
+  children,
+}: {
+  width: number;
+  showContent: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <aside
+      className="relative min-h-0 min-w-0 shrink-0 overflow-hidden"
+      aria-hidden={!showContent}
+      style={{ width, flexBasis: width, maxWidth: width }}
+    >
+      {showContent && children}
+    </aside>
+  );
+}
+
+function PaneResizeHandle({
+  side,
+  tucked,
+  onPointerDown,
+}: {
+  side: PaneSide;
+  tucked: boolean;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+}) {
+  const isLeft = side === "left";
+  const columnName = isLeft ? "vault" : "inspect";
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={tucked ? `Show ${columnName} column` : `Resize ${columnName} column`}
+      title={
+        tucked
+          ? `Drag ${isLeft ? "right" : "left"} to show ${columnName} column`
+          : `Resize ${columnName} column`
+      }
+      className={cn(
+        "group relative z-10 w-2 shrink-0 cursor-col-resize touch-none select-none border-x bg-border/20 hover:bg-primary/15 focus:outline-none focus-visible:bg-primary/20",
+        tucked && "bg-primary/20 hover:bg-primary/25",
+      )}
+      onPointerDown={onPointerDown}
+    >
+      <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-border group-hover:bg-primary/50" />
+    </div>
   );
 }
 
