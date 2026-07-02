@@ -40,6 +40,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { type NoteIndex } from "@/lib/vault/indexer";
+import {
+  DEFAULT_THEME,
+  centerViewAfterAssignment,
+  centerViewAfterDocumentClose,
+  createTreeUiState,
+  lastNonDocumentViewForDocumentOpen,
+  paneRenderWidth,
+  shouldShowPaneContent,
+  type CenterWorkspaceView,
+  type NonDocumentCenterView,
+  type PaneSide,
+  type TreePlacement,
+  type TreeUiState,
+} from "@/lib/workspace/workspaceState";
 import { useVault, type VaultInfo, type VaultPermission } from "@/lib/vault/store";
 import { renderMarkdown } from "@/lib/vault/render";
 import { cn } from "@/lib/utils";
@@ -59,25 +73,7 @@ export const Route = createFileRoute("/")({
   component: VaultApp,
 });
 
-type CenterWorkspaceView = "empty" | "document" | "tree" | "graph";
-type NonDocumentCenterView = Extract<CenterWorkspaceView, "tree" | "graph">;
-type TreePlacement = "sidebar" | "center";
-type PaneSide = "left" | "right";
-
-type TreeUiState = {
-  query: string;
-  indexFilter: IndexFilterKind;
-  indexFilterResponse: IndexFilterResponse | null;
-  indexFilterLoading: boolean;
-  indexFilterError: string | null;
-  indexSearchQuery: string;
-  indexSearchResponse: IndexSearchResponse | null;
-  indexSearchLoading: boolean;
-  indexSearchError: string | null;
-  searchCollapsed: boolean;
-  filtersCollapsed: boolean;
-  homepageCollapsed: boolean;
-};
+type WorkspaceTreeUiState = TreeUiState<IndexFilterKind, IndexFilterResponse, IndexSearchResponse>;
 
 type LocalSearchResult = {
   note: NoteIndex;
@@ -97,23 +93,6 @@ const CENTER_PANE_FALLBACK_MIN = 0;
 const PANE_TUCK_THRESHOLD = 64;
 const TAB_DRAG_CLICK_THRESHOLD = 6;
 const SIDE_PANE_CONTENT_MIN = 144;
-
-function createTreeUiState(collapsed = false): TreeUiState {
-  return {
-    query: "",
-    indexFilter: "broken-links",
-    indexFilterResponse: null,
-    indexFilterLoading: false,
-    indexFilterError: null,
-    indexSearchQuery: "",
-    indexSearchResponse: null,
-    indexSearchLoading: false,
-    indexSearchError: null,
-    searchCollapsed: collapsed,
-    filtersCollapsed: collapsed,
-    homepageCollapsed: collapsed,
-  };
-}
 
 function clampPaneWidth(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
@@ -168,11 +147,11 @@ function VaultApp() {
   const [buffer, setBuffer] = useState<string>("");
   const [savedSnapshot, setSavedSnapshot] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["Notes", "Reference"]));
-  const [sidebarTreeState, setSidebarTreeState] = useState<TreeUiState>(() =>
-    createTreeUiState(false),
+  const [sidebarTreeState, setSidebarTreeState] = useState<WorkspaceTreeUiState>(() =>
+    createTreeUiState<IndexFilterKind, IndexFilterResponse, IndexSearchResponse>(false),
   );
-  const [centerTreeState, setCenterTreeState] = useState<TreeUiState>(() =>
-    createTreeUiState(true),
+  const [centerTreeState, setCenterTreeState] = useState<WorkspaceTreeUiState>(() =>
+    createTreeUiState<IndexFilterKind, IndexFilterResponse, IndexSearchResponse>(true),
   );
   const [inspectData, setInspectData] = useState<VaultInspectResponse | null>(null);
   const [inspectLoading, setInspectLoading] = useState(false);
@@ -205,7 +184,7 @@ function VaultApp() {
   const [leftPaneTucked, setLeftPaneTucked] = useState(false);
   const [rightPaneTucked, setRightPaneTucked] = useState(false);
   const isMobile = useIsMobile();
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [theme, setTheme] = useState<"light" | "dark">(DEFAULT_THEME);
   const [themeHydrated, setThemeHydrated] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -561,16 +540,16 @@ function VaultApp() {
   const assignCenterView = useCallback(
     (view: NonDocumentCenterView) => {
       setLastNonDocumentCenterView(view);
-      if (!activePath) setCenterWorkspaceView(view);
+      setCenterWorkspaceView((current) => centerViewAfterAssignment(activePath, view, current));
     },
     [activePath],
   );
 
   const openDocumentInCenter = useCallback(
     (path: string) => {
-      if (centerWorkspaceView === "tree" || centerWorkspaceView === "graph") {
-        setLastNonDocumentCenterView(centerWorkspaceView);
-      }
+      setLastNonDocumentCenterView((currentLast) =>
+        lastNonDocumentViewForDocumentOpen(centerWorkspaceView, currentLast),
+      );
       setCenterWorkspaceView("document");
       setActivePath(path);
     },
@@ -595,7 +574,7 @@ function VaultApp() {
       return;
     }
     setActivePath(null);
-    setCenterWorkspaceView(lastNonDocumentCenterView ?? "empty");
+    setCenterWorkspaceView(centerViewAfterDocumentClose(lastNonDocumentCenterView));
     setSelectedPaths(new Set());
     setBuffer("");
     setSavedSnapshot("");
@@ -657,7 +636,7 @@ function VaultApp() {
   );
 
   const updateTreeState = useCallback(
-    (placement: TreePlacement, updater: (state: TreeUiState) => TreeUiState) => {
+    (placement: TreePlacement, updater: (state: WorkspaceTreeUiState) => WorkspaceTreeUiState) => {
       if (placement === "sidebar") setSidebarTreeState(updater);
       else setCenterTreeState(updater);
     },
@@ -881,7 +860,7 @@ function VaultApp() {
   const handleCloseDeletedBuffer = async () => {
     await refreshActiveVault();
     setActivePath(null);
-    setCenterWorkspaceView(lastNonDocumentCenterView ?? "empty");
+    setCenterWorkspaceView(centerViewAfterDocumentClose(lastNonDocumentCenterView));
     setExternalNotice(null);
     setDiffReview(null);
     setConflictMessage(null);
@@ -962,8 +941,16 @@ function VaultApp() {
     Boolean(suppressedConflict) &&
     suppressedConflict?.path === activePath &&
     suppressedConflict.hash === vaultStatus?.file?.hash;
-  const showLeftPaneContent = !leftPaneTucked && leftPaneWidth >= SIDE_PANE_CONTENT_MIN;
-  const showRightPaneContent = !rightPaneTucked && rightPaneWidth >= SIDE_PANE_CONTENT_MIN;
+  const showLeftPaneContent = shouldShowPaneContent(
+    leftPaneTucked,
+    leftPaneWidth,
+    SIDE_PANE_CONTENT_MIN,
+  );
+  const showRightPaneContent = shouldShowPaneContent(
+    rightPaneTucked,
+    rightPaneWidth,
+    SIDE_PANE_CONTENT_MIN,
+  );
 
   const restorePane = useCallback((pane: PaneSide) => {
     if (pane === "left") {
@@ -991,7 +978,7 @@ function VaultApp() {
   // ----- shared pane content -----
   const renderTreePaneContent = (
     placement: TreePlacement,
-    state: TreeUiState,
+    state: WorkspaceTreeUiState,
     results: typeof sidebarResults,
   ) => (
     <>
@@ -1578,7 +1565,7 @@ function VaultApp() {
               />
             )}
             <WorkspaceSidePane
-              width={leftPaneTucked ? 0 : leftPaneWidth}
+              width={paneRenderWidth(leftPaneTucked, leftPaneWidth)}
               showContent={showLeftPaneContent}
             >
               {vaultPane}
@@ -1597,7 +1584,7 @@ function VaultApp() {
               onPointerDown={(event) => startPaneResize("right", event)}
             />
             <WorkspaceSidePane
-              width={rightPaneTucked ? 0 : rightPaneWidth}
+              width={paneRenderWidth(rightPaneTucked, rightPaneWidth)}
               showContent={showRightPaneContent}
             >
               {inspectorPane}

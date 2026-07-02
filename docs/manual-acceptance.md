@@ -18,10 +18,11 @@ database support, migrations, federation, or remote nodes are implemented.
 ## Release Gate Commands
 
 Run these commands before or after the manual checklist. A local daily-driver
-release candidate should pass all three:
+release candidate should pass all four:
 
 ```bash
 npm run backend:test
+npm run frontend:test
 npm run lint
 npm run build
 ```
@@ -29,11 +30,12 @@ npm run build
 Expected result:
 
 - Backend tests pass.
+- Frontend workspace helper tests pass.
 - Lint passes. The existing Fast Refresh warnings in shared UI components are
   acceptable if still present.
 - Build passes.
-- `package.json` currently has no frontend test script. Do not record frontend
-  tests as passed unless a real frontend test script has been added.
+- `package.json` includes a focused `frontend:test` script for fragile workspace
+  state helpers. It is not a broad browser or end-to-end test suite.
 
 ## 1. Start Backend And Frontend
 
@@ -203,7 +205,7 @@ Run this only on a clean config or after moving aside `.arepo/config.json`.
 3. Expected result: the file remains present in the Tree view and on disk.
 4. Expected result: AREPO does not automatically open another document.
 5. Select `Notes/note.md` again from the Tree, Graph, Index search, or Index
-   filters.
+   filters. If Index search or Index filters are collapsed, expand that panel first.
 6. Expected result: the normal editor/preview workflow returns.
 7. Make an unsaved edit, then click `Close`.
 8. Expected result: AREPO asks for confirmation before discarding the in-memory
@@ -323,9 +325,9 @@ Run this on a desktop-width browser window.
     nodes, type in the editor, or trigger a save.
 32. Confirm an open document remains open after resizing and tucking.
 33. Close the document, resize both side columns again, and reopen
-   `Notes/note.md`.
+    `Notes/note.md`.
 34. Expected result: close/reopen behavior still works and no file is changed on
-   disk by resizing.
+    disk by resizing.
 35. Switch between Tree and Graph, then resize/tuck both side columns.
 36. Expected result: Tree navigation, Graph view, graph selection, and graph
     multi-select metadata remain usable.
@@ -412,8 +414,8 @@ Run this on a desktop-width browser window.
 7. Click the rendered anchor-qualified wikilink.
 8. Expected result: AREPO opens the reference note and scrolls to the
    `terminology` heading anchor.
-9. Inspect mode should show backlinks between `Notes/note.md` and
-   `Reference/reference-note.md`.
+9. The right-side Inspect panel should show backlinks between `Notes/note.md`
+   and `Reference/reference-note.md`.
 
 ## 12. Broken Wikilinks
 
@@ -429,8 +431,9 @@ Run this on a desktop-width browser window.
 
 ## 13. Structural Index Filters
 
-Use the `Index filters` panel in the vault sidebar. These filters are read-only
-views over the generated machine index; they must not modify source Markdown.
+Use the `Index filters` panel in the vault sidebar, or expand it first if the
+panel is collapsed. These filters are read-only views over the generated machine
+index; they must not modify source Markdown.
 
 1. Select `Broken links`.
 2. Expected result: intentional broken links from `test-vault/` are listed as
@@ -458,9 +461,10 @@ views over the generated machine index; they must not modify source Markdown.
     database persistence, sync, migration, federation, remote-node, or mutation
     controls.
 
-Backend-owned index search is shown near the structural filters. It is a
-read-only, deterministic search over generated machine-index fields, not AI,
-semantic/vector search, or full document body search.
+Backend-owned index search is shown near the structural filters, and may be
+inside a collapsible `Index search` panel. It is a read-only, deterministic
+search over generated machine-index fields, not AI, semantic/vector search, or
+full document body search.
 
 17. Search for `Notes/note.md`.
 18. Expected result: a path match appears and clicking it opens the matching
@@ -513,7 +517,7 @@ semantic/vector search, or full document body search.
 ## 15. Inspect And Backlinks
 
 1. Select `Reference/reference-note.md`.
-2. Open Inspect mode.
+2. Inspect the right-side metadata/inspect panel.
 3. Expected result: the `Index inspect` section says its source is the
    `machine-index` and shows title, path, frontmatter ID if present, tags, and
    orphan status.
@@ -529,14 +533,14 @@ semantic/vector search, or full document body search.
 10. Expected result: broken outgoing-link rows clearly state that there is no
     resolved file target and do not create or open a file.
 11. Expected result: backlinks include `Notes/note.md` and can be clicked to
-   navigate without editing either file.
+    navigate without editing either file.
 12. Select `Notes/note.md` or click an index-filter result for an intentional
-   broken link.
+    broken link.
 13. Expected result: validation issues and broken outgoing links appear in the
-   inspect view with clear error text.
+    inspect view with clear error text.
 14. If the fixture contains duplicate frontmatter IDs or duplicate heading
-   anchors, confirm the inspect view lists the duplicate key and participating
-   paths/headings. If none are present, confirm the empty states are explicit.
+    anchors, confirm the inspect view lists the duplicate key and participating
+    paths/headings. If none are present, confirm the empty states are explicit.
 15. Click a duplicate frontmatter ID peer path if one is present.
 16. Expected result: AREPO navigates to and inspects that peer file.
 17. Optional: create a temporary note that nothing links to.
