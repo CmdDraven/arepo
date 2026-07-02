@@ -31,6 +31,9 @@ Implemented as inert or status-only:
 - `backend/sessionVerifier.ts`: pure PBKDF2-SHA-256 browser session verifier
   helpers for supplied session secret material, renewal eligibility planning,
   and logout/revocation planning.
+- `backend/credentialVerificationService.ts`: non-HTTP verification service
+  for explicitly supplied token or browser-session material against loaded
+  credential, verifier, session, and revocation metadata stores.
 - `backend/authAudit.ts`: inert audit event types plus JSONL serialize, parse,
   append, and read helpers.
 - `backend/authRevocation.ts`: inert revocation planning helpers for
@@ -52,7 +55,8 @@ checks, token/session validation, revocation, or audit logging in active request
 handling. They do not generate credentials, bearer tokens, cookies, active
 sessions, pairing codes, or node registrations. Credential-store persistence
 helpers are not imported by active request handling. Credential and session
-verifier helpers are not connected to HTTP request credentials. The startup
+verifier helpers, including the non-HTTP verification service, are not
+connected to HTTP headers, cookies, or request credentials. The startup
 assessment is diagnostic only and does not reject active API requests. They do
 not make LAN, reverse-proxy, or internet exposure safe.
 
