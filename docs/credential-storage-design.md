@@ -70,10 +70,14 @@ Implemented helper names:
 - `readRevocationStore` / `writeRevocationStore`
 - `validateCredentialStore`, `validateTokenVerifierStore`,
   `validateBrowserSessionStore`, and `validateRevocationStore`
+- `createTokenVerifierMetadata`, `verifyTokenMaterial`,
+  `createTokenLookupId`, `createTokenDisplayPrefix`, and `constantTimeEqual`
+  in `backend/credentialVerifier.ts`
 
 These helpers read, validate, and atomically write the JSON files above. They
 are not imported by request handling and do not generate credentials, accept
-tokens, create sessions, verify request credentials, or enforce auth.
+tokens from HTTP requests, create sessions, verify request credentials, or
+enforce auth.
 
 File and directory handling:
 
@@ -142,6 +146,10 @@ or revocation.
   without scanning every verifier.
 - Store verifier algorithm, salt, parameters, credential ID, created time,
   expiry, and revoked time.
+- Current verifier primitives use PBKDF2-SHA-256 with explicit parameters:
+  scheme `pbkdf2-sha256`, digest `sha256`, iterations, salt length, and output
+  length. This is a simple built-in Node crypto primitive for future verifier
+  records, not an active auth mechanism.
 - Compare verifier output with constant-time comparison where practical.
 - Display a bearer token only once at creation.
 - Store only a short non-secret display prefix for later identification.

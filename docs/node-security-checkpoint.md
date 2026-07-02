@@ -25,6 +25,9 @@ Implemented as inert or status-only:
 - `backend/credentialStore.ts`: credential metadata, app-data auth path,
   storage-boundary validation, and JSON store read/write helpers for future
   credentials, token verifiers, browser sessions, and revocations.
+- `backend/credentialVerifier.ts`: pure PBKDF2-SHA-256 verifier helpers for
+  creating verifier records from supplied secret material and checking supplied
+  material against verifier records.
 - `backend/authAudit.ts`: inert audit event types plus JSONL serialize, parse,
   append, and read helpers.
 - `backend/authRevocation.ts`: inert revocation planning helpers for
@@ -45,9 +48,10 @@ None of these modules enforce authentication, authorization, CSRF, origin
 checks, token/session validation, revocation, or audit logging in active request
 handling. They do not generate credentials, bearer tokens, sessions, pairing
 codes, or node registrations. Credential-store persistence helpers are not
-imported by active request handling and do not verify request credentials. The
-startup assessment is diagnostic only and does not reject active API requests.
-They do not make LAN, reverse-proxy, or internet exposure safe.
+imported by active request handling. Credential verifier helpers are not
+connected to HTTP request credentials. The startup assessment is diagnostic only
+and does not reject active API requests. They do not make LAN, reverse-proxy, or
+internet exposure safe.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds
@@ -55,10 +59,10 @@ to localhost by default, uses configured vault roots only, treats CORS as a
 browser-origin filter rather than authentication, and keeps non-local binding
 unsafe with a no-auth warning.
 
-Protected-mode enforcement is still blocked on real credential creation and
-verification, session lifecycle, CSRF/origin enforcement, route authorization
-middleware, audit wiring, revocation checks, startup safety checks, and
-regression tests that cover protected and disabled-auth modes.
+Protected-mode enforcement is still blocked on credential issuance, request
+credential parsing, session lifecycle, CSRF/origin enforcement, route
+authorization middleware, audit wiring, revocation checks, startup safety
+checks, and regression tests that cover protected and disabled-auth modes.
 
 ## Current V1 Security Posture
 
