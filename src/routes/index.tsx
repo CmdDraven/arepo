@@ -1819,6 +1819,28 @@ function Empty({ children }: { children: React.ReactNode }) {
   );
 }
 
+function StateMessage({
+  tone = "empty",
+  children,
+}: {
+  tone?: "empty" | "loading" | "error";
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "min-w-0 overflow-hidden rounded px-2 py-1.5 text-xs",
+        tone === "error"
+          ? "border border-destructive/30 bg-destructive/10 text-destructive"
+          : "text-muted-foreground",
+        tone === "loading" && "border border-border bg-muted/20",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 function IndexInspectPanel({
   selectedCount,
   inspectData,
@@ -1847,21 +1869,35 @@ function IndexInspectPanel({
       >
         {selectedCount > 1 ? (
           <Empty>
-            Multi-select shows combined metadata below. Select one file for index inspection.
+            Multiple graph nodes selected. Combined metadata is shown below; select one file for
+            file-level index inspection.
           </Empty>
         ) : inspectLoading ? (
-          <Empty>Loading machine-index details...</Empty>
+          <StateMessage tone="loading">
+            Loading file details from the generated machine index...
+          </StateMessage>
         ) : inspectError ? (
-          <ErrorMessage>{inspectError}</ErrorMessage>
+          <ErrorMessage>Index inspect unavailable: {inspectError}</ErrorMessage>
         ) : inspectData ? (
           <InspectDetails data={inspectData} onPick={onPick} onAnchor={onAnchor} />
+        ) : metadataPath ? (
+          <Empty>
+            No machine-index details are available for this file. Rebuild the index or refresh the
+            vault if the file was just added.
+          </Empty>
         ) : (
-          <Empty>No file selected.</Empty>
+          <Empty>
+            Select a file from Tree, Graph, Index search, or Index filters to inspect it.
+          </Empty>
         )}
       </Section>
 
       <Section icon={<Link2 className="size-3.5" />} title="Backlinks" count={backlinks.length}>
-        <BacklinkList backlinks={backlinks} noteTitles={noteTitles} onPick={onPick} />
+        {metadataPath ? (
+          <BacklinkList backlinks={backlinks} noteTitles={noteTitles} onPick={onPick} />
+        ) : (
+          <Empty>No file selected. Backlinks appear after selecting a file.</Empty>
+        )}
       </Section>
 
       <Section
@@ -1869,7 +1905,11 @@ function IndexInspectPanel({
         title="Validation (this file)"
         count={fileIssues.length}
       >
-        <ValidationIssueList issues={fileIssues} />
+        {metadataPath ? (
+          <ValidationIssueList issues={fileIssues} />
+        ) : (
+          <Empty>No file selected. Validation issues appear after selecting a file.</Empty>
+        )}
       </Section>
 
       <Section
@@ -1886,7 +1926,7 @@ function IndexInspectPanel({
             fileMeta={metadataFileMeta}
           />
         ) : (
-          <Empty>No file selected.</Empty>
+          <Empty>Select one file, or shift-select graph nodes to view combined metadata.</Empty>
         )}
       </Section>
     </div>
@@ -1894,11 +1934,7 @@ function IndexInspectPanel({
 }
 
 function ErrorMessage({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-w-0 overflow-hidden rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
-      {children}
-    </div>
-  );
+  return <StateMessage tone="error">{children}</StateMessage>;
 }
 
 function BacklinkList({
@@ -1910,7 +1946,9 @@ function BacklinkList({
   noteTitles: Record<string, { title: string }>;
   onPick: (path: string) => void;
 }) {
-  if (backlinks.length === 0) return <Empty>No notes link here.</Empty>;
+  if (backlinks.length === 0) {
+    return <Empty>No backlinks found for this file.</Empty>;
+  }
   return (
     <ul className="min-w-0 space-y-1 overflow-hidden">
       {backlinks.map((backlink, index) => {
@@ -1935,7 +1973,7 @@ function BacklinkList({
 }
 
 function ValidationIssueList({ issues }: { issues: VaultInspectIssue[] }) {
-  if (issues.length === 0) return <Empty>No issues.</Empty>;
+  if (issues.length === 0) return <Empty>No validation issues for this file.</Empty>;
   return (
     <ul className="min-w-0 space-y-1 overflow-hidden">
       {issues.map((issue, index) => (
@@ -2064,7 +2102,7 @@ function InspectDetails({
         </dd>
       </dl>
 
-      <InspectGroup title="Headings" empty="No headings found.">
+      <InspectGroup title="Headings" empty="No headings found in this file.">
         {data.headings.map((heading, index) => (
           <button
             key={`${heading.anchor}-${index}`}
@@ -2083,13 +2121,13 @@ function InspectDetails({
         ))}
       </InspectGroup>
 
-      <InspectGroup title="Outgoing links" empty="No outgoing links found.">
+      <InspectGroup title="Outgoing links" empty="No outgoing links found in this file.">
         {data.outgoingLinks.map((link, index) => (
           <InspectLinkRow key={`${link.raw}-${index}`} link={link} onPick={onPick} />
         ))}
       </InspectGroup>
 
-      <InspectGroup title="Backlinks" empty="No backlinks found.">
+      <InspectGroup title="Backlinks" empty="No backlinks found for this file.">
         {data.backlinks.map((backlink, index) => (
           <button
             key={`${backlink.fromPath}-${index}`}
@@ -2105,7 +2143,7 @@ function InspectDetails({
         ))}
       </InspectGroup>
 
-      <InspectGroup title="Broken outgoing links" empty="No broken outgoing links.">
+      <InspectGroup title="Broken outgoing links" empty="No broken outgoing links from this file.">
         {data.brokenOutgoingLinks.map((link, index) => (
           <div
             key={`${link.raw}-${index}`}
@@ -2116,12 +2154,17 @@ function InspectDetails({
               Missing target: {link.target}
               {link.anchor ? `#${link.anchor}` : ""}
             </div>
-            <div className="text-[10px] text-destructive/80">No resolved file target.</div>
+            <div className="text-[10px] text-destructive/80">
+              No resolved file exists for this link.
+            </div>
           </div>
         ))}
       </InspectGroup>
 
-      <InspectGroup title="Duplicate frontmatter ID" empty="No duplicate frontmatter ID.">
+      <InspectGroup
+        title="Duplicate frontmatter ID"
+        empty="This file does not share its frontmatter ID with another indexed file."
+      >
         {data.duplicateId ? (
           <div className="space-y-1">
             <div className="font-mono text-amber-600 dark:text-amber-400">
@@ -2141,7 +2184,10 @@ function InspectDetails({
         ) : null}
       </InspectGroup>
 
-      <InspectGroup title="Duplicate heading anchors" empty="No duplicate heading anchors.">
+      <InspectGroup
+        title="Duplicate heading anchors"
+        empty="No duplicate heading anchors found in this file."
+      >
         {data.duplicateAnchors.map((duplicate) => (
           <div key={duplicate.anchor} className="rounded border border-amber-500/30 px-2 py-1">
             <div className="font-mono text-amber-600 dark:text-amber-400">#{duplicate.anchor}</div>
@@ -2162,7 +2208,7 @@ function InspectDetails({
         ))}
       </InspectGroup>
 
-      <InspectGroup title="Validation issues" empty="No validation issues for this file.">
+      <InspectGroup title="Validation issues" empty="No validation issues found for this file.">
         {data.issues.map((issue, index) => (
           <div
             key={`${issue.kind}-${index}`}
@@ -2384,15 +2430,14 @@ function IndexSearchPanel({
         </Button>
       </form>
       {error ? (
-        <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-destructive">
-          {error}
-        </div>
+        <StateMessage tone="error">Index search unavailable: {error}</StateMessage>
       ) : !trimmed ? (
-        <div className="text-muted-foreground">
-          Search file paths, titles, IDs, tags, headings, anchors, and links.
-        </div>
+        <StateMessage>
+          Enter a path, title, ID, tag, heading, anchor, wikilink target, or backlink source. This
+          searches the generated index, not full note text.
+        </StateMessage>
       ) : loading && !response ? (
-        <div className="text-muted-foreground">Searching machine index...</div>
+        <StateMessage tone="loading">Searching the generated machine index...</StateMessage>
       ) : response && response.results.length > 0 ? (
         <ul className="max-h-56 min-w-0 space-y-1 overflow-auto pr-1">
           {response.results.map((result) => (
@@ -2422,7 +2467,10 @@ function IndexSearchPanel({
           ))}
         </ul>
       ) : (
-        <div className="text-muted-foreground">No index search results found.</div>
+        <StateMessage>
+          No indexed paths, titles, IDs, tags, headings, anchors, wikilinks, or backlinks matched
+          this search.
+        </StateMessage>
       )}
     </div>
   );
@@ -2499,11 +2547,11 @@ function IndexFiltersPanel({
         </Button>
       </div>
       {error ? (
-        <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-destructive">
-          {error}
-        </div>
+        <StateMessage tone="error">Index filter unavailable: {error}</StateMessage>
       ) : loading && !response ? (
-        <div className="text-muted-foreground">Loading filter results...</div>
+        <StateMessage tone="loading">
+          Loading read-only filter results from the generated index...
+        </StateMessage>
       ) : response && response.results.length > 0 ? (
         <ul className="max-h-56 min-w-0 space-y-1 overflow-auto pr-1">
           {response.results.map((result) => (
@@ -2530,7 +2578,10 @@ function IndexFiltersPanel({
           ))}
         </ul>
       ) : (
-        <div className="text-muted-foreground">{selected?.empty ?? "No results found."}</div>
+        <StateMessage>
+          {selected?.empty ?? "No results found."} Results are derived from the generated machine
+          index and do not modify Markdown files.
+        </StateMessage>
       )}
     </div>
   );
@@ -3174,6 +3225,13 @@ function LocalNodeDiagnosticsCard({
         ["Migrations", status.capabilities.migrationSupport],
       ]
     : [];
+  const statusLabel = status
+    ? status.runtime.localOnlyMode
+      ? "Local only"
+      : "Warning"
+    : error
+      ? "Unavailable"
+      : "Checking";
 
   return (
     <section className="border rounded-md">
@@ -3181,10 +3239,10 @@ function LocalNodeDiagnosticsCard({
         <Info className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-semibold">Local Node Diagnostics</h2>
         <Badge
-          variant={status?.runtime.localOnlyMode ? "outline" : "destructive"}
+          variant={error || (status && !status.runtime.localOnlyMode) ? "destructive" : "outline"}
           className="ml-auto"
         >
-          {status?.runtime.localOnlyMode ? "Local only" : "Warning"}
+          {statusLabel}
         </Badge>
       </div>
       <div className="p-3 text-sm space-y-3">
@@ -3196,7 +3254,7 @@ function LocalNodeDiagnosticsCard({
         {error && (
           <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive flex gap-2">
             <AlertTriangle className="size-4 shrink-0" />
-            <span>Backend unavailable: {error}</span>
+            <span>Backend unavailable. Local diagnostics cannot be refreshed: {error}</span>
           </div>
         )}
 
@@ -3232,18 +3290,25 @@ function LocalNodeDiagnosticsCard({
             <div className="space-y-1">
               <div className="text-xs font-semibold">Allowed browser origins</div>
               <div className="flex flex-wrap gap-1">
-                {status.runtime.allowedOrigins.map((origin) => (
-                  <Badge key={origin} variant="secondary" className="font-mono">
-                    {origin}
-                  </Badge>
-                ))}
+                {status.runtime.allowedOrigins.length > 0 ? (
+                  status.runtime.allowedOrigins.map((origin) => (
+                    <Badge key={origin} variant="secondary" className="font-mono">
+                      {origin}
+                    </Badge>
+                  ))
+                ) : (
+                  <Empty>No browser origins are currently allowed.</Empty>
+                )}
               </div>
             </div>
 
             <div className="space-y-1">
               <div className="text-xs font-semibold">Vault runtime health</div>
               {status.vaults.length === 0 ? (
-                <div className="text-xs text-muted-foreground">No configured vaults.</div>
+                <Empty>
+                  No configured vaults. Add a local Markdown folder before checking watcher or index
+                  health.
+                </Empty>
               ) : (
                 <div className="space-y-2">
                   {status.vaults.map((vault) => (
@@ -3295,7 +3360,9 @@ function LocalNodeDiagnosticsCard({
             </div>
           </>
         ) : (
-          !error && <div className="text-xs text-muted-foreground">Runtime status: checking</div>
+          !error && (
+            <StateMessage tone="loading">Checking local node runtime status...</StateMessage>
+          )
         )}
 
         <Button variant="outline" size="sm" onClick={() => void onRefresh()} disabled={loading}>
