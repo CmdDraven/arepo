@@ -231,12 +231,14 @@ in V1.
 - The backend binds to `127.0.0.1` by default.
 - There is no authentication yet. Do not expose the backend to a LAN or the
   internet.
-- `GET /api/node/status` reports auth posture. In V1 it should report disabled
-  auth, no enforcement, and protected mode unavailable.
+- `GET /api/node/status` reports auth posture and status-only request-policy
+  readiness. In V1 it should report disabled auth, no enforcement, protected
+  mode unavailable, inactive credential/session/token checks, and network
+  exposure unsafe.
 - Phase 4 includes inert protected-mode policy, planner, credential-store,
-  audit, revocation, and browser-security helpers, but no credentials, sessions,
-  bearer tokens, CSRF/origin enforcement, auth middleware, or authorization
-  enforcement are active.
+  audit, revocation, browser-security helpers, and status-only request-policy
+  plumbing, but no credentials, sessions, bearer tokens, CSRF/origin
+  enforcement, auth middleware, or authorization enforcement are active.
 - Non-local binding requires explicit `AREPO_HOST` configuration and prints a
   startup warning.
 - CORS is restricted to the local frontend dev origins by default:

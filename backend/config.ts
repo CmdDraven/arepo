@@ -6,6 +6,7 @@ import os from "node:os";
 import {
   DEFAULT_AUTH_CONFIG,
   DEFAULT_PERMISSIONS,
+  PROTECTED_MODE_UNAVAILABLE_REASON,
   type NodeInfo,
   type AuthConfig,
   type VaultConfigFile,
@@ -237,9 +238,26 @@ function normalizeAuthConfig(auth: unknown): AuthConfig {
     return auth as AuthConfig;
   }
   const mode = (auth as { mode?: unknown }).mode;
-  return {
+  if (mode === "protected") {
+    return {
+      mode: "disabled",
+      requestedMode: "protected",
+      protectedModeUnavailableReason: PROTECTED_MODE_UNAVAILABLE_REASON,
+    };
+  }
+  const requestedMode = (auth as { requestedMode?: unknown }).requestedMode;
+  const normalized: AuthConfig = {
     mode: mode === undefined ? DEFAULT_AUTH_CONFIG.mode : (mode as AuthConfig["mode"]),
   };
+  if (requestedMode !== undefined) {
+    normalized.requestedMode = requestedMode as AuthConfig["requestedMode"];
+  }
+  const unavailableReason = (auth as { protectedModeUnavailableReason?: unknown })
+    .protectedModeUnavailableReason;
+  if (typeof unavailableReason === "string") {
+    normalized.protectedModeUnavailableReason = unavailableReason;
+  }
+  return normalized;
 }
 
 function validateAuthConfig(auth: AuthConfig, file: string): void {
@@ -250,6 +268,18 @@ function validateAuthConfig(auth: AuthConfig, file: string): void {
     const mode = typeof auth.mode === "string" ? auth.mode : String(auth.mode);
     throw new Error(
       `Invalid AREPO config at ${file}: unsupported auth mode "${mode}"; only disabled is supported in V1`,
+    );
+  }
+  if (auth.requestedMode !== undefined && !["disabled", "protected"].includes(auth.requestedMode)) {
+    const requestedMode =
+      typeof auth.requestedMode === "string" ? auth.requestedMode : String(auth.requestedMode);
+    throw new Error(
+      `Invalid AREPO config at ${file}: unsupported requested auth mode "${requestedMode}"; protected mode is not implemented`,
+    );
+  }
+  if (auth.requestedMode === "protected" && auth.mode !== "disabled") {
+    throw new Error(
+      `Invalid AREPO config at ${file}: protected mode cannot be operational before auth enforcement exists`,
     );
   }
 }

@@ -1,5 +1,6 @@
 import { getNodeInfo, getVault, loadConfig } from "./config.js";
 import { resolveAuthPosture, resolveBackendRuntimeOptions } from "./nodeRuntime.js";
+import { getRequestPolicyRuntimeStatus } from "./requestPolicyStatus.js";
 import { getVaultRuntimeStatus, startConfiguredVaultWatchers } from "./vaultWatch.js";
 import type {
   LocalNodeHealth,
@@ -69,6 +70,7 @@ export async function getLocalNodeRuntimeStatus(
       startupWarnings: runtime.nonLocalWarning ? [runtime.nonLocalWarning] : [],
     },
     auth: resolveAuthPosture(config.auth, runtime),
+    requestPolicy: getRequestPolicyRuntimeStatus(),
     vaultCount: node.vaults.length,
     vaults: vaultStatuses,
     capabilities: {

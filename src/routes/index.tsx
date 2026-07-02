@@ -2810,10 +2810,28 @@ type LocalNodeRuntimeStatus = {
   };
   auth: {
     mode: "disabled";
+    requestedMode: "disabled" | "protected";
     enabled: boolean;
     enforcement: "none";
     protectedModeAvailable: boolean;
+    protectedModeRequested: boolean;
     warning: string;
+    error?: string;
+  };
+  requestPolicy: {
+    routePolicyInventoryPresent: boolean;
+    routePolicyCount: number;
+    browserSecurityPolicyPresent: boolean;
+    authorizationPlannerPresent: boolean;
+    enforcementActive: false;
+    credentialVerificationActive: false;
+    auditRequestLoggingActive: false;
+    revocationChecksActive: false;
+    csrfOriginEnforcementActive: false;
+    acceptsCredentials: false;
+    acceptsSessions: false;
+    acceptsBearerTokens: false;
+    networkExposureSafe: false;
   };
   vaultCount: number;
   vaults: {
@@ -3299,6 +3317,8 @@ function LocalNodeDiagnosticsCard({
               <div className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-1 text-xs">
                 <span className="text-muted-foreground">Mode</span>
                 <span>{status.auth.mode}</span>
+                <span className="text-muted-foreground">Requested mode</span>
+                <span>{status.auth.requestedMode}</span>
                 <span className="text-muted-foreground">Enabled</span>
                 <span>{status.auth.enabled ? "yes" : "no"}</span>
                 <span className="text-muted-foreground">Enforcement</span>
@@ -3307,6 +3327,43 @@ function LocalNodeDiagnosticsCard({
                 <span>{status.auth.protectedModeAvailable ? "available" : "unavailable"}</span>
               </div>
               <p className="text-xs text-muted-foreground">{status.auth.warning}</p>
+              {status.auth.error && <p className="text-xs text-destructive">{status.auth.error}</p>}
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs font-semibold">Protected-mode policy plumbing</div>
+              <div className="grid grid-cols-[150px_1fr] gap-x-3 gap-y-1 text-xs">
+                <span className="text-muted-foreground">Route policies</span>
+                <span>
+                  {status.requestPolicy.routePolicyInventoryPresent
+                    ? `${status.requestPolicy.routePolicyCount} present`
+                    : "absent"}
+                </span>
+                <span className="text-muted-foreground">Browser policy</span>
+                <span>
+                  {status.requestPolicy.browserSecurityPolicyPresent ? "present" : "absent"}
+                </span>
+                <span className="text-muted-foreground">Auth planner</span>
+                <span>
+                  {status.requestPolicy.authorizationPlannerPresent ? "present" : "absent"}
+                </span>
+                <span className="text-muted-foreground">Enforcement</span>
+                <span>{status.requestPolicy.enforcementActive ? "active" : "inactive"}</span>
+                <span className="text-muted-foreground">Credential checks</span>
+                <span>
+                  {status.requestPolicy.credentialVerificationActive ? "active" : "inactive"}
+                </span>
+                <span className="text-muted-foreground">CSRF/origin checks</span>
+                <span>
+                  {status.requestPolicy.csrfOriginEnforcementActive ? "active" : "inactive"}
+                </span>
+                <span className="text-muted-foreground">Network safe</span>
+                <span>{status.requestPolicy.networkExposureSafe ? "yes" : "no"}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Policy plumbing is status-only. It does not accept credentials, sessions, bearer
+                tokens, or protect non-local exposure.
+              </p>
             </div>
 
             <div className="space-y-1">

@@ -9,15 +9,16 @@ AREPO V1 remains a local-only, unauthenticated Node backend. It binds to
 
 ## Current Phase 4 Implementation Status
 
-Phase 4 is in progress. AREPO now has security design documents and inert
-backend scaffolding for future protected mode, but protected mode is not
-implemented.
+Phase 4 is in progress. AREPO now has security design documents, inert backend
+scaffolding, and status-only request-policy plumbing for future protected mode,
+but protected mode is not implemented.
 
-Implemented but inert:
+Implemented as inert or status-only:
 
 - Auth posture/config/status reporting: omitted auth config defaults to
-  `auth.mode = "disabled"`, and `/api/node/status` reports disabled auth with
-  no enforcement.
+  `auth.mode = "disabled"`. If config requests protected mode,
+  `/api/node/status` reports requested protected mode as unavailable while
+  operational auth remains disabled with no enforcement.
 - `backend/routePermissions.ts`: type-only future route permission inventory.
 - `backend/authPlanner.ts`: pure dry-run authorization planner for hypothetical
   credentials and route policies.
@@ -31,6 +32,9 @@ Implemented but inert:
 - `backend/browserSecurityPolicy.ts`: inert browser request security policy
   planner for origin, CSRF, credential posture, reduced status, and stronger
   confirmation decisions.
+- `backend/requestPolicyStatus.ts`: status-only request-policy readiness summary
+  for local diagnostics. It reports policy inventory and planner presence, route
+  policy count, and inactive enforcement/credential/audit/revocation/CSRF flags.
 
 None of these modules enforce authentication, authorization, CSRF, origin
 checks, token/session validation, revocation, or audit logging in active request

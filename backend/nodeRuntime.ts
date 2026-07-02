@@ -1,4 +1,5 @@
 import type { AuthConfig, AuthPosture } from "./types.js";
+import { PROTECTED_MODE_UNAVAILABLE_REASON } from "./types.js";
 
 export const DEFAULT_BACKEND_PORT = 8734;
 export const DEFAULT_BACKEND_HOST = "127.0.0.1";
@@ -67,13 +68,26 @@ export function resolveAuthPosture(
   auth: AuthConfig,
   runtime: Pick<BackendRuntimeOptions, "nonLocalWarning">,
 ): AuthPosture {
-  return {
+  const requestedMode = auth.requestedMode ?? auth.mode;
+  const protectedModeRequested = requestedMode === "protected";
+  const unavailableReason =
+    auth.protectedModeUnavailableReason ?? PROTECTED_MODE_UNAVAILABLE_REASON;
+  const disabledWarning = runtime.nonLocalWarning
+    ? "Authentication is disabled and not enforced; non-local binding is unsafe in V1."
+    : "Authentication is disabled and not enforced in V1 local-only mode.";
+  const posture: AuthPosture = {
     mode: auth.mode,
+    requestedMode,
     enabled: false,
     enforcement: "none",
     protectedModeAvailable: false,
-    warning: runtime.nonLocalWarning
-      ? "Authentication is disabled and not enforced; non-local binding is unsafe in V1."
-      : "Authentication is disabled and not enforced in V1 local-only mode.",
+    protectedModeRequested,
+    warning: protectedModeRequested
+      ? `${unavailableReason}; authentication remains disabled and unenforced.`
+      : disabledWarning,
   };
+  if (protectedModeRequested) {
+    posture.error = unavailableReason;
+  }
+  return posture;
 }

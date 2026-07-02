@@ -144,6 +144,46 @@ test("auth config defaults to disabled when omitted", async () => {
   assert.deepEqual(config.auth, { mode: "disabled" });
 });
 
+test("disabled auth config remains the only operational mode", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+    auth: {
+      mode: "disabled",
+    },
+    vaults: [],
+  });
+
+  const config = await loadConfig(cwd);
+  assert.deepEqual(config.auth, { mode: "disabled" });
+});
+
+test("protected auth config is represented as requested but unavailable", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+    auth: {
+      mode: "protected",
+    },
+    vaults: [],
+  });
+
+  const config = await loadConfig(cwd);
+  assert.equal(config.auth.mode, "disabled");
+  assert.equal(config.auth.requestedMode, "protected");
+  assert.match(config.auth.protectedModeUnavailableReason ?? "", /not implemented/);
+});
+
 test("config validation rejects unsupported auth modes", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
   await writeConfig(cwd, {
@@ -160,6 +200,45 @@ test("config validation rejects unsupported auth modes", async () => {
   });
 
   await assert.rejects(() => loadConfig(cwd), /unsupported auth mode "token"/);
+});
+
+test("config validation rejects unsupported requested auth modes", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+    auth: {
+      mode: "disabled",
+      requestedMode: "session",
+    },
+    vaults: [],
+  });
+
+  await assert.rejects(() => loadConfig(cwd), /unsupported requested auth mode "session"/);
+});
+
+test("protected auth config does not mark enforcement active", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+    auth: {
+      mode: "protected",
+    },
+    vaults: [],
+  });
+
+  const config = await loadConfig(cwd);
+  assert.equal(config.auth.mode, "disabled");
+  assert.equal(config.auth.requestedMode, "protected");
 });
 
 test("app data directory can be configured in local config", async () => {

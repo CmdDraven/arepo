@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { routeRequest, type RequestLike } from "./server.js";
 import { machineIndexPath } from "./indexCache.js";
+import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
 import type {
   IndexFilterKind,
@@ -80,6 +81,28 @@ test("health endpoint returns local node info", async () => {
   assert.equal((response.body as { ok: boolean }).ok, true);
 });
 
+test("auth policy plumbing does not reject existing routes or accept credentials", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir);
+
+  const response = await routeRequest(
+    request("GET", "/api/vaults", undefined, {
+      authorization: "Bearer not-accepted",
+      cookie: "arepo_session=not-accepted",
+    }),
+    cwd,
+  );
+
+  assert.equal(response.status, 200);
+  const status = await routeRequest(request("GET", "/api/node/status"), cwd);
+  const body = status.body as LocalNodeRuntimeStatus;
+  assert.equal(body.requestPolicy.enforcementActive, false);
+  assert.equal(body.requestPolicy.acceptsBearerTokens, false);
+  assert.equal(body.requestPolicy.acceptsSessions, false);
+  assert.equal(body.requestPolicy.acceptsCredentials, false);
+});
+
 test("node status endpoint reports local runtime posture", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
@@ -104,11 +127,26 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.ok(status.runtime.allowedOrigins.includes("http://localhost:8733"));
   assert.deepEqual(status.auth, {
     mode: "disabled",
+    requestedMode: "disabled",
     enabled: false,
     enforcement: "none",
     protectedModeAvailable: false,
+    protectedModeRequested: false,
     warning: "Authentication is disabled and not enforced in V1 local-only mode.",
   });
+  assert.equal(status.requestPolicy.routePolicyInventoryPresent, true);
+  assert.equal(status.requestPolicy.routePolicyCount, PROTECTED_ROUTE_POLICIES.length);
+  assert.equal(status.requestPolicy.browserSecurityPolicyPresent, true);
+  assert.equal(status.requestPolicy.authorizationPlannerPresent, true);
+  assert.equal(status.requestPolicy.enforcementActive, false);
+  assert.equal(status.requestPolicy.credentialVerificationActive, false);
+  assert.equal(status.requestPolicy.auditRequestLoggingActive, false);
+  assert.equal(status.requestPolicy.revocationChecksActive, false);
+  assert.equal(status.requestPolicy.csrfOriginEnforcementActive, false);
+  assert.equal(status.requestPolicy.acceptsCredentials, false);
+  assert.equal(status.requestPolicy.acceptsSessions, false);
+  assert.equal(status.requestPolicy.acceptsBearerTokens, false);
+  assert.equal(status.requestPolicy.networkExposureSafe, false);
   assert.equal(status.vaultCount, 1);
   assert.equal(status.vaults[0]?.vaultId, vault.id);
   assert.equal(status.vaults[0]?.storageSummaryAvailable, true);
@@ -133,10 +171,12 @@ test("node status endpoint reports non-local bind warning", async () => {
     assert.equal(status.runtime.localOnlyMode, false);
     assert.match(status.runtime.startupWarnings[0] ?? "", /no authentication/);
     assert.equal(status.auth.mode, "disabled");
+    assert.equal(status.auth.requestedMode, "disabled");
     assert.equal(status.auth.enabled, false);
     assert.equal(status.auth.enforcement, "none");
     assert.equal(status.auth.protectedModeAvailable, false);
     assert.match(status.auth.warning, /non-local binding is unsafe/);
+    assert.equal(status.requestPolicy.networkExposureSafe, false);
   } finally {
     if (originalHost === undefined) {
       delete process.env.AREPO_HOST;
@@ -146,7 +186,7 @@ test("node status endpoint reports non-local bind warning", async () => {
   }
 });
 
-test("node status endpoint rejects unsupported auth modes", async () => {
+test("node status endpoint reports requested protected mode as unavailable", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
   await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
   await fs.writeFile(
@@ -167,10 +207,46 @@ test("node status endpoint rejects unsupported auth modes", async () => {
   );
 
   const response = await routeRequest(request("GET", "/api/node/status"), cwd);
+  assert.equal(response.status, 200);
+  const status = response.body as LocalNodeRuntimeStatus;
+  assert.equal(status.auth.mode, "disabled");
+  assert.equal(status.auth.requestedMode, "protected");
+  assert.equal(status.auth.enabled, false);
+  assert.equal(status.auth.enforcement, "none");
+  assert.equal(status.auth.protectedModeAvailable, false);
+  assert.equal(status.auth.protectedModeRequested, true);
+  assert.match(status.auth.warning, /not implemented/);
+  assert.match(status.auth.error ?? "", /not implemented/);
+  assert.equal(status.requestPolicy.enforcementActive, false);
+  assert.equal(status.requestPolicy.credentialVerificationActive, false);
+  assert.equal(status.requestPolicy.networkExposureSafe, false);
+});
+
+test("unsupported auth modes still fail closed clearly", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
+  await fs.writeFile(
+    path.join(cwd, ".arepo", "config.json"),
+    JSON.stringify({
+      node: {
+        nodeId: "local",
+        displayName: "Local Node",
+        mode: "local",
+        apiVersion: 1,
+      },
+      auth: {
+        mode: "token",
+      },
+      vaults: [],
+    }),
+    "utf8",
+  );
+
+  const response = await routeRequest(request("GET", "/api/node/status"), cwd);
   assert.equal(response.status, 400);
   const body = response.body as { ok: false; error: string };
   assert.equal(body.ok, false);
-  assert.match(body.error, /unsupported auth mode "protected"/);
+  assert.match(body.error, /unsupported auth mode "token"/);
 });
 
 test("node status endpoint surfaces invalid config diagnostics", async () => {

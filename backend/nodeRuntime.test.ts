@@ -58,9 +58,11 @@ test("auth posture is disabled and unenforced by default", () => {
   const auth = resolveAuthPosture({ mode: "disabled" }, runtime);
   assert.deepEqual(auth, {
     mode: "disabled",
+    requestedMode: "disabled",
     enabled: false,
     enforcement: "none",
     protectedModeAvailable: false,
+    protectedModeRequested: false,
     warning: "Authentication is disabled and not enforced in V1 local-only mode.",
   });
 });
@@ -71,5 +73,26 @@ test("auth posture does not make non-local binding safe", () => {
   assert.equal(auth.enabled, false);
   assert.equal(auth.enforcement, "none");
   assert.equal(auth.protectedModeAvailable, false);
+  assert.equal(auth.protectedModeRequested, false);
   assert.match(auth.warning, /non-local binding is unsafe/);
+});
+
+test("auth posture reports requested protected mode as unavailable and unenforced", () => {
+  const runtime = resolveBackendRuntimeOptions({} as NodeJS.ProcessEnv);
+  const auth = resolveAuthPosture(
+    {
+      mode: "disabled",
+      requestedMode: "protected",
+      protectedModeUnavailableReason: "Protected mode is not implemented in this build",
+    },
+    runtime,
+  );
+  assert.equal(auth.mode, "disabled");
+  assert.equal(auth.requestedMode, "protected");
+  assert.equal(auth.enabled, false);
+  assert.equal(auth.enforcement, "none");
+  assert.equal(auth.protectedModeAvailable, false);
+  assert.equal(auth.protectedModeRequested, true);
+  assert.match(auth.warning, /not implemented/);
+  assert.match(auth.error ?? "", /not implemented/);
 });

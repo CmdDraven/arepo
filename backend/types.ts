@@ -10,17 +10,39 @@ export type VaultPermission = {
 };
 
 export type AuthMode = "disabled";
+export type AuthRequestedMode = AuthMode | "protected";
 
 export type AuthConfig = {
   mode: AuthMode;
+  requestedMode?: AuthRequestedMode;
+  protectedModeUnavailableReason?: string;
 };
 
 export type AuthPosture = {
   mode: AuthMode;
+  requestedMode: AuthRequestedMode;
   enabled: false;
   enforcement: "none";
   protectedModeAvailable: false;
+  protectedModeRequested: boolean;
   warning: string;
+  error?: string;
+};
+
+export type RequestPolicyRuntimeStatus = {
+  routePolicyInventoryPresent: boolean;
+  routePolicyCount: number;
+  browserSecurityPolicyPresent: boolean;
+  authorizationPlannerPresent: boolean;
+  enforcementActive: false;
+  credentialVerificationActive: false;
+  auditRequestLoggingActive: false;
+  revocationChecksActive: false;
+  csrfOriginEnforcementActive: false;
+  acceptsCredentials: false;
+  acceptsSessions: false;
+  acceptsBearerTokens: false;
+  networkExposureSafe: false;
 };
 
 export type VaultInfo = {
@@ -54,6 +76,7 @@ export type LocalNodeRuntimeStatus = {
     startupWarnings: string[];
   };
   auth: AuthPosture;
+  requestPolicy: RequestPolicyRuntimeStatus;
   vaultCount: number;
   vaults: LocalNodeVaultRuntimeSummary[];
   capabilities: {
@@ -246,3 +269,6 @@ export const DEFAULT_PERMISSIONS: VaultPermission = {
 export const DEFAULT_AUTH_CONFIG: AuthConfig = {
   mode: "disabled",
 };
+
+export const PROTECTED_MODE_UNAVAILABLE_REASON =
+  "Protected mode was requested, but protected-mode authentication is not implemented yet";

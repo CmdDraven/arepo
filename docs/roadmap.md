@@ -42,8 +42,8 @@ It does not own sync, backup, version history, or source-file custody.
 
 ## Phase 4: Node Security Checkpoint
 
-Status: in progress: design plus inert backend scaffolding. Protected mode is
-not implemented. See
+Status: in progress: design plus inert backend scaffolding and status-only
+request-policy plumbing. Protected mode is not implemented. See
 [docs/node-security-checkpoint.md](node-security-checkpoint.md).
 
 Before true remote nodes, design authentication and trust boundaries. The design
@@ -51,11 +51,11 @@ must cover local-only mode, one self-hosted node, a future hub UI, remote node
 registration, candidate token or mTLS approaches, vault-level permissions,
 audit/event logging, and revocation.
 
-Current Phase 4 scaffolding reports auth posture and defines type-only or pure
-planning helpers for route permissions, dry-run authorization, credential
-storage boundaries, audit events, revocation planning, and browser security
-policy. These helpers are not wired into request handling and do not enforce
-authentication or authorization.
+Current Phase 4 scaffolding reports auth posture and status-only request-policy
+readiness, and defines type-only or pure planning helpers for route permissions,
+dry-run authorization, credential storage boundaries, audit events, revocation
+planning, and browser security policy. These helpers do not reject requests,
+accept credentials, or enforce authentication or authorization.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed authentication, token

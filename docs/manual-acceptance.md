@@ -137,21 +137,26 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    index status and changed-path counts.
 7. Expected result: storage-summary availability renders for each vault.
 8. Expected result: authentication posture renders as disabled/inactive:
-   `mode` is `disabled`, enforcement is `none`, and protected mode is
+   operational `mode` is `disabled`, requested mode is either `disabled` or an
+   unavailable future mode, enforcement is `none`, and protected mode is
    unavailable.
 9. Expected result: no credentials, sessions, bearer tokens, login, pairing, or
    protected-mode controls are active or presented.
-10. Expected result: unsupported V1 capabilities are visible as disabled:
+10. Expected result: protected-mode policy plumbing renders as status-only:
+   route policy inventory is present, enforcement is inactive, credential
+   verification is inactive, CSRF/origin enforcement is inactive, and network
+   safety is `no`.
+11. Expected result: unsupported V1 capabilities are visible as disabled:
    authentication, remote nodes, sync, AI/vector, database support, and
    migrations.
-11. Expected result: the diagnostics card does not contain controls to enable
+12. Expected result: the diagnostics card does not contain controls to enable
    auth, sync, AI/vector features, database support, migrations, federation,
    remote node registration, reverse proxy setup, or LAN exposure.
-12. Stop the backend while leaving the frontend open, then refresh diagnostics
+13. Stop the backend while leaving the frontend open, then refresh diagnostics
     or reload the settings view.
-13. Expected result: the UI shows an understandable backend-unavailable state
+14. Expected result: the UI shows an understandable backend-unavailable state
     instead of implying the vault data is browser-local canonical state.
-14. Restart the backend before continuing the checklist.
+15. Restart the backend before continuing the checklist.
 
 ### Optional Non-Local Bind Warning Check
 
