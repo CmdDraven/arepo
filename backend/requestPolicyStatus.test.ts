@@ -6,12 +6,15 @@ import { getRequestPolicyRuntimeStatus } from "./requestPolicyStatus.js";
 import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
 
 test("request policy runtime status reports inventory and inactive enforcement", () => {
-  const status = getRequestPolicyRuntimeStatus();
+  const status = getRequestPolicyRuntimeStatus({ mode: "disabled" });
   assert.equal(status.routePolicyInventoryPresent, true);
   assert.equal(status.routePolicyCount, PROTECTED_ROUTE_POLICIES.length);
   assert.ok(status.routePolicyCount > 0);
   assert.equal(status.browserSecurityPolicyPresent, true);
   assert.equal(status.authorizationPlannerPresent, true);
+  assert.equal(status.dryRunMiddlewareConfigured, false);
+  assert.equal(status.dryRunMiddlewareMounted, false);
+  assert.equal(status.dryRunObservationOnly, true);
   assert.equal(status.enforcementActive, false);
   assert.equal(status.credentialVerificationActive, false);
   assert.equal(status.auditRequestLoggingActive, false);
@@ -21,10 +24,23 @@ test("request policy runtime status reports inventory and inactive enforcement",
 });
 
 test("request policy runtime status does not accept credentials sessions or tokens", () => {
-  const status = getRequestPolicyRuntimeStatus();
+  const status = getRequestPolicyRuntimeStatus({ mode: "disabled" });
   assert.equal(status.acceptsCredentials, false);
   assert.equal(status.acceptsSessions, false);
   assert.equal(status.acceptsBearerTokens, false);
+});
+
+test("request policy runtime status reports explicit dry-run observation only", () => {
+  const status = getRequestPolicyRuntimeStatus({ mode: "disabled", dryRunRequestPolicy: true });
+  assert.equal(status.dryRunMiddlewareConfigured, true);
+  assert.equal(status.dryRunMiddlewareMounted, true);
+  assert.equal(status.dryRunObservationOnly, true);
+  assert.equal(status.enforcementActive, false);
+  assert.equal(status.credentialVerificationActive, false);
+  assert.equal(status.auditRequestLoggingActive, false);
+  assert.equal(status.revocationChecksActive, false);
+  assert.equal(status.csrfOriginEnforcementActive, false);
+  assert.equal(status.networkExposureSafe, false);
 });
 
 test("active server request handling does not import enforcement helpers directly", async () => {

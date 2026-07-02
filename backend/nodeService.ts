@@ -72,7 +72,7 @@ export async function getLocalNodeRuntimeStatus(
       startupWarnings: runtime.nonLocalWarning ? [runtime.nonLocalWarning] : [],
     },
     auth: resolveAuthPosture(config.auth, runtime),
-    requestPolicy: getRequestPolicyRuntimeStatus(),
+    requestPolicy: getRequestPolicyRuntimeStatus(config.auth),
     protectedModeStartup: await assessProtectedModeStartup({
       auth: config.auth,
       appDataDir,

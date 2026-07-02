@@ -10,10 +10,11 @@ AREPO V1 remains a local-only, unauthenticated Node backend. It binds to
 ## Current Phase 4 Implementation Status
 
 Phase 4 is in progress. AREPO now has security design documents, inert backend
-scaffolding, and status-only request-policy plumbing for future protected mode,
-but protected mode is not implemented.
+scaffolding, status-only request-policy plumbing, and optional observation-only
+dry-run request planning for future protected mode, but protected mode is not
+implemented.
 
-Implemented as inert or status-only:
+Implemented as inert, status-only, or observation-only:
 
 - Auth posture/config/status reporting: omitted auth config defaults to
   `auth.mode = "disabled"`. If config requests protected mode,
@@ -45,10 +46,15 @@ Implemented as inert or status-only:
   planner that combines route policy lookup, HTTP credential adapter output,
   dry-run authorization planning, browser security planning, and confirmation
   requirements into a non-enforcing decision.
-- `backend/protectedRequestPipeline.ts`: unmounted protected request pipeline
-  that composes auth store loading, HTTP credential extraction, token/session
+- `backend/protectedRequestPipeline.ts`: protected request pipeline that
+  composes auth store loading, HTTP credential extraction, token/session
   verification, route-aware authorization planning, browser policy planning,
-  and optional sanitized audit writes for explicit request-shaped inputs only.
+  and optional sanitized audit writes. It is non-enforcing and is only called by
+  tests or the explicitly configured dry-run observer.
+- `backend/protectedRequestDryRun.ts`: optional mounted dry-run observer gated
+  by `auth.dryRunRequestPolicy = true`. It runs the protected request pipeline
+  for diagnostics only, stores a bounded sanitized summary, always continues to
+  the normal handler, and never sends 401/403 responses.
 - `backend/authAudit.ts`: inert audit event types plus JSONL serialize, parse,
   append, and read helpers.
 - `backend/authRevocation.ts`: inert revocation planning helpers for
@@ -59,23 +65,23 @@ Implemented as inert or status-only:
   confirmation decisions.
 - `backend/requestPolicyStatus.ts`: status-only request-policy readiness summary
   for local diagnostics. It reports policy inventory and planner presence, route
-  policy count, and inactive enforcement/credential/audit/revocation/CSRF flags.
+  policy count, dry-run observer state, and inactive
+  enforcement/credential/audit/revocation/CSRF flags.
 - `backend/protectedModeStartup.ts`: diagnostic startup assessment for future
   protected mode. It reports requested/operational auth mode, missing or corrupt
   auth stores, unsafe auth paths, permission warnings, inactive enforcement
   flags, and `networkExposureSafe: false`.
 
 None of these modules enforce authentication, authorization, CSRF, origin
-checks, token/session validation, revocation, or audit logging in active request
-handling. They do not generate credentials, bearer tokens, cookies, active
-sessions, pairing codes, or node registrations. Credential-store persistence
-helpers are not imported by active request handling. Credential and session
-verifier helpers, including the non-HTTP verification service, its audit write
-adapter, the HTTP credential adapter, and the route-aware authorization planner,
-and the protected request pipeline are not mounted into active request handling
-and do not reject real HTTP requests. The startup assessment is diagnostic only
-and does not reject active API requests. They do not make LAN, reverse-proxy, or
-internet exposure safe.
+checks, revocation, or audit logging in active request handling. They do not
+generate credentials, bearer tokens, cookies, active sessions, pairing codes, or
+node registrations. Credential-store persistence helpers are not imported by
+active request handling. The optional dry-run observer may call verifier,
+adapter, planner, and pipeline helpers only when `auth.dryRunRequestPolicy` is
+explicitly true, and its result is not trusted by route handlers. It does not
+attach an authenticated actor, does not reject real HTTP requests, and does not
+make LAN, reverse-proxy, or internet exposure safe. The startup assessment is
+diagnostic only and does not reject active API requests.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds
@@ -86,7 +92,7 @@ unsafe with a no-auth warning.
 Protected-mode enforcement is still blocked on credential issuance, request
 credential parsing in active handlers, session lifecycle, CSRF/origin
 enforcement, route authorization middleware, audit wiring, revocation checks,
-startup safety checks, and regression tests that cover protected and
+startup safety checks, and regression tests that cover protected, dry-run, and
 disabled-auth modes.
 
 ## Enforcement Readiness Checklist
@@ -95,7 +101,7 @@ This checklist is the gate before any auth middleware is mounted. It separates
 implemented scaffolding from future runtime behavior so Phase 4 cannot be
 mistaken for active protection.
 
-Implemented but unmounted or status-only:
+Implemented but unmounted, status-only, or observation-only:
 
 - Auth posture/config/status reporting for disabled local mode and requested
   protected mode as unavailable.
@@ -116,7 +122,11 @@ Implemented but unmounted or status-only:
 
 Mounted but dry-run:
 
-- Nothing yet. No auth, route authorization, revocation, CSRF/origin, or audit
+- Optional protected request dry-run observer behind
+  `auth.dryRunRequestPolicy = true`. It runs planning for observation only,
+  stores bounded sanitized diagnostics, always continues to the normal handler,
+  and keeps `enforcementActive` and `networkExposureSafe` false.
+- No auth, route authorization, revocation, CSRF/origin, or audit enforcement
   middleware is mounted in active request handling.
 
 Required before first auth middleware:
@@ -129,9 +139,10 @@ Required before first auth middleware:
   no raw bearer token, cookie, session secret, verifier hash, salt, private key,
   pairing secret, password hash, recovery material, or source document body is
   exposed or logged.
-- The protected request pipeline must be mounted deliberately and only after
-  disabled-mode regression tests still prove V1 local/no-auth behavior remains
-  available when `auth.mode = "disabled"`.
+- The protected request pipeline must be switched from dry-run observation to
+  enforcement deliberately and only after disabled-mode regression tests still
+  prove V1 local/no-auth behavior remains available when `auth.mode =
+  "disabled"`.
 - Route authorization must cover every active endpoint and unknown routes must
   fail closed in protected mode.
 - Audit writes must be active, sanitized, append-only, and resilient to corrupt

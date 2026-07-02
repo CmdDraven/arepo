@@ -17,6 +17,7 @@ import {
   resolveBackendRuntimeOptions,
 } from "./nodeRuntime.js";
 import { getVaultStorageSummary } from "./storage.js";
+import { runProtectedRequestDryRun } from "./protectedRequestDryRun.js";
 import {
   getVaultRuntimeStatus,
   recordVaultIndexed,
@@ -66,6 +67,8 @@ export async function routeRequest(
   if (method === "OPTIONS") {
     return json(204, null, cors.headers);
   }
+
+  await runProtectedRequestDryRun({ request, cwd, url });
 
   try {
     if (method === "GET" && url.pathname === "/api/health") {

@@ -138,6 +138,9 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.requestPolicy.routePolicyCount, PROTECTED_ROUTE_POLICIES.length);
   assert.equal(status.requestPolicy.browserSecurityPolicyPresent, true);
   assert.equal(status.requestPolicy.authorizationPlannerPresent, true);
+  assert.equal(status.requestPolicy.dryRunMiddlewareConfigured, false);
+  assert.equal(status.requestPolicy.dryRunMiddlewareMounted, false);
+  assert.equal(status.requestPolicy.dryRunObservationOnly, true);
   assert.equal(status.requestPolicy.enforcementActive, false);
   assert.equal(status.requestPolicy.credentialVerificationActive, false);
   assert.equal(status.requestPolicy.auditRequestLoggingActive, false);
@@ -233,6 +236,8 @@ test("node status endpoint reports requested protected mode as unavailable", asy
   assert.match(status.auth.error ?? "", /not implemented/);
   assert.equal(status.requestPolicy.enforcementActive, false);
   assert.equal(status.requestPolicy.credentialVerificationActive, false);
+  assert.equal(status.requestPolicy.dryRunMiddlewareConfigured, false);
+  assert.equal(status.requestPolicy.dryRunMiddlewareMounted, false);
   assert.equal(status.requestPolicy.networkExposureSafe, false);
   assert.equal(status.protectedModeStartup.requestedAuthMode, "protected");
   assert.equal(status.protectedModeStartup.operationalAuthMode, "disabled");

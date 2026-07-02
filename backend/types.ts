@@ -16,6 +16,7 @@ export type AuthConfig = {
   mode: AuthMode;
   requestedMode?: AuthRequestedMode;
   protectedModeUnavailableReason?: string;
+  dryRunRequestPolicy?: boolean;
 };
 
 export type AuthPosture = {
@@ -34,6 +35,11 @@ export type RequestPolicyRuntimeStatus = {
   routePolicyCount: number;
   browserSecurityPolicyPresent: boolean;
   authorizationPlannerPresent: boolean;
+  dryRunMiddlewareConfigured: boolean;
+  dryRunMiddlewareMounted: boolean;
+  dryRunObservationOnly: true;
+  dryRunRunCount: number;
+  lastDryRunResult?: ProtectedRequestDryRunSummary;
   enforcementActive: false;
   credentialVerificationActive: false;
   auditRequestLoggingActive: false;
@@ -43,6 +49,20 @@ export type RequestPolicyRuntimeStatus = {
   acceptsSessions: false;
   acceptsBearerTokens: false;
   networkExposureSafe: false;
+};
+
+export type ProtectedRequestDryRunSummary = {
+  timestamp: string;
+  method: string;
+  path: string;
+  routePattern?: string;
+  status: "wouldAllow" | "wouldDeny" | "anonymousReduced" | "failed";
+  credentialStatus?: string;
+  credentialSource?: string;
+  reasonCodes: readonly string[];
+  enforcementActive: false;
+  networkExposureSafe: false;
+  error?: string;
 };
 
 export type ProtectedModeStoreName = "credentials" | "tokenVerifiers" | "sessions" | "revocations";

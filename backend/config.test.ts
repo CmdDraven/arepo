@@ -163,6 +163,27 @@ test("disabled auth config remains the only operational mode", async () => {
   assert.deepEqual(config.auth, { mode: "disabled" });
 });
 
+test("auth dry-run request policy defaults off and can be enabled explicitly", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+    auth: {
+      mode: "disabled",
+      dryRunRequestPolicy: true,
+    },
+    vaults: [],
+  });
+
+  const config = await loadConfig(cwd);
+  assert.equal(config.auth.mode, "disabled");
+  assert.equal(config.auth.dryRunRequestPolicy, true);
+});
+
 test("protected auth config is represented as requested but unavailable", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
   await writeConfig(cwd, {
@@ -219,6 +240,25 @@ test("config validation rejects unsupported requested auth modes", async () => {
   });
 
   await assert.rejects(() => loadConfig(cwd), /unsupported requested auth mode "session"/);
+});
+
+test("config validation rejects non-boolean auth dry-run request policy", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+    auth: {
+      mode: "disabled",
+      dryRunRequestPolicy: "yes",
+    },
+    vaults: [],
+  });
+
+  await assert.rejects(() => loadConfig(cwd), /auth\.dryRunRequestPolicy must be boolean/);
 });
 
 test("protected auth config does not mark enforcement active", async () => {

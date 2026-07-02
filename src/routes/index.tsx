@@ -2895,6 +2895,23 @@ type LocalNodeRuntimeStatus = {
     routePolicyCount: number;
     browserSecurityPolicyPresent: boolean;
     authorizationPlannerPresent: boolean;
+    dryRunMiddlewareConfigured: boolean;
+    dryRunMiddlewareMounted: boolean;
+    dryRunObservationOnly: true;
+    dryRunRunCount: number;
+    lastDryRunResult?: {
+      timestamp: string;
+      method: string;
+      path: string;
+      routePattern?: string;
+      status: "wouldAllow" | "wouldDeny" | "anonymousReduced" | "failed";
+      credentialStatus?: string;
+      credentialSource?: string;
+      reasonCodes: string[];
+      enforcementActive: false;
+      networkExposureSafe: false;
+      error?: string;
+    };
     enforcementActive: false;
     credentialVerificationActive: false;
     auditRequestLoggingActive: false;
@@ -3493,6 +3510,23 @@ function LocalNodeDiagnosticsCard({
                 <span>
                   {status.requestPolicy.authorizationPlannerPresent ? "present" : "absent"}
                 </span>
+                <span className="text-muted-foreground">Dry-run configured</span>
+                <span>{status.requestPolicy.dryRunMiddlewareConfigured ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Dry-run mounted</span>
+                <span>{status.requestPolicy.dryRunMiddlewareMounted ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Dry-run requests</span>
+                <span>{status.requestPolicy.dryRunRunCount}</span>
+                {status.requestPolicy.lastDryRunResult && (
+                  <>
+                    <span className="text-muted-foreground">Last dry-run</span>
+                    <span>
+                      {status.requestPolicy.lastDryRunResult.method}{" "}
+                      {status.requestPolicy.lastDryRunResult.routePattern ??
+                        status.requestPolicy.lastDryRunResult.path}{" "}
+                      ({status.requestPolicy.lastDryRunResult.status})
+                    </span>
+                  </>
+                )}
                 <span className="text-muted-foreground">Enforcement</span>
                 <span>{status.requestPolicy.enforcementActive ? "active" : "inactive"}</span>
                 <span className="text-muted-foreground">Credential checks</span>
@@ -3507,8 +3541,8 @@ function LocalNodeDiagnosticsCard({
                 <span>{status.requestPolicy.networkExposureSafe ? "yes" : "no"}</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Policy plumbing is status-only. It does not accept credentials, sessions, bearer
-                tokens, or protect non-local exposure.
+                Policy plumbing is observation-only. Dry-run planning never accepts credentials for
+                handlers, rejects requests, or protects non-local exposure.
               </p>
             </div>
 

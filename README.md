@@ -232,14 +232,17 @@ in V1.
 - There is no authentication yet. Do not expose the backend to a LAN or the
   internet.
 - `GET /api/node/status` reports auth posture, status-only request-policy
-  readiness, and diagnostic protected-mode startup gating. In V1 it should
-  report disabled auth, no enforcement, protected mode unavailable, inactive
-  credential/session/token checks, and network exposure unsafe.
+  readiness, optional observation-only dry-run state, and diagnostic
+  protected-mode startup gating. In V1 it should report disabled auth, no
+  enforcement, protected mode unavailable, inactive credential/session/token
+  checks, and network exposure unsafe.
 - Phase 4 includes protected-mode policy, planner, credential-store persistence,
   audit, revocation, browser-security helpers, request-policy status plumbing,
-  and protected-mode startup diagnostics, but no credentials, sessions, bearer
-  tokens, CSRF/origin enforcement, auth middleware, credential verification, or
-  authorization enforcement are active.
+  optional dry-run request planning, and protected-mode startup diagnostics, but
+  no credentials, sessions, bearer tokens, cookies, CSRF/origin enforcement,
+  login, pairing, or authorization enforcement are active. Dry-run planning is
+  disabled by default and does not reject requests or make handlers trust an
+  authenticated actor.
 - Non-local binding requires explicit `AREPO_HOST` configuration and prints a
   startup warning.
 - CORS is restricted to the local frontend dev origins by default:
