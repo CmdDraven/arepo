@@ -45,6 +45,10 @@ Implemented as inert or status-only:
   planner that combines route policy lookup, HTTP credential adapter output,
   dry-run authorization planning, browser security planning, and confirmation
   requirements into a non-enforcing decision.
+- `backend/protectedRequestPipeline.ts`: unmounted protected request pipeline
+  that composes auth store loading, HTTP credential extraction, token/session
+  verification, route-aware authorization planning, browser policy planning,
+  and optional sanitized audit writes for explicit request-shaped inputs only.
 - `backend/authAudit.ts`: inert audit event types plus JSONL serialize, parse,
   append, and read helpers.
 - `backend/authRevocation.ts`: inert revocation planning helpers for
@@ -68,9 +72,10 @@ sessions, pairing codes, or node registrations. Credential-store persistence
 helpers are not imported by active request handling. Credential and session
 verifier helpers, including the non-HTTP verification service, its audit write
 adapter, the HTTP credential adapter, and the route-aware authorization planner,
-are not mounted into active request handling and do not reject real HTTP
-requests. The startup assessment is diagnostic only and does not reject active
-API requests. They do not make LAN, reverse-proxy, or internet exposure safe.
+and the protected request pipeline are not mounted into active request handling
+and do not reject real HTTP requests. The startup assessment is diagnostic only
+and does not reject active API requests. They do not make LAN, reverse-proxy, or
+internet exposure safe.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds
@@ -79,9 +84,10 @@ browser-origin filter rather than authentication, and keeps non-local binding
 unsafe with a no-auth warning.
 
 Protected-mode enforcement is still blocked on credential issuance, request
-credential parsing, session lifecycle, CSRF/origin enforcement, route
-authorization middleware, audit wiring, revocation checks, startup safety
-checks, and regression tests that cover protected and disabled-auth modes.
+credential parsing in active handlers, session lifecycle, CSRF/origin
+enforcement, route authorization middleware, audit wiring, revocation checks,
+startup safety checks, and regression tests that cover protected and
+disabled-auth modes.
 
 ## Current V1 Security Posture
 
