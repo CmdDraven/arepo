@@ -1,7 +1,7 @@
 ---
 id: reference-note
 title: Reference Note
-tags: [reference, test]
+tags: [reference, markdown, test, local]
 ---
 
 # Reference Note
@@ -31,10 +31,6 @@ This link should resolve by frontmatter id if id-based links are supported:
 | Wikilink | A link written like `[[Notes/note]]` |
 | Anchor | A stable section id like `{#overview}` |
 
-## Anchor Target {#anchor-target}
-
-This section exists so the test note can link here.
-
 ## Intentional Broken Link {#intentional-broken-link}
 
 This link is intentionally broken:
@@ -52,3 +48,7 @@ The indexer and preview renderer should not treat these fenced-code examples as 
 
 The indexer and preview renderer should also ignore inline code like `[[inline-fake-reference]]`.
 
+
+## Anchor Target {#anchor-target}
+
+This section exists so the test note can link here.

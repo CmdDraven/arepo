@@ -1,7 +1,7 @@
 ---
 id: note
 title: Test Note
-tags: [test, markdown, local]
+tags: [test, markdown, local, note]
 ---
 
 # Test Note
@@ -22,15 +22,11 @@ This link should resolve to the reference pnote:
 
 This link should resolve to a specific section in the reference note:
 
-[[Reference/reference-note#terminology]]
+[[Reference/reference-note#anchor-target]]
 
 This link should resolve by frontmatter id if id-based links are supported:
 
 [[reference-note]]
-
-## Backlink Target {#backlink-target}
-
-The reference note should link back to this section.
 
 ## Intentional Broken Link {#intentional-broken-link}
 
@@ -57,6 +53,10 @@ The indexer and preview renderer should also ignore inline code like `[[Referenc
 | Anchor link | `Reference/reference-note#terminology` resolves |
 | Broken link | `missing-note` appears as an issue |
 | Code link | `Reference/fake-code-link` is ignored |
+
+## Backlink Target {#backlink-target}
+
+The reference note should link back to this section.
 
 ## Manual Test Section
 

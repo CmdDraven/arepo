@@ -1,11 +1,17 @@
+---
+id: readme
+title: Test Vault README
+tags: [test, markdown, local]
+---
+
 # AREPO Test Vault
 
 This folder is a disposable example Markdown vault for AREPO. It is kept in the repository as a manual-test and demo fixture, not as generated app data and not as a real user vault.
 
 It demonstrates:
 
-- folder-qualified wikilinks such as `[[Reference/reference-note]]` and `[[Notes/note]]`
-- heading-anchor links such as `[[Reference/reference-note#terminology]]`
+- folder-qualified wikilinks such as [[Reference/reference-note]] and [[Notes/note]]
+- heading-anchor links such as [[Reference/reference-note#terminology]]
 - backlinks between notes
 - intentional broken-link validation
 - graph mode with linked notes and missing-link nodes
