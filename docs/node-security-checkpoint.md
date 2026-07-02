@@ -89,6 +89,84 @@ enforcement, route authorization middleware, audit wiring, revocation checks,
 startup safety checks, and regression tests that cover protected and
 disabled-auth modes.
 
+## Enforcement Readiness Checklist
+
+This checklist is the gate before any auth middleware is mounted. It separates
+implemented scaffolding from future runtime behavior so Phase 4 cannot be
+mistaken for active protection.
+
+Implemented but unmounted or status-only:
+
+- Auth posture/config/status reporting for disabled local mode and requested
+  protected mode as unavailable.
+- Route permission inventory for current backend endpoints.
+- Dry-run authorization planner for hypothetical credentials.
+- Credential store metadata, validation, and JSON persistence helpers.
+- Token verifier and browser session verifier primitives for supplied secret
+  material.
+- Non-HTTP credential verification service and sanitized verification audit
+  helpers.
+- HTTP credential extraction adapter for explicit request-shaped inputs.
+- Route-aware request authorization planner for explicit request-shaped inputs.
+- Protected request pipeline that composes store loading, credential adapter
+  verification, route planning, browser policy planning, and optional sanitized
+  audit writes for explicit request-shaped inputs.
+- Browser security, revocation, startup-gating, and request-policy status
+  helpers.
+
+Mounted but dry-run:
+
+- Nothing yet. No auth, route authorization, revocation, CSRF/origin, or audit
+  middleware is mounted in active request handling.
+
+Required before first auth middleware:
+
+- Protected-mode config must fail closed and never silently downgrade to
+  disabled without a clear diagnostic.
+- Auth store load failures, corrupt stores, unsafe store paths, and unreadable
+  stores must fail closed.
+- The HTTP credential adapter must be mounted deliberately, with tests proving
+  no raw bearer token, cookie, session secret, verifier hash, salt, private key,
+  pairing secret, password hash, recovery material, or source document body is
+  exposed or logged.
+- The protected request pipeline must be mounted deliberately and only after
+  disabled-mode regression tests still prove V1 local/no-auth behavior remains
+  available when `auth.mode = "disabled"`.
+- Route authorization must cover every active endpoint and unknown routes must
+  fail closed in protected mode.
+- Audit writes must be active, sanitized, append-only, and resilient to corrupt
+  JSONL lines before protected mode is advertised.
+- Revocation checks must be active for credentials, token verifiers, browser
+  sessions, node-secret generation state, and emergency local-only reset.
+- CSRF and origin checks must be active for browser cookie sessions before any
+  cookie-authenticated state-changing route is accepted.
+- Delete, overwrite-after-conflict, vault registration/removal, auth changes,
+  token revocation, and node-management actions must require stronger
+  confirmation where planned.
+- Full anonymous diagnostics must be replaced by reduced anonymous
+  health/status responses before protected mode is used outside local-only
+  disabled-auth operation.
+- Disabled-mode regression tests must continue to prove that adding protected
+  mode does not change Markdown read/write/delete semantics when auth is
+  disabled.
+
+Required before non-local safety claims:
+
+- Protected mode must be operational with credential verification, route
+  authorization, audit writing, revocation checks, CSRF/origin enforcement, and
+  reduced anonymous status all active and tested together.
+- Non-local bind startup must refuse unsafe configurations or emit blocking
+  fail-closed diagnostics rather than a warning-only posture.
+- Reverse-proxy deployments must have explicit origin, header, TLS, forwarded
+  host/proto, and cookie security guidance.
+- Token/session lifecycle, expiry, rotation, logout, revocation, emergency
+  reset, and audit preservation must be tested with failure cases.
+- CORS must remain documented and tested as browser-origin policy only, never
+  as authentication or authorization.
+- Documentation and UI diagnostics must continue to say that LAN,
+  reverse-proxy, and internet exposure are unsafe until the protected-mode
+  implementation and tests support those claims.
+
 ## Current V1 Security Posture
 
 - AREPO V1 is a local-node-only app.
