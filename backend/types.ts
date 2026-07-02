@@ -45,6 +45,33 @@ export type RequestPolicyRuntimeStatus = {
   networkExposureSafe: false;
 };
 
+export type ProtectedModeStoreName = "credentials" | "tokenVerifiers" | "sessions" | "revocations";
+
+export type ProtectedModeStoreDiagnostic = {
+  store: ProtectedModeStoreName;
+  path: string;
+  error: string;
+  quarantineCandidate?: string;
+};
+
+export type ProtectedModeStartupAssessment = {
+  requestedAuthMode: AuthRequestedMode;
+  operationalAuthMode: AuthMode;
+  protectedModeAvailable: false;
+  protectedModeMayStart: false;
+  missingRequiredStores: readonly ProtectedModeStoreDiagnostic[];
+  corruptStores: readonly ProtectedModeStoreDiagnostic[];
+  unsafeStorePaths: readonly string[];
+  permissionWarnings: readonly string[];
+  nonLocalBindWithDisabledAuth: boolean;
+  enforcementActive: false;
+  credentialVerificationActive: false;
+  auditWiringActive: false;
+  revocationChecksActive: false;
+  csrfOriginEnforcementActive: false;
+  networkExposureSafe: false;
+};
+
 export type VaultInfo = {
   id: string;
   displayName: string;
@@ -77,6 +104,7 @@ export type LocalNodeRuntimeStatus = {
   };
   auth: AuthPosture;
   requestPolicy: RequestPolicyRuntimeStatus;
+  protectedModeStartup: ProtectedModeStartupAssessment;
   vaultCount: number;
   vaults: LocalNodeVaultRuntimeSummary[];
   capabilities: {

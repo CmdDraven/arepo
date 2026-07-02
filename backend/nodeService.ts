@@ -1,5 +1,6 @@
-import { getNodeInfo, getVault, loadConfig } from "./config.js";
+import { getNodeInfo, getVault, loadConfig, resolveAppDataDir } from "./config.js";
 import { resolveAuthPosture, resolveBackendRuntimeOptions } from "./nodeRuntime.js";
+import { assessProtectedModeStartup } from "./protectedModeStartup.js";
 import { getRequestPolicyRuntimeStatus } from "./requestPolicyStatus.js";
 import { getVaultRuntimeStatus, startConfiguredVaultWatchers } from "./vaultWatch.js";
 import type {
@@ -51,6 +52,7 @@ export async function getLocalNodeRuntimeStatus(
 ): Promise<LocalNodeRuntimeStatus> {
   const { config, node } = await startLocalNode(cwd);
   const runtime = resolveBackendRuntimeOptions(env);
+  const appDataDir = resolveAppDataDir(config, cwd);
   const vaultStatuses = await Promise.all(
     node.vaults.map(async (vault) => summarizeVaultRuntime(vault, cwd)),
   );
@@ -71,6 +73,12 @@ export async function getLocalNodeRuntimeStatus(
     },
     auth: resolveAuthPosture(config.auth, runtime),
     requestPolicy: getRequestPolicyRuntimeStatus(),
+    protectedModeStartup: await assessProtectedModeStartup({
+      auth: config.auth,
+      appDataDir,
+      vaultRoots: node.vaults.map((vault) => vault.rootPath),
+      runtime,
+    }),
     vaultCount: node.vaults.length,
     vaults: vaultStatuses,
     capabilities: {

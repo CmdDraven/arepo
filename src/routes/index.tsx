@@ -2833,6 +2833,33 @@ type LocalNodeRuntimeStatus = {
     acceptsBearerTokens: false;
     networkExposureSafe: false;
   };
+  protectedModeStartup: {
+    requestedAuthMode: "disabled" | "protected";
+    operationalAuthMode: "disabled";
+    protectedModeAvailable: false;
+    protectedModeMayStart: false;
+    missingRequiredStores: {
+      store: "credentials" | "tokenVerifiers" | "sessions" | "revocations";
+      path: string;
+      error: string;
+      quarantineCandidate?: string;
+    }[];
+    corruptStores: {
+      store: "credentials" | "tokenVerifiers" | "sessions" | "revocations";
+      path: string;
+      error: string;
+      quarantineCandidate?: string;
+    }[];
+    unsafeStorePaths: string[];
+    permissionWarnings: string[];
+    nonLocalBindWithDisabledAuth: boolean;
+    enforcementActive: false;
+    credentialVerificationActive: false;
+    auditWiringActive: false;
+    revocationChecksActive: false;
+    csrfOriginEnforcementActive: false;
+    networkExposureSafe: false;
+  };
   vaultCount: number;
   vaults: {
     vaultId: string;
@@ -3328,6 +3355,53 @@ function LocalNodeDiagnosticsCard({
               </div>
               <p className="text-xs text-muted-foreground">{status.auth.warning}</p>
               {status.auth.error && <p className="text-xs text-destructive">{status.auth.error}</p>}
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs font-semibold">Protected-mode startup gate</div>
+              <div className="grid grid-cols-[150px_1fr] gap-x-3 gap-y-1 text-xs">
+                <span className="text-muted-foreground">Requested auth</span>
+                <span>{status.protectedModeStartup.requestedAuthMode}</span>
+                <span className="text-muted-foreground">Operational auth</span>
+                <span>{status.protectedModeStartup.operationalAuthMode}</span>
+                <span className="text-muted-foreground">May start</span>
+                <span>{status.protectedModeStartup.protectedModeMayStart ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Missing stores</span>
+                <span>{status.protectedModeStartup.missingRequiredStores.length}</span>
+                <span className="text-muted-foreground">Corrupt stores</span>
+                <span>{status.protectedModeStartup.corruptStores.length}</span>
+                <span className="text-muted-foreground">Unsafe paths</span>
+                <span>{status.protectedModeStartup.unsafeStorePaths.length}</span>
+                <span className="text-muted-foreground">Network safe</span>
+                <span>{status.protectedModeStartup.networkExposureSafe ? "yes" : "no"}</span>
+              </div>
+              {status.protectedModeStartup.missingRequiredStores.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Missing auth stores:{" "}
+                  {status.protectedModeStartup.missingRequiredStores
+                    .map((store) => store.store)
+                    .join(", ")}
+                </p>
+              )}
+              {status.protectedModeStartup.corruptStores.length > 0 && (
+                <p className="text-xs text-destructive">
+                  Corrupt auth stores:{" "}
+                  {status.protectedModeStartup.corruptStores.map((store) => store.store).join(", ")}
+                </p>
+              )}
+              {status.protectedModeStartup.unsafeStorePaths.length > 0 && (
+                <p className="text-xs text-destructive">
+                  {status.protectedModeStartup.unsafeStorePaths.join(" ")}
+                </p>
+              )}
+              {status.protectedModeStartup.permissionWarnings.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {status.protectedModeStartup.permissionWarnings.join(" ")}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Startup gating is diagnostic only. It does not verify credentials or enforce auth.
+              </p>
             </div>
 
             <div className="space-y-1">

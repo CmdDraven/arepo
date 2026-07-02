@@ -147,6 +147,18 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.requestPolicy.acceptsSessions, false);
   assert.equal(status.requestPolicy.acceptsBearerTokens, false);
   assert.equal(status.requestPolicy.networkExposureSafe, false);
+  assert.equal(status.protectedModeStartup.requestedAuthMode, "disabled");
+  assert.equal(status.protectedModeStartup.operationalAuthMode, "disabled");
+  assert.equal(status.protectedModeStartup.protectedModeAvailable, false);
+  assert.equal(status.protectedModeStartup.protectedModeMayStart, false);
+  assert.deepEqual(status.protectedModeStartup.missingRequiredStores, []);
+  assert.deepEqual(status.protectedModeStartup.corruptStores, []);
+  assert.equal(status.protectedModeStartup.enforcementActive, false);
+  assert.equal(status.protectedModeStartup.credentialVerificationActive, false);
+  assert.equal(status.protectedModeStartup.auditWiringActive, false);
+  assert.equal(status.protectedModeStartup.revocationChecksActive, false);
+  assert.equal(status.protectedModeStartup.csrfOriginEnforcementActive, false);
+  assert.equal(status.protectedModeStartup.networkExposureSafe, false);
   assert.equal(status.vaultCount, 1);
   assert.equal(status.vaults[0]?.vaultId, vault.id);
   assert.equal(status.vaults[0]?.storageSummaryAvailable, true);
@@ -177,6 +189,8 @@ test("node status endpoint reports non-local bind warning", async () => {
     assert.equal(status.auth.protectedModeAvailable, false);
     assert.match(status.auth.warning, /non-local binding is unsafe/);
     assert.equal(status.requestPolicy.networkExposureSafe, false);
+    assert.equal(status.protectedModeStartup.nonLocalBindWithDisabledAuth, true);
+    assert.equal(status.protectedModeStartup.networkExposureSafe, false);
   } finally {
     if (originalHost === undefined) {
       delete process.env.AREPO_HOST;
@@ -220,6 +234,46 @@ test("node status endpoint reports requested protected mode as unavailable", asy
   assert.equal(status.requestPolicy.enforcementActive, false);
   assert.equal(status.requestPolicy.credentialVerificationActive, false);
   assert.equal(status.requestPolicy.networkExposureSafe, false);
+  assert.equal(status.protectedModeStartup.requestedAuthMode, "protected");
+  assert.equal(status.protectedModeStartup.operationalAuthMode, "disabled");
+  assert.equal(status.protectedModeStartup.protectedModeAvailable, false);
+  assert.equal(status.protectedModeStartup.protectedModeMayStart, false);
+  assert.deepEqual(
+    status.protectedModeStartup.missingRequiredStores.map((item) => item.store).sort(),
+    ["credentials", "revocations", "sessions", "tokenVerifiers"],
+  );
+  assert.equal(status.protectedModeStartup.enforcementActive, false);
+  assert.equal(status.protectedModeStartup.credentialVerificationActive, false);
+  assert.equal(status.protectedModeStartup.auditWiringActive, false);
+  assert.equal(status.protectedModeStartup.revocationChecksActive, false);
+  assert.equal(status.protectedModeStartup.csrfOriginEnforcementActive, false);
+  assert.equal(status.protectedModeStartup.networkExposureSafe, false);
+});
+
+test("protected-mode startup assessment does not reject active API requests", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
+  await fs.writeFile(
+    path.join(cwd, ".arepo", "config.json"),
+    JSON.stringify({
+      node: {
+        nodeId: "local",
+        displayName: "Local Node",
+        mode: "local",
+        apiVersion: 1,
+      },
+      auth: {
+        mode: "protected",
+      },
+      vaults: [],
+    }),
+    "utf8",
+  );
+
+  const response = await routeRequest(request("GET", "/api/vaults"), cwd);
+  assert.equal(response.status, 200);
+  const body = response.body as { vaults: unknown[] };
+  assert.deepEqual(body.vaults, []);
 });
 
 test("unsupported auth modes still fail closed clearly", async () => {

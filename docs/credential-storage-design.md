@@ -247,17 +247,21 @@ Future protected mode needs revocation before it can make safety claims:
 - Lost node secret: dependent credentials should become invalid and require local
   recovery or re-pairing.
 
-## Minimal Next Implementation Recommendation
+## Current Startup Gating Status
 
 The credential-store type, validation, path, read, and atomic-write helpers now
-exist. The next implementation slice should still avoid token generation and
-enforcement. A conservative next step would design and test explicit protected
-mode startup gating around these stores:
+exist. `backend/protectedModeStartup.ts` adds diagnostic startup gating around
+those stores:
 
-1. Confirm required store files and permissions before protected mode can start.
-2. Define recovery/quarantine behavior for corrupt auth files.
-3. Keep disabled local mode tolerant of missing store files.
-4. Keep request handling independent until credential verification, audit,
+1. Disabled local mode tolerates missing auth store files.
+2. Requested protected mode reports missing, corrupt, unsafe, or unreadable auth
+   stores as unavailable/fail-closed diagnostics.
+3. Corrupt stores include quarantine-candidate metadata, but the helper does not
+   rename, delete, or repair files yet.
+4. Valid empty stores still do not make protected mode operational because
+   enforcement, credential verification, audit wiring, revocation checks, and
+   CSRF/origin enforcement are not implemented.
+5. Request handling remains independent until credential verification, audit,
    revocation, CSRF/origin posture, and route authorization are ready together.
 
 Do not generate tokens, create sessions, accept bearer credentials, or enforce

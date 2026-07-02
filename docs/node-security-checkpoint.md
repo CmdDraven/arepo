@@ -36,13 +36,18 @@ Implemented as inert or status-only:
 - `backend/requestPolicyStatus.ts`: status-only request-policy readiness summary
   for local diagnostics. It reports policy inventory and planner presence, route
   policy count, and inactive enforcement/credential/audit/revocation/CSRF flags.
+- `backend/protectedModeStartup.ts`: diagnostic startup assessment for future
+  protected mode. It reports requested/operational auth mode, missing or corrupt
+  auth stores, unsafe auth paths, permission warnings, inactive enforcement
+  flags, and `networkExposureSafe: false`.
 
 None of these modules enforce authentication, authorization, CSRF, origin
 checks, token/session validation, revocation, or audit logging in active request
 handling. They do not generate credentials, bearer tokens, sessions, pairing
 codes, or node registrations. Credential-store persistence helpers are not
-imported by active request handling and do not verify request credentials. They
-do not make LAN, reverse-proxy, or internet exposure safe.
+imported by active request handling and do not verify request credentials. The
+startup assessment is diagnostic only and does not reject active API requests.
+They do not make LAN, reverse-proxy, or internet exposure safe.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds
