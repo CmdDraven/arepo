@@ -343,6 +343,10 @@ and source vault content.
 - Copying `.arepo/config.json` to another machine should be treated as copying
   vault paths and posture, not as safely pairing a new device.
 
+See [Credential Storage Design](credential-storage-design.md) for the future
+protected-mode credential storage and lifecycle design. That design is not
+implemented and does not make non-local exposure safe.
+
 ## Browser And API Security
 
 - CORS is not authentication. It controls which browser origins can read
