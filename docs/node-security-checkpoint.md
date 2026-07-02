@@ -37,6 +37,10 @@ Implemented as inert or status-only:
 - `backend/credentialVerificationAudit.ts`: non-HTTP audit integration helpers
   that convert verification results into sanitized auth audit events and append
   them to the existing JSONL audit log when called explicitly.
+- `backend/httpCredentialAdapter.ts`: unmounted request-shaped credential
+  extraction adapter for future protected mode. It can parse explicit test
+  inputs for bearer headers or browser-session cookies, call the non-HTTP
+  verification service, and return sanitized audit intent.
 - `backend/authAudit.ts`: inert audit event types plus JSONL serialize, parse,
   append, and read helpers.
 - `backend/authRevocation.ts`: inert revocation planning helpers for
@@ -59,10 +63,10 @@ handling. They do not generate credentials, bearer tokens, cookies, active
 sessions, pairing codes, or node registrations. Credential-store persistence
 helpers are not imported by active request handling. Credential and session
 verifier helpers, including the non-HTTP verification service and its audit
-write adapter, are not connected to HTTP headers, cookies, request credentials,
-or active request logging. The startup assessment is diagnostic only and does
-not reject active API requests. They do not make LAN, reverse-proxy, or internet
-exposure safe.
+write adapter and HTTP credential adapter, are not mounted into active request
+handling and do not reject real HTTP requests. The startup assessment is
+diagnostic only and does not reject active API requests. They do not make LAN,
+reverse-proxy, or internet exposure safe.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds

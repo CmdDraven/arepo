@@ -83,6 +83,8 @@ Implemented helper names:
 - `buildCredentialVerificationAuditEvent` and
   `appendCredentialVerificationAuditEvent` in
   `backend/credentialVerificationAudit.ts`
+- `verifyHttpCredentialInput` and `classifyHttpCredentialExtraction` in
+  `backend/httpCredentialAdapter.ts`
 
 These helpers read, validate, and atomically write the JSON files above. They
 are not imported by request handling and do not generate credentials, accept
@@ -91,7 +93,9 @@ cookies, verify request credentials, or enforce auth. The verification service
 operates only on explicitly supplied material and already-loaded metadata
 stores; it does not read `Authorization` headers or cookies. The audit
 integration helper appends sanitized verification events only when called
-explicitly; it is not active HTTP request logging.
+explicitly; it is not active HTTP request logging. The HTTP credential adapter
+accepts request-shaped test inputs for future protected mode, but it is not
+mounted into `server.ts` or active route handlers.
 
 File and directory handling:
 
