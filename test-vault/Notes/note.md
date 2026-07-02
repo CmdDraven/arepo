@@ -22,7 +22,7 @@ This link should resolve to the reference pnote:
 
 This link should resolve to a specific section in the reference note:
 
-[[Reference/reference-note#anchor-target]]
+[[Reference/reference-note#terminology]]
 
 This link should resolve by frontmatter id if id-based links are supported:
 

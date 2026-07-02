@@ -69,6 +69,18 @@ function sampleSession(overrides: Partial<BrowserSessionMetadata> = {}): Browser
     sessionId: "session-1",
     credentialId: "credential-1",
     verifierId: "session-verifier-1",
+    lookupId: "session-lookup-1",
+    displayPrefix: "sess-abc123",
+    saltId: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+    hashAlgorithm: "sha256",
+    hashParameters: {
+      scheme: "pbkdf2-sha256",
+      iterations: 100_000,
+      digest: "sha256",
+      keyLength: 32,
+      saltLength: 32,
+    },
+    verifierHash: "hashed-session-verifier",
     createdAt,
     expiresAt: "2026-07-02T01:00:00.000Z",
     sameSite: "strict",
@@ -149,6 +161,18 @@ test("browser session metadata is distinct from API token metadata", () => {
     sessionId: "session-1",
     credentialId: "credential-1",
     verifierId: "session-verifier-1",
+    lookupId: "session-lookup-1",
+    displayPrefix: "sess-abc123",
+    saltId: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+    hashAlgorithm: "sha256",
+    hashParameters: {
+      scheme: "pbkdf2-sha256",
+      iterations: 100_000,
+      digest: "sha256",
+      keyLength: 32,
+      saltLength: 32,
+    },
+    verifierHash: "hashed-session-verifier",
     createdAt,
     expiresAt: "2026-07-02T01:00:00.000Z",
     sameSite: "strict",
@@ -156,8 +180,10 @@ test("browser session metadata is distinct from API token metadata", () => {
   };
 
   assert.equal(session.sameSite, "strict");
-  assert.equal("displayPrefix" in session, false);
-  assert.equal("lookupId" in session, false);
+  assert.equal(session.lookupId, "session-lookup-1");
+  assert.equal(session.displayPrefix, "sess-abc123");
+  assert.equal("sessionSecret" in session, false);
+  assert.equal("token" in session, false);
 });
 
 test("revocation metadata represents credential, token, session, node secret, and reset targets", () => {

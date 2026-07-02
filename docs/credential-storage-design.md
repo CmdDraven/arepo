@@ -73,11 +73,15 @@ Implemented helper names:
 - `createTokenVerifierMetadata`, `verifyTokenMaterial`,
   `createTokenLookupId`, `createTokenDisplayPrefix`, and `constantTimeEqual`
   in `backend/credentialVerifier.ts`
+- `createBrowserSessionVerifierMetadata`, `verifyBrowserSessionMaterial`,
+  `createSessionLookupId`, `createSessionDisplayPrefix`,
+  `planBrowserSessionRenewal`, and `planBrowserSessionLogout` in
+  `backend/sessionVerifier.ts`
 
 These helpers read, validate, and atomically write the JSON files above. They
 are not imported by request handling and do not generate credentials, accept
-tokens from HTTP requests, create sessions, verify request credentials, or
-enforce auth.
+tokens or session secrets from HTTP requests, create active sessions, set
+cookies, verify request credentials, or enforce auth.
 
 File and directory handling:
 
@@ -187,6 +191,10 @@ Browser sessions are distinct from API tokens:
 - Sessions should be short-lived and renewable under explicit rules.
 - Sessions should support logout and server-side revocation.
 - Session records should store verifier hashes, not plaintext session secrets.
+- Current session verifier primitives use PBKDF2-SHA-256 with explicit
+  parameters and store lookup IDs, display prefixes, salts, hash parameters,
+  and verifier hashes. This is pure helper logic for future protected mode, not
+  an active cookie or session mechanism.
 - Cookie-based sessions need SameSite policy, secure flag behavior, CSRF tokens
   or equivalent protection, and strict origin checks.
 - Header-based browser tokens reduce ambient cookie CSRF risk but increase

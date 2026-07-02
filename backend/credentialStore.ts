@@ -64,6 +64,12 @@ export type BrowserSessionMetadata = {
   sessionId: string;
   credentialId: string;
   verifierId: string;
+  lookupId: string;
+  displayPrefix: string;
+  saltId: string;
+  hashAlgorithm: "sha256" | "sha512" | "argon2id";
+  hashParameters: Record<string, string | number | boolean>;
+  verifierHash: string;
   createdAt: string;
   expiresAt: string;
   renewedAt?: string;
@@ -507,6 +513,12 @@ function validateBrowserSessionMetadata(value: unknown, base: string, errors: st
   requireStableId(value.sessionId, `${base}.sessionId`, errors);
   requireStableId(value.credentialId, `${base}.credentialId`, errors);
   requireStableId(value.verifierId, `${base}.verifierId`, errors);
+  requireStableId(value.lookupId, `${base}.lookupId`, errors);
+  requireNonEmptyString(value.displayPrefix, `${base}.displayPrefix`, errors);
+  requireStableId(value.saltId, `${base}.saltId`, errors);
+  requireKnown(value.hashAlgorithm, knownHashAlgorithms, `${base}.hashAlgorithm`, errors);
+  if (!isRecord(value.hashParameters)) errors.push(`${base}.hashParameters must be an object`);
+  requireNonEmptyString(value.verifierHash, `${base}.verifierHash`, errors);
   requireTimestamp(value.createdAt, `${base}.createdAt`, errors);
   requireTimestamp(value.expiresAt, `${base}.expiresAt`, errors);
   optionalTimestamp(value.renewedAt, `${base}.renewedAt`, errors);

@@ -28,6 +28,9 @@ Implemented as inert or status-only:
 - `backend/credentialVerifier.ts`: pure PBKDF2-SHA-256 verifier helpers for
   creating verifier records from supplied secret material and checking supplied
   material against verifier records.
+- `backend/sessionVerifier.ts`: pure PBKDF2-SHA-256 browser session verifier
+  helpers for supplied session secret material, renewal eligibility planning,
+  and logout/revocation planning.
 - `backend/authAudit.ts`: inert audit event types plus JSONL serialize, parse,
   append, and read helpers.
 - `backend/authRevocation.ts`: inert revocation planning helpers for
@@ -46,12 +49,12 @@ Implemented as inert or status-only:
 
 None of these modules enforce authentication, authorization, CSRF, origin
 checks, token/session validation, revocation, or audit logging in active request
-handling. They do not generate credentials, bearer tokens, sessions, pairing
-codes, or node registrations. Credential-store persistence helpers are not
-imported by active request handling. Credential verifier helpers are not
-connected to HTTP request credentials. The startup assessment is diagnostic only
-and does not reject active API requests. They do not make LAN, reverse-proxy, or
-internet exposure safe.
+handling. They do not generate credentials, bearer tokens, cookies, active
+sessions, pairing codes, or node registrations. Credential-store persistence
+helpers are not imported by active request handling. Credential and session
+verifier helpers are not connected to HTTP request credentials. The startup
+assessment is diagnostic only and does not reject active API requests. They do
+not make LAN, reverse-proxy, or internet exposure safe.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds
