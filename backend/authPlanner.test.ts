@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
 import {
   planProtectedRouteAuthorization,
   type AuthPlanningActor,
@@ -198,4 +200,9 @@ test("planner results never mark network exposure as safe", () => {
     });
     assert.equal(result.networkExposureSafe, false, `${policy.method} ${policy.routePattern}`);
   }
+});
+
+test("request handling does not import authorization planner", async () => {
+  const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
+  assert.equal(serverSource.includes("authPlanner"), false);
 });

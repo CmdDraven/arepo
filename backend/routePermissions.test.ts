@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
 import {
   PROTECTED_ROUTE_POLICIES,
   ROUTE_PERMISSION_VOCABULARY,
@@ -121,4 +123,9 @@ test("no route policy marks network exposure as safe", () => {
   for (const policy of PROTECTED_ROUTE_POLICIES) {
     assert.equal(policy.networkExposureSafe, false, `${routeKey(policy)} must not be network-safe`);
   }
+});
+
+test("request handling does not import route permission inventory", async () => {
+  const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
+  assert.equal(serverSource.includes("routePermissions"), false);
 });
