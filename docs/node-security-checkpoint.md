@@ -367,6 +367,10 @@ implemented and does not make non-local exposure safe.
   normal UI use, header tokens for scripts and integrations, and node tokens for
   future node-to-node communication.
 
+See [Browser Session Security Design](browser-session-security-design.md) for
+the future CSRF, origin, cookie-session, and header-token request policy. That
+design is not implemented and does not make non-local exposure safe.
+
 ## Explicit Non-Goals For First Auth Implementation
 
 - no hosted auth
