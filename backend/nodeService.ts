@@ -1,5 +1,5 @@
 import { getNodeInfo, getVault, loadConfig } from "./config.js";
-import { resolveBackendRuntimeOptions } from "./nodeRuntime.js";
+import { resolveAuthPosture, resolveBackendRuntimeOptions } from "./nodeRuntime.js";
 import { getVaultRuntimeStatus, startConfiguredVaultWatchers } from "./vaultWatch.js";
 import type {
   LocalNodeHealth,
@@ -48,7 +48,7 @@ export async function getLocalNodeRuntimeStatus(
   cwd = process.cwd(),
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<LocalNodeRuntimeStatus> {
-  const { node } = await startLocalNode(cwd);
+  const { config, node } = await startLocalNode(cwd);
   const runtime = resolveBackendRuntimeOptions(env);
   const vaultStatuses = await Promise.all(
     node.vaults.map(async (vault) => summarizeVaultRuntime(vault, cwd)),
@@ -68,6 +68,7 @@ export async function getLocalNodeRuntimeStatus(
       allowedOrigins: runtime.allowedOrigins,
       startupWarnings: runtime.nonLocalWarning ? [runtime.nonLocalWarning] : [],
     },
+    auth: resolveAuthPosture(config.auth, runtime),
     vaultCount: node.vaults.length,
     vaults: vaultStatuses,
     capabilities: {

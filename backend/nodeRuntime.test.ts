@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   configuredAllowedOrigins,
   nonLocalBindWarning,
+  resolveAuthPosture,
   resolveBackendHost,
   resolveBackendPort,
   resolveBackendRuntimeOptions,
@@ -50,4 +51,25 @@ test("node runtime surfaces a no-auth warning for non-local binding", () => {
   assert.equal(options.host, "0.0.0.0");
   assert.match(options.nonLocalWarning ?? "", /no authentication/);
   assert.equal(nonLocalBindWarning("0.0.0.0"), options.nonLocalWarning);
+});
+
+test("auth posture is disabled and unenforced by default", () => {
+  const runtime = resolveBackendRuntimeOptions({} as NodeJS.ProcessEnv);
+  const auth = resolveAuthPosture({ mode: "disabled" }, runtime);
+  assert.deepEqual(auth, {
+    mode: "disabled",
+    enabled: false,
+    enforcement: "none",
+    protectedModeAvailable: false,
+    warning: "Authentication is disabled and not enforced in V1 local-only mode.",
+  });
+});
+
+test("auth posture does not make non-local binding safe", () => {
+  const runtime = resolveBackendRuntimeOptions({ AREPO_HOST: "0.0.0.0" } as NodeJS.ProcessEnv);
+  const auth = resolveAuthPosture({ mode: "disabled" }, runtime);
+  assert.equal(auth.enabled, false);
+  assert.equal(auth.enforcement, "none");
+  assert.equal(auth.protectedModeAvailable, false);
+  assert.match(auth.warning, /non-local binding is unsafe/);
 });

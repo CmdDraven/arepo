@@ -1,3 +1,5 @@
+import type { AuthConfig, AuthPosture } from "./types.js";
+
 export const DEFAULT_BACKEND_PORT = 8734;
 export const DEFAULT_BACKEND_HOST = "127.0.0.1";
 export const DEFAULT_ALLOWED_ORIGINS = ["http://localhost:8733", "http://127.0.0.1:8733"];
@@ -59,4 +61,19 @@ export function nonLocalBindWarning(host: string): string {
     `WARNING: AREPO backend binding to non-local address "${host}". ` +
     "V1 has no authentication; do not expose this server to untrusted networks."
   );
+}
+
+export function resolveAuthPosture(
+  auth: AuthConfig,
+  runtime: Pick<BackendRuntimeOptions, "nonLocalWarning">,
+): AuthPosture {
+  return {
+    mode: auth.mode,
+    enabled: false,
+    enforcement: "none",
+    protectedModeAvailable: false,
+    warning: runtime.nonLocalWarning
+      ? "Authentication is disabled and not enforced; non-local binding is unsafe in V1."
+      : "Authentication is disabled and not enforced in V1 local-only mode.",
+  };
 }

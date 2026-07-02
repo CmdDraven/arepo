@@ -42,13 +42,17 @@ It does not own sync, backup, version history, or source-file custody.
 
 ## Phase 4: Node Security Checkpoint
 
+Status: design started, not implemented. See
+[docs/node-security-checkpoint.md](node-security-checkpoint.md).
+
 Before true remote nodes, design authentication and trust boundaries. The design
 must cover local-only mode, one self-hosted node, a future hub UI, remote node
 registration, candidate token or mTLS approaches, vault-level permissions,
 audit/event logging, and revocation.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
-network presence as trust.
+network presence as trust. Phase 4 does not add authentication, token
+enforcement, LAN-safe deployment, remote node registration, sync, or federation.
 
 ## Phase 5: Mapping Improvements
 

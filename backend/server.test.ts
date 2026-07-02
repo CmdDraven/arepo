@@ -102,6 +102,13 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.runtime.localOnlyMode, true);
   assert.deepEqual(status.runtime.startupWarnings, []);
   assert.ok(status.runtime.allowedOrigins.includes("http://localhost:8733"));
+  assert.deepEqual(status.auth, {
+    mode: "disabled",
+    enabled: false,
+    enforcement: "none",
+    protectedModeAvailable: false,
+    warning: "Authentication is disabled and not enforced in V1 local-only mode.",
+  });
   assert.equal(status.vaultCount, 1);
   assert.equal(status.vaults[0]?.vaultId, vault.id);
   assert.equal(status.vaults[0]?.storageSummaryAvailable, true);
@@ -125,6 +132,11 @@ test("node status endpoint reports non-local bind warning", async () => {
     assert.equal(status.runtime.host, "0.0.0.0");
     assert.equal(status.runtime.localOnlyMode, false);
     assert.match(status.runtime.startupWarnings[0] ?? "", /no authentication/);
+    assert.equal(status.auth.mode, "disabled");
+    assert.equal(status.auth.enabled, false);
+    assert.equal(status.auth.enforcement, "none");
+    assert.equal(status.auth.protectedModeAvailable, false);
+    assert.match(status.auth.warning, /non-local binding is unsafe/);
   } finally {
     if (originalHost === undefined) {
       delete process.env.AREPO_HOST;
@@ -132,6 +144,33 @@ test("node status endpoint reports non-local bind warning", async () => {
       process.env.AREPO_HOST = originalHost;
     }
   }
+});
+
+test("node status endpoint rejects unsupported auth modes", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
+  await fs.writeFile(
+    path.join(cwd, ".arepo", "config.json"),
+    JSON.stringify({
+      node: {
+        nodeId: "local",
+        displayName: "Local Node",
+        mode: "local",
+        apiVersion: 1,
+      },
+      auth: {
+        mode: "protected",
+      },
+      vaults: [],
+    }),
+    "utf8",
+  );
+
+  const response = await routeRequest(request("GET", "/api/node/status"), cwd);
+  assert.equal(response.status, 400);
+  const body = response.body as { ok: false; error: string };
+  assert.equal(body.ok, false);
+  assert.match(body.error, /unsupported auth mode "protected"/);
 });
 
 test("node status endpoint surfaces invalid config diagnostics", async () => {

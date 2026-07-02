@@ -2808,6 +2808,13 @@ type LocalNodeRuntimeStatus = {
     allowedOrigins: string[];
     startupWarnings: string[];
   };
+  auth: {
+    mode: "disabled";
+    enabled: boolean;
+    enforcement: "none";
+    protectedModeAvailable: boolean;
+    warning: string;
+  };
   vaultCount: number;
   vaults: {
     vaultId: string;
@@ -3285,6 +3292,21 @@ function LocalNodeDiagnosticsCard({
               <span>{status.vaultCount}</span>
               <span className="text-muted-foreground">Storage status</span>
               <span>{status.capabilities.storageSummary ? "available" : "unavailable"}</span>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs font-semibold">Authentication posture</div>
+              <div className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-1 text-xs">
+                <span className="text-muted-foreground">Mode</span>
+                <span>{status.auth.mode}</span>
+                <span className="text-muted-foreground">Enabled</span>
+                <span>{status.auth.enabled ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Enforcement</span>
+                <span>{status.auth.enforcement}</span>
+                <span className="text-muted-foreground">Protected mode</span>
+                <span>{status.auth.protectedModeAvailable ? "available" : "unavailable"}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{status.auth.warning}</p>
             </div>
 
             <div className="space-y-1">

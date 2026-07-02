@@ -9,6 +9,20 @@ export type VaultPermission = {
   deleteFiles: boolean;
 };
 
+export type AuthMode = "disabled";
+
+export type AuthConfig = {
+  mode: AuthMode;
+};
+
+export type AuthPosture = {
+  mode: AuthMode;
+  enabled: false;
+  enforcement: "none";
+  protectedModeAvailable: false;
+  warning: string;
+};
+
 export type VaultInfo = {
   id: string;
   displayName: string;
@@ -39,6 +53,7 @@ export type LocalNodeRuntimeStatus = {
     allowedOrigins: string[];
     startupWarnings: string[];
   };
+  auth: AuthPosture;
   vaultCount: number;
   vaults: LocalNodeVaultRuntimeSummary[];
   capabilities: {
@@ -120,6 +135,7 @@ export type OperationResult<T = unknown> =
 
 export type VaultConfigFile = {
   node: Omit<NodeInfo, "vaults">;
+  auth: AuthConfig;
   appDataDir?: string;
   vaults: VaultInfo[];
 };
@@ -225,4 +241,8 @@ export const DEFAULT_PERMISSIONS: VaultPermission = {
   readContent: true,
   writeContent: true,
   deleteFiles: false,
+};
+
+export const DEFAULT_AUTH_CONFIG: AuthConfig = {
+  mode: "disabled",
 };

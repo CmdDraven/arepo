@@ -4,8 +4,10 @@ import path from "node:path";
 import crypto from "node:crypto";
 import os from "node:os";
 import {
+  DEFAULT_AUTH_CONFIG,
   DEFAULT_PERMISSIONS,
   type NodeInfo,
+  type AuthConfig,
   type VaultConfigFile,
   type VaultInfo,
 } from "./types.js";
@@ -17,6 +19,7 @@ const DEFAULT_CONFIG: VaultConfigFile = {
     mode: "local",
     apiVersion: 1,
   },
+  auth: DEFAULT_AUTH_CONFIG,
   vaults: [],
 };
 
@@ -43,6 +46,7 @@ export async function loadConfig(cwd = process.cwd()): Promise<VaultConfigFile> 
     }
     const config = {
       node: { ...DEFAULT_CONFIG.node, ...parsed.node },
+      auth: normalizeAuthConfig((parsed as { auth?: unknown }).auth),
       appDataDir:
         typeof parsed.appDataDir === "string" && parsed.appDataDir.trim()
           ? parsed.appDataDir.trim()
@@ -139,6 +143,7 @@ async function validateConfig(config: VaultConfigFile, file: string): Promise<vo
   if (config.node.apiVersion !== 1) {
     throw new Error(`Invalid AREPO config at ${file}: apiVersion must be 1`);
   }
+  validateAuthConfig(config.auth, file);
   if (config.appDataDir !== undefined) {
     if (typeof config.appDataDir !== "string" || !config.appDataDir.trim()) {
       throw new Error(`Invalid AREPO config at ${file}: appDataDir must be a non-empty string`);
@@ -223,6 +228,29 @@ async function validateConfig(config: VaultConfigFile, file: string): Promise<vo
         `Invalid AREPO config at ${file}: vault ${vault.id} cannot deleteFiles without writeContent`,
       );
     }
+  }
+}
+
+function normalizeAuthConfig(auth: unknown): AuthConfig {
+  if (auth === undefined) return { ...DEFAULT_AUTH_CONFIG };
+  if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
+    return auth as AuthConfig;
+  }
+  const mode = (auth as { mode?: unknown }).mode;
+  return {
+    mode: mode === undefined ? DEFAULT_AUTH_CONFIG.mode : (mode as AuthConfig["mode"]),
+  };
+}
+
+function validateAuthConfig(auth: AuthConfig, file: string): void {
+  if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
+    throw new Error(`Invalid AREPO config at ${file}: auth must be an object`);
+  }
+  if (auth.mode !== "disabled") {
+    const mode = typeof auth.mode === "string" ? auth.mode : String(auth.mode);
+    throw new Error(
+      `Invalid AREPO config at ${file}: unsupported auth mode "${mode}"; only disabled is supported in V1`,
+    );
   }
 }
 

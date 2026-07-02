@@ -136,17 +136,20 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
 6. Expected result: each configured vault shows watcher/index health, including
    index status and changed-path counts.
 7. Expected result: storage-summary availability renders for each vault.
-8. Expected result: unsupported V1 capabilities are visible as disabled:
+8. Expected result: authentication posture renders as disabled/inactive:
+   `mode` is `disabled`, enforcement is `none`, and protected mode is
+   unavailable.
+9. Expected result: unsupported V1 capabilities are visible as disabled:
    authentication, remote nodes, sync, AI/vector, database support, and
    migrations.
-9. Expected result: the diagnostics card does not contain controls to enable
+10. Expected result: the diagnostics card does not contain controls to enable
    auth, sync, AI/vector features, database support, migrations, federation,
    remote node registration, reverse proxy setup, or LAN exposure.
-10. Stop the backend while leaving the frontend open, then refresh diagnostics
+11. Stop the backend while leaving the frontend open, then refresh diagnostics
     or reload the settings view.
-11. Expected result: the UI shows an understandable backend-unavailable state
+12. Expected result: the UI shows an understandable backend-unavailable state
     instead of implying the vault data is browser-local canonical state.
-12. Restart the backend before continuing the checklist.
+13. Restart the backend before continuing the checklist.
 
 ### Optional Non-Local Bind Warning Check
 
@@ -162,9 +165,11 @@ to a LAN-facing address.
 
 3. Open Vault Settings and inspect Local Node Diagnostics.
 4. Expected result: a prominent no-auth warning is shown.
-5. Expected result: the card does not describe this as safe for LAN, internet,
+5. Expected result: authentication posture still shows disabled auth, no
+   enforcement, and protected mode unavailable.
+6. Expected result: the card does not describe this as safe for LAN, internet,
    reverse-proxy, or untrusted-client exposure.
-6. Stop the backend and restart it with the default local bind before continuing:
+7. Stop the backend and restart it with the default local bind before continuing:
 
    ```bash
    npm run backend:dev:server

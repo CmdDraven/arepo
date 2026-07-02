@@ -46,7 +46,9 @@ registration.
 
 See [docs/roadmap.md](docs/roadmap.md) for the current local-node roadmap and
 [docs/local-node-self-host.md](docs/local-node-self-host.md) for single-node
-self-host notes.
+self-host notes. Phase 4 security design work is tracked in
+[docs/node-security-checkpoint.md](docs/node-security-checkpoint.md); it does
+not mean authentication or LAN-safe deployment is implemented.
 
 ## Run Locally
 
@@ -179,7 +181,8 @@ accessible.
 
 Vault Settings also shows read-only local node diagnostics from
 `GET /api/node/status`, including backend host/port, startup warnings, vault
-runtime health, and disabled V1 capability flags.
+runtime health, explicit disabled auth posture, and disabled V1 capability
+flags.
 
 `appDataDir` is optional. It controls where AREPO writes local generated data
 such as machine index caches. You can also set `AREPO_APP_DATA_DIR`; the
@@ -217,9 +220,10 @@ from Markdown files." It does not create or require a user-authored `index.md`.
 
 `GET /api/node/status` is a local-node-only diagnostic surface. It reports node
 identity, local runtime host/port, startup warnings such as non-local binding,
-vault count, per-vault watcher/index health, storage-summary availability, and
-explicit capability flags showing that auth, sync, AI, database support,
-migration support, and remote node registration are not active in V1.
+auth posture, vault count, per-vault watcher/index health, storage-summary
+availability, and explicit capability flags showing that auth, sync, AI,
+database support, migration support, and remote node registration are not active
+in V1.
 
 ## Security Model
 

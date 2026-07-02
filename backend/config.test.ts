@@ -128,6 +128,40 @@ test("config validation rejects unsupported node modes", async () => {
   await assert.rejects(() => loadConfig(cwd), /only local node mode is supported in V1/);
 });
 
+test("auth config defaults to disabled when omitted", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+    vaults: [],
+  });
+
+  const config = await loadConfig(cwd);
+  assert.deepEqual(config.auth, { mode: "disabled" });
+});
+
+test("config validation rejects unsupported auth modes", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+    auth: {
+      mode: "token",
+    },
+    vaults: [],
+  });
+
+  await assert.rejects(() => loadConfig(cwd), /unsupported auth mode "token"/);
+});
+
 test("app data directory can be configured in local config", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
   const appDataDir = path.join(cwd, "app-data");
