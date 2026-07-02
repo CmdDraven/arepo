@@ -235,10 +235,11 @@ in V1.
   readiness. In V1 it should report disabled auth, no enforcement, protected
   mode unavailable, inactive credential/session/token checks, and network
   exposure unsafe.
-- Phase 4 includes inert protected-mode policy, planner, credential-store,
+- Phase 4 includes protected-mode policy, planner, credential-store persistence,
   audit, revocation, browser-security helpers, and status-only request-policy
   plumbing, but no credentials, sessions, bearer tokens, CSRF/origin
-  enforcement, auth middleware, or authorization enforcement are active.
+  enforcement, auth middleware, credential verification, or authorization
+  enforcement are active.
 - Non-local binding requires explicit `AREPO_HOST` configuration and prints a
   startup warning.
 - CORS is restricted to the local frontend dev origins by default:

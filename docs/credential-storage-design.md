@@ -62,6 +62,19 @@ Proposed responsibilities:
   credential creation/use/revocation, node-secret rotation, permission changes,
   vault registration changes, denied route plans, and emergency reset actions.
 
+Implemented helper names:
+
+- `readCredentialStore` / `writeCredentialStore`
+- `readTokenVerifierStore` / `writeTokenVerifierStore`
+- `readBrowserSessionStore` / `writeBrowserSessionStore`
+- `readRevocationStore` / `writeRevocationStore`
+- `validateCredentialStore`, `validateTokenVerifierStore`,
+  `validateBrowserSessionStore`, and `validateRevocationStore`
+
+These helpers read, validate, and atomically write the JSON files above. They
+are not imported by request handling and do not generate credentials, accept
+tokens, create sessions, verify request credentials, or enforce auth.
+
 File and directory handling:
 
 - Create `auth/` with owner-only permissions where the operating system supports
@@ -73,12 +86,14 @@ File and directory handling:
 - Audit events should be append-oriented. If JSONL is used, a single corrupt
   line should not make the entire audit log unreadable.
 - If a state file is missing in local-only disabled-auth mode, AREPO should keep
-  operating as local-only and report auth storage as absent.
+  operating as local-only; the current helper returns an empty store.
 - If a required protected-mode state file is missing or corrupt, protected mode
   should fail closed, avoid partial enforcement, and surface a local recovery
   diagnostic.
-- Corrupt auth files should be preserved for inspection by renaming or copying
-  to a quarantine path before replacement, when safe to do so.
+- The current helper reports malformed JSON as a corrupt-store error and rejects
+  malformed schema. A future recovery slice should preserve corrupt auth files
+  for inspection by renaming or copying to a quarantine path before replacement,
+  when safe to do so.
 
 ## Credential Types
 
@@ -232,20 +247,19 @@ Future protected mode needs revocation before it can make safety claims:
 - Lost node secret: dependent credentials should become invalid and require local
   recovery or re-pairing.
 
-## Minimal First Implementation Recommendation
+## Minimal Next Implementation Recommendation
 
-The next implementation slice should still avoid token generation and
-enforcement. A conservative first code slice would add inert credential-store
-types and pure helpers with tests:
+The credential-store type, validation, path, read, and atomic-write helpers now
+exist. The next implementation slice should still avoid token generation and
+enforcement. A conservative next step would design and test explicit protected
+mode startup gating around these stores:
 
-1. Define credential metadata, verifier metadata, session metadata, revocation
-   metadata, and audit-reference types.
-2. Define path-resolution helpers for the proposed app-data auth layout.
-3. Define validation helpers that reject plaintext token fields and secret
-   fields in `.arepo/config.json`-style data.
-4. Add tests for owner-only permission intent, atomic-write planning, schema
-   validation, and "secrets never in Markdown vaults" invariants.
+1. Confirm required store files and permissions before protected mode can start.
+2. Define recovery/quarantine behavior for corrupt auth files.
+3. Keep disabled local mode tolerant of missing store files.
+4. Keep request handling independent until credential verification, audit,
+   revocation, CSRF/origin posture, and route authorization are ready together.
 
 Do not generate tokens, create sessions, accept bearer credentials, or enforce
-route authorization until credential storage, audit, revocation, CSRF/origin
-posture, and recovery behavior are implemented and tested.
+route authorization until credential storage startup checks, audit, revocation,
+CSRF/origin posture, and recovery behavior are implemented and tested.

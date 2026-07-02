@@ -22,8 +22,9 @@ Implemented as inert or status-only:
 - `backend/routePermissions.ts`: type-only future route permission inventory.
 - `backend/authPlanner.ts`: pure dry-run authorization planner for hypothetical
   credentials and route policies.
-- `backend/credentialStore.ts`: inert credential metadata, app-data auth path,
-  and storage-boundary validation helpers.
+- `backend/credentialStore.ts`: credential metadata, app-data auth path,
+  storage-boundary validation, and JSON store read/write helpers for future
+  credentials, token verifiers, browser sessions, and revocations.
 - `backend/authAudit.ts`: inert audit event types plus JSONL serialize, parse,
   append, and read helpers.
 - `backend/authRevocation.ts`: inert revocation planning helpers for
@@ -39,8 +40,9 @@ Implemented as inert or status-only:
 None of these modules enforce authentication, authorization, CSRF, origin
 checks, token/session validation, revocation, or audit logging in active request
 handling. They do not generate credentials, bearer tokens, sessions, pairing
-codes, or node registrations. They do not make LAN, reverse-proxy, or internet
-exposure safe.
+codes, or node registrations. Credential-store persistence helpers are not
+imported by active request handling and do not verify request credentials. They
+do not make LAN, reverse-proxy, or internet exposure safe.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds

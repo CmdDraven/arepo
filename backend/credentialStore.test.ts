@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import {
   AUTH_STORAGE_NETWORK_EXPOSURE_SAFE,
@@ -8,9 +9,21 @@ import {
   AUTH_STORAGE_OWNER_ONLY_FILE_MODE,
   AUTH_STORAGE_REQUIRES_ATOMIC_WRITES,
   assertConfigShapeContainsNoAuthSecrets,
+  readBrowserSessionStore,
+  readCredentialStore,
+  readRevocationStore,
+  readTokenVerifierStore,
   resolveAuthStoragePaths,
+  validateBrowserSessionStore,
   validateAuthMaterialPathOutsideVaults,
   validateConfigShapeContainsNoAuthSecrets,
+  validateCredentialStore,
+  validateRevocationStore,
+  validateTokenVerifierStore,
+  writeBrowserSessionStore,
+  writeCredentialStore,
+  writeRevocationStore,
+  writeTokenVerifierStore,
   type BrowserSessionMetadata,
   type CredentialActorKind,
   type CredentialMetadata,
@@ -20,6 +33,61 @@ import {
 } from "./credentialStore.js";
 
 const createdAt = "2026-07-02T00:00:00.000Z";
+
+function sampleCredential(overrides: Partial<CredentialMetadata> = {}): CredentialMetadata {
+  return {
+    credentialId: "credential-1",
+    actorKind: "apiToken",
+    label: "API token",
+    nodePermissions: ["manageNode"],
+    vaultGrants: [{ vaultId: "notes", permissions: ["readIndex", "readContent"] }],
+    createdAt,
+    verifierIds: ["verifier-1"],
+    sessionIds: ["session-1"],
+    auditRefs: [{ eventId: "evt-1", eventAt: createdAt, eventType: "credential.created" }],
+    ...overrides,
+  };
+}
+
+function sampleVerifier(overrides: Partial<TokenVerifierMetadata> = {}): TokenVerifierMetadata {
+  return {
+    verifierId: "verifier-1",
+    credentialId: "credential-1",
+    lookupId: "lookup-1",
+    displayPrefix: "arepo_tok_abc",
+    saltId: "salt-1",
+    hashAlgorithm: "sha256",
+    hashParameters: { iterations: 1 },
+    verifierHash: "hashed-verifier",
+    createdAt,
+    ...overrides,
+  };
+}
+
+function sampleSession(overrides: Partial<BrowserSessionMetadata> = {}): BrowserSessionMetadata {
+  return {
+    sessionId: "session-1",
+    credentialId: "credential-1",
+    verifierId: "session-verifier-1",
+    createdAt,
+    expiresAt: "2026-07-02T01:00:00.000Z",
+    sameSite: "strict",
+    csrfBindingId: "csrf-binding-1",
+    ...overrides,
+  };
+}
+
+function sampleRevocation(overrides: Partial<RevocationMetadata> = {}): RevocationMetadata {
+  return {
+    revocationId: "revocation-1",
+    targetKind: "credential",
+    targetId: "credential-1",
+    revokedAt: createdAt,
+    reason: "test revocation",
+    auditRef: { eventId: "evt-2", eventAt: createdAt, eventType: "credential.revoked" },
+    ...overrides,
+  };
+}
 
 test("credential metadata represents supported future credential kinds without plaintext tokens", () => {
   const kinds: CredentialActorKind[] = [
@@ -125,6 +193,47 @@ test("auth app-data path helpers resolve under the auth directory", () => {
   assert.equal(paths.auditEvents, path.join(appDataDir, "auth", "audit", "events.jsonl"));
 });
 
+test("missing credential store files return empty disabled-mode stores", async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-auth-store-"));
+  assert.deepEqual(await readCredentialStore(appDataDir), { credentials: [] });
+  assert.deepEqual(await readTokenVerifierStore(appDataDir), { tokenVerifiers: [] });
+  assert.deepEqual(await readBrowserSessionStore(appDataDir), { sessions: [] });
+  assert.deepEqual(await readRevocationStore(appDataDir), { revocations: [] });
+});
+
+test("credential verifier session and revocation stores round trip through atomic writes", async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-auth-store-"));
+  const credentialStore = { credentials: [sampleCredential()] };
+  const verifierStore = { tokenVerifiers: [sampleVerifier()] };
+  const sessionStore = { sessions: [sampleSession()] };
+  const revocationStore = { revocations: [sampleRevocation()] };
+
+  await writeCredentialStore(appDataDir, credentialStore);
+  await writeTokenVerifierStore(appDataDir, verifierStore);
+  await writeBrowserSessionStore(appDataDir, sessionStore);
+  await writeRevocationStore(appDataDir, revocationStore);
+
+  assert.deepEqual(await readCredentialStore(appDataDir), credentialStore);
+  assert.deepEqual(await readTokenVerifierStore(appDataDir), verifierStore);
+  assert.deepEqual(await readBrowserSessionStore(appDataDir), sessionStore);
+  assert.deepEqual(await readRevocationStore(appDataDir), revocationStore);
+});
+
+test("completed writes create auth directories and valid JSON targets without temp leftovers", async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-auth-store-"));
+  const paths = resolveAuthStoragePaths(appDataDir);
+
+  await writeCredentialStore(appDataDir, { credentials: [sampleCredential()] });
+
+  const raw = await fs.readFile(paths.credentials, "utf8");
+  assert.doesNotThrow(() => JSON.parse(raw));
+  const authEntries = await fs.readdir(paths.authDir);
+  assert.equal(
+    authEntries.some((entry) => entry.includes(".tmp")),
+    false,
+  );
+});
+
 test("path helpers reject Markdown vault locations for auth material", () => {
   assert.throws(
     () => resolveAuthStoragePaths("/vault/.arepo-data", ["/vault"]),
@@ -137,6 +246,15 @@ test("path helpers reject Markdown vault locations for auth material", () => {
   assert.equal(result.ok, false);
 });
 
+test("store helpers reject auth material paths under Markdown vault roots", async () => {
+  const vaultRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+  await assert.rejects(
+    () =>
+      writeCredentialStore(path.join(vaultRoot, ".arepo-data"), { credentials: [] }, [vaultRoot]),
+    /must not be placed inside a Markdown vault root/,
+  );
+});
+
 test("config-shaped validation rejects auth secret looking fields", () => {
   for (const secretKey of [
     "token",
@@ -146,6 +264,7 @@ test("config-shaped validation rejects auth secret looking fields", () => {
     "sessionSecret",
     "passwordHash",
     "tokenVerifier",
+    "recoverySecret",
   ]) {
     const result = validateConfigShapeContainsNoAuthSecrets({
       auth: {
@@ -155,6 +274,81 @@ test("config-shaped validation rejects auth secret looking fields", () => {
     });
     assert.equal(result.ok, false, secretKey);
   }
+});
+
+test("store validation rejects plaintext token and secret-like fields", () => {
+  for (const secretKey of [
+    "token",
+    "bearerToken",
+    "sessionSecret",
+    "pairingSecret",
+    "privateKey",
+    "passwordHash",
+    "recoverySecret",
+  ]) {
+    const result = validateCredentialStore({
+      credentials: [{ ...sampleCredential(), [secretKey]: "secret-value" }],
+    });
+    assert.equal(result.ok, false, secretKey);
+  }
+});
+
+test("malformed JSON produces a clear corrupt-store error", async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-auth-store-"));
+  const paths = resolveAuthStoragePaths(appDataDir);
+  await fs.mkdir(paths.authDir, { recursive: true });
+  await fs.writeFile(paths.credentials, "{bad json", "utf8");
+
+  await assert.rejects(() => readCredentialStore(appDataDir), /Corrupt AREPO auth store/);
+});
+
+test("corrupt store schema fails safe instead of accepting credentials", async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-auth-store-"));
+  const paths = resolveAuthStoragePaths(appDataDir);
+  await fs.mkdir(paths.authDir, { recursive: true });
+  await fs.writeFile(paths.credentials, JSON.stringify({ credentials: "all allowed" }), "utf8");
+
+  await assert.rejects(() => readCredentialStore(appDataDir), /Invalid AREPO auth store/);
+});
+
+test("unsupported credential kinds and permission names are rejected", () => {
+  const badKind = validateCredentialStore({
+    credentials: [sampleCredential({ actorKind: "admin" as CredentialActorKind })],
+  });
+  assert.equal(badKind.ok, false);
+
+  const badPermission = validateCredentialStore({
+    credentials: [
+      sampleCredential({
+        vaultGrants: [{ vaultId: "notes", permissions: ["root" as never] }],
+      }),
+    ],
+  });
+  assert.equal(badPermission.ok, false);
+});
+
+test("token verifier store rejects plaintext bearer tokens", () => {
+  const result = validateTokenVerifierStore({
+    tokenVerifiers: [{ ...sampleVerifier(), bearerToken: "arepo_plaintext" }],
+  });
+  assert.equal(result.ok, false);
+});
+
+test("session store rejects plaintext session secrets", () => {
+  const result = validateBrowserSessionStore({
+    sessions: [{ ...sampleSession(), sessionSecret: "plaintext-session-secret" }],
+  });
+  assert.equal(result.ok, false);
+});
+
+test("revocation store preserves audit references and validates target metadata", () => {
+  const valid = validateRevocationStore({ revocations: [sampleRevocation()] });
+  assert.deepEqual(valid, { ok: true });
+
+  const invalid = validateRevocationStore({
+    revocations: [sampleRevocation({ targetKind: "unknown" as RevocationTargetKind })],
+  });
+  assert.equal(invalid.ok, false);
 });
 
 test("config-shaped validation allows non-secret auth posture", () => {
