@@ -1,0 +1,309 @@
+export const ROUTE_PERMISSION_VOCABULARY = [
+  "readIndex",
+  "readContent",
+  "writeContent",
+  "deleteFiles",
+  "manageVaults",
+  "manageNode",
+  "manageAuth",
+  "readAudit",
+] as const;
+
+export type RoutePermission = (typeof ROUTE_PERMISSION_VOCABULARY)[number];
+
+export type RoutePolicyMethod = "OPTIONS" | "GET" | "POST" | "PUT" | "DELETE";
+
+export type RoutePolicyCategory =
+  | "corsPreflight"
+  | "health"
+  | "nodeDiagnostics"
+  | "vaultListing"
+  | "vaultRegistration"
+  | "fileListing"
+  | "fileRead"
+  | "vaultRuntimeStatus"
+  | "storageSummary"
+  | "fileWrite"
+  | "fileCreate"
+  | "folderCreate"
+  | "rename"
+  | "fileDelete"
+  | "reindex"
+  | "indexRead"
+  | "indexFilters"
+  | "indexSearch"
+  | "indexInspect";
+
+export type StrongerConfirmation =
+  "delete" | "conflictOverwrite" | "vaultRegistration" | "authChange" | "tokenRevocation";
+
+export type RoutePolicyDataAccess = {
+  generatedIndex: boolean;
+  sourceContent: boolean;
+  sourceMutation: boolean;
+  nodeManagement: boolean;
+  authManagement: boolean;
+  audit: boolean;
+};
+
+export type ConditionalRoutePermission = {
+  permissions: readonly RoutePermission[];
+  when: string;
+};
+
+export type ProtectedRoutePolicy = {
+  method: RoutePolicyMethod;
+  routePattern: string;
+  category: RoutePolicyCategory;
+  requiredPermissions: readonly RoutePermission[];
+  conditionalPermissions?: readonly ConditionalRoutePermission[];
+  anonymousReducedStatusMayExist: boolean;
+  strongerConfirmation: readonly StrongerConfirmation[];
+  dataAccess: RoutePolicyDataAccess;
+  networkExposureSafe: false;
+  notes: string;
+};
+
+const noAccess: RoutePolicyDataAccess = {
+  generatedIndex: false,
+  sourceContent: false,
+  sourceMutation: false,
+  nodeManagement: false,
+  authManagement: false,
+  audit: false,
+};
+
+function access(overrides: Partial<RoutePolicyDataAccess>): RoutePolicyDataAccess {
+  return { ...noAccess, ...overrides };
+}
+
+export const PROTECTED_ROUTE_POLICIES = [
+  {
+    method: "OPTIONS",
+    routePattern: "*",
+    category: "corsPreflight",
+    requiredPermissions: [],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({}),
+    networkExposureSafe: false,
+    notes: "CORS preflight is origin policy only; it must not authorize the actual request.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/health",
+    category: "health",
+    requiredPermissions: ["manageNode"],
+    anonymousReducedStatusMayExist: true,
+    strongerConfirmation: [],
+    dataAccess: access({ nodeManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Protected mode may expose reduced anonymous liveness; full node identity requires auth.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/node/status",
+    category: "nodeDiagnostics",
+    requiredPermissions: ["manageNode"],
+    anonymousReducedStatusMayExist: true,
+    strongerConfirmation: [],
+    dataAccess: access({ nodeManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Full diagnostics include runtime posture, warnings, vault counts, and capability flags.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults",
+    category: "vaultListing",
+    requiredPermissions: ["readIndex"],
+    conditionalPermissions: [
+      {
+        permissions: ["manageVaults"],
+        when: "Returning full vault registration metadata, filesystem roots, or vault permissions.",
+      },
+    ],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true }),
+    networkExposureSafe: false,
+    notes: "Scoped protected-mode callers should only see vaults they are authorized to inspect.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/vaults",
+    category: "vaultRegistration",
+    requiredPermissions: ["manageVaults"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: ["vaultRegistration"],
+    dataAccess: access({ nodeManagement: true }),
+    networkExposureSafe: false,
+    notes: "Registering a vault expands AREPO filesystem reach and is administrative.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/files",
+    category: "fileListing",
+    requiredPermissions: ["readIndex"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true }),
+    networkExposureSafe: false,
+    notes: "File and folder names are index-like metadata, not source body content.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/file?path=...",
+    category: "fileRead",
+    requiredPermissions: ["readContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ sourceContent: true }),
+    networkExposureSafe: false,
+    notes: "Direct source Markdown reads require source-content access.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/status",
+    category: "vaultRuntimeStatus",
+    requiredPermissions: ["readIndex"],
+    conditionalPermissions: [
+      {
+        permissions: ["readContent"],
+        when: "A specific source path is requested with the path query parameter.",
+      },
+    ],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true }),
+    networkExposureSafe: false,
+    notes:
+      "Vault-level watcher/index status is metadata; file-specific status can reveal source file state.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/storage",
+    category: "storageSummary",
+    requiredPermissions: ["readIndex"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true }),
+    networkExposureSafe: false,
+    notes: "Storage summaries expose aggregate source/cache sizes, not file bodies.",
+  },
+  {
+    method: "PUT",
+    routePattern: "/api/vaults/:vaultId/file?path=...",
+    category: "fileWrite",
+    requiredPermissions: ["writeContent", "readContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: ["conflictOverwrite"],
+    dataAccess: access({ sourceContent: true, sourceMutation: true }),
+    networkExposureSafe: false,
+    notes:
+      "Writes need source read access for conflict handling and explicit overwrite confirmation.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/vaults/:vaultId/file",
+    category: "fileCreate",
+    requiredPermissions: ["writeContent", "readContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ sourceContent: true, sourceMutation: true }),
+    networkExposureSafe: false,
+    notes: "Creating a Markdown file writes source content.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/vaults/:vaultId/folder",
+    category: "folderCreate",
+    requiredPermissions: ["writeContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ sourceMutation: true }),
+    networkExposureSafe: false,
+    notes: "Folder creation changes the source tree shape without reading file bodies.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/vaults/:vaultId/rename",
+    category: "rename",
+    requiredPermissions: ["writeContent", "readContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ sourceContent: true, sourceMutation: true }),
+    networkExposureSafe: false,
+    notes: "Rename changes source paths and may affect source-file conflict expectations.",
+  },
+  {
+    method: "DELETE",
+    routePattern: "/api/vaults/:vaultId/file?path=...",
+    category: "fileDelete",
+    requiredPermissions: ["deleteFiles", "writeContent", "readContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: ["delete"],
+    dataAccess: access({ sourceContent: true, sourceMutation: true }),
+    networkExposureSafe: false,
+    notes: "Delete requires a delete-specific grant; writeContent alone is not enough.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/vaults/:vaultId/reindex",
+    category: "reindex",
+    requiredPermissions: ["readIndex", "readContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true, sourceContent: true }),
+    networkExposureSafe: false,
+    notes:
+      "Reindex reads source Markdown to rebuild generated metadata without writing source content.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/index",
+    category: "indexRead",
+    requiredPermissions: ["readIndex"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true }),
+    networkExposureSafe: false,
+    notes: "Generated index data is rebuildable but may reveal sensitive metadata.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/index/filters?filter=...",
+    category: "indexFilters",
+    requiredPermissions: ["readIndex"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true }),
+    networkExposureSafe: false,
+    notes: "Filter results expose generated structural metadata, not source body content.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/index/search?q=...",
+    category: "indexSearch",
+    requiredPermissions: ["readIndex"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true }),
+    networkExposureSafe: false,
+    notes:
+      "Current search covers generated index fields; future full-text search should require readContent.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/index/inspect?path=...",
+    category: "indexInspect",
+    requiredPermissions: ["readIndex"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true }),
+    networkExposureSafe: false,
+    notes:
+      "Inspect returns generated metadata such as headings, links, backlinks, tags, and issues.",
+  },
+] as const satisfies readonly ProtectedRoutePolicy[];
