@@ -145,6 +145,10 @@ test("requested protected mode remains unavailable and non-operational", async (
 
   assert.equal(status.requestPolicy.routePolicyInventoryPresent, true);
   assert.equal(status.requestPolicy.routePolicyCount, PROTECTED_ROUTE_POLICIES.length);
+  assert.equal(status.requestPolicy.dryRunMiddlewareConfigured, false);
+  assert.equal(status.requestPolicy.dryRunMiddlewareMounted, false);
+  assert.equal(status.requestPolicy.dryRunAuditConfigured, false);
+  assert.equal(status.requestPolicy.dryRunAuditAppendCount, 0);
   assert.equal(status.requestPolicy.enforcementActive, false);
   assert.equal(status.requestPolicy.credentialVerificationActive, false);
   assert.equal(status.requestPolicy.auditRequestLoggingActive, false);

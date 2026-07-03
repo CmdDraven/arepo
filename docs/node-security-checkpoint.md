@@ -10,9 +10,9 @@ AREPO V1 remains a local-only, unauthenticated Node backend. It binds to
 ## Current Phase 4 Implementation Status
 
 Phase 4 is in progress. AREPO now has security design documents, inert backend
-scaffolding, status-only request-policy plumbing, and optional observation-only
-dry-run request planning for future protected mode, but protected mode is not
-implemented.
+scaffolding, status-only request-policy plumbing, optional observation-only
+dry-run request planning, and optional dry-run audit append for future protected
+mode, but protected mode is not implemented.
 
 Implemented as inert, status-only, or observation-only:
 
@@ -53,8 +53,9 @@ Implemented as inert, status-only, or observation-only:
   tests or the explicitly configured dry-run observer.
 - `backend/protectedRequestDryRun.ts`: optional mounted dry-run observer gated
   by `auth.dryRunRequestPolicy = true`. It runs the protected request pipeline
-  for diagnostics only, stores a bounded sanitized summary, always continues to
-  the normal handler, and never sends 401/403 responses.
+  for diagnostics only, optionally appends sanitized audit events when
+  `auth.dryRunAudit = true`, stores bounded sanitized summaries/counters, always
+  continues to the normal handler, and never sends 401/403 responses.
 - `backend/authAudit.ts`: inert audit event types plus JSONL serialize, parse,
   append, and read helpers.
 - `backend/authRevocation.ts`: inert revocation planning helpers for
@@ -65,23 +66,25 @@ Implemented as inert, status-only, or observation-only:
   confirmation decisions.
 - `backend/requestPolicyStatus.ts`: status-only request-policy readiness summary
   for local diagnostics. It reports policy inventory and planner presence, route
-  policy count, dry-run observer state, and inactive
-  enforcement/credential/audit/revocation/CSRF flags.
+  policy count, dry-run observer/audit state, and inactive
+  enforcement/credential/revocation/CSRF flags.
 - `backend/protectedModeStartup.ts`: diagnostic startup assessment for future
   protected mode. It reports requested/operational auth mode, missing or corrupt
   auth stores, unsafe auth paths, permission warnings, inactive enforcement
   flags, and `networkExposureSafe: false`.
 
 None of these modules enforce authentication, authorization, CSRF, origin
-checks, revocation, or audit logging in active request handling. They do not
-generate credentials, bearer tokens, cookies, active sessions, pairing codes, or
-node registrations. Credential-store persistence helpers are not imported by
-active request handling. The optional dry-run observer may call verifier,
-adapter, planner, and pipeline helpers only when `auth.dryRunRequestPolicy` is
-explicitly true, and its result is not trusted by route handlers. It does not
-attach an authenticated actor, does not reject real HTTP requests, and does not
-make LAN, reverse-proxy, or internet exposure safe. The startup assessment is
-diagnostic only and does not reject active API requests.
+checks, or revocation in active request handling. They do not generate
+credentials, bearer tokens, cookies, active sessions, pairing codes, or node
+registrations. Credential-store persistence helpers are not imported by active
+request handling. The optional dry-run observer may call verifier, adapter,
+planner, and pipeline helpers only when `auth.dryRunRequestPolicy` is explicitly
+true, and its result is not trusted by route handlers. If `auth.dryRunAudit` is
+also true, the observer may append sanitized JSONL audit events for observation
+only; audit write failures are diagnostic and do not reject requests. It does
+not attach an authenticated actor, does not reject real HTTP requests, and does
+not make LAN, reverse-proxy, or internet exposure safe. The startup assessment
+is diagnostic only and does not reject active API requests.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds
@@ -126,6 +129,9 @@ Mounted but dry-run:
   `auth.dryRunRequestPolicy = true`. It runs planning for observation only,
   stores bounded sanitized diagnostics, always continues to the normal handler,
   and keeps `enforcementActive` and `networkExposureSafe` false.
+- Optional dry-run audit append behind both `auth.dryRunRequestPolicy = true`
+  and `auth.dryRunAudit = true`. It writes sanitized observation events only;
+  append failures are reported in diagnostics and never reject requests.
 - No auth, route authorization, revocation, CSRF/origin, or audit enforcement
   middleware is mounted in active request handling.
 

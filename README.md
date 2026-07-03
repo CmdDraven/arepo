@@ -238,11 +238,12 @@ in V1.
   checks, and network exposure unsafe.
 - Phase 4 includes protected-mode policy, planner, credential-store persistence,
   audit, revocation, browser-security helpers, request-policy status plumbing,
-  optional dry-run request planning, and protected-mode startup diagnostics, but
-  no credentials, sessions, bearer tokens, cookies, CSRF/origin enforcement,
-  login, pairing, or authorization enforcement are active. Dry-run planning is
-  disabled by default and does not reject requests or make handlers trust an
-  authenticated actor.
+  optional dry-run request planning, optional dry-run audit append, and
+  protected-mode startup diagnostics, but no credentials, sessions, bearer
+  tokens, cookies, CSRF/origin enforcement, login, pairing, or authorization
+  enforcement are active. Dry-run planning and dry-run audit are disabled by
+  default and do not reject requests or make handlers trust an authenticated
+  actor.
 - Non-local binding requires explicit `AREPO_HOST` configuration and prints a
   startup warning.
 - CORS is restricted to the local frontend dev origins by default:

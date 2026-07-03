@@ -8,6 +8,7 @@ import {
 } from "./protectedRequestPipeline.js";
 import type {
   AuthConfig,
+  ProtectedRequestDryRunAuditStatus,
   ProtectedRequestDryRunSummary,
   RequestPolicyRuntimeStatus,
   VaultConfigFile,
@@ -25,40 +26,58 @@ export type ProtectedRequestDryRunResult =
 
 type DryRunDiagnostics = {
   runCount: number;
+  auditAppendCount: number;
   lastResult?: ProtectedRequestDryRunSummary;
+  lastAuditStatus?: ProtectedRequestDryRunAuditStatus;
 };
 
 const diagnostics: DryRunDiagnostics = {
   runCount: 0,
+  auditAppendCount: 0,
 };
 
 export function isProtectedRequestDryRunEnabled(auth: Pick<AuthConfig, "dryRunRequestPolicy">) {
   return auth.dryRunRequestPolicy === true;
 }
 
+export function isProtectedRequestDryRunAuditEnabled(
+  auth: Pick<AuthConfig, "dryRunAudit" | "dryRunRequestPolicy">,
+) {
+  return isProtectedRequestDryRunEnabled(auth) && auth.dryRunAudit === true;
+}
+
 export function getProtectedRequestDryRunStatus(
-  auth: Pick<AuthConfig, "dryRunRequestPolicy">,
+  auth: Pick<AuthConfig, "dryRunAudit" | "dryRunRequestPolicy">,
 ): Pick<
   RequestPolicyRuntimeStatus,
   | "dryRunMiddlewareConfigured"
   | "dryRunMiddlewareMounted"
   | "dryRunObservationOnly"
   | "dryRunRunCount"
+  | "dryRunAuditConfigured"
+  | "dryRunAuditAppendCount"
+  | "lastDryRunAuditStatus"
   | "lastDryRunResult"
 > {
   const enabled = isProtectedRequestDryRunEnabled(auth);
+  const auditConfigured = auth.dryRunAudit === true;
   return {
     dryRunMiddlewareConfigured: enabled,
     dryRunMiddlewareMounted: enabled,
     dryRunObservationOnly: true,
     dryRunRunCount: diagnostics.runCount,
+    dryRunAuditConfigured: auditConfigured,
+    dryRunAuditAppendCount: diagnostics.auditAppendCount,
+    lastDryRunAuditStatus: diagnostics.lastAuditStatus,
     lastDryRunResult: diagnostics.lastResult,
   };
 }
 
 export function resetProtectedRequestDryRunDiagnostics(): void {
   diagnostics.runCount = 0;
+  diagnostics.auditAppendCount = 0;
   diagnostics.lastResult = undefined;
+  diagnostics.lastAuditStatus = undefined;
 }
 
 export async function runProtectedRequestDryRun(input: {
@@ -69,19 +88,20 @@ export async function runProtectedRequestDryRun(input: {
   const configured = await readDryRunFlag(input.cwd).catch((error) => {
     const summary = failedSummary(input.request, input.url, error);
     recordDryRunSummary(summary);
-    return false;
+    return {};
   });
-  if (!configured) return { status: "disabled" };
+  if (!isProtectedRequestDryRunEnabled(configured)) return { status: "disabled" };
 
   try {
     const config = await loadConfig(input.cwd);
     if (!isProtectedRequestDryRunEnabled(config.auth)) return { status: "disabled" };
+    const auditMode = isProtectedRequestDryRunAuditEnabled(config.auth) ? "append" : "disabled";
     const result = await planProtectedRequestPipeline({
       appDataDir: resolveAppDataDir(config, input.cwd),
       vaultRoots: config.vaults.map((vault) => vault.rootPath),
       request: {
         method: input.request.method ?? "GET",
-        path: `${input.url.pathname}${input.url.search}`,
+        path: input.url.pathname,
         headers: plannerHeaders(input.request.headers),
         cookies: parseCookieHeader(headerValue(input.request.headers, "cookie")),
         origin: headerValue(input.request.headers, "origin"),
@@ -90,15 +110,24 @@ export async function runProtectedRequestDryRun(input: {
       vaultId: vaultIdFromPath(input.url.pathname),
       allowedOrigins: configuredAllowedOrigins(),
       csrfTokenPresent: csrfTokenPresent(input.request.headers),
-      audit: { mode: "disabled" },
+      audit: { mode: auditMode },
       now: new Date(),
     });
     const summary = summaryFromPipelineResult(input.request, input.url, result);
     recordDryRunSummary(summary);
+    recordAuditStatus(auditStatusFromPipelineResult(result));
     return { status: "planned", summary, pipelineResult: result };
   } catch (error) {
     const summary = failedSummary(input.request, input.url, error);
     recordDryRunSummary(summary);
+    recordAuditStatus({
+      mode: "append",
+      status: "failed",
+      reasonCode: "dry-run-failed",
+      error: error instanceof Error ? error.message : "Protected request dry-run failed",
+      enforcementActive: false,
+      networkExposureSafe: false,
+    });
     return { status: "failed", summary };
   }
 }
@@ -108,18 +137,58 @@ function recordDryRunSummary(summary: ProtectedRequestDryRunSummary): void {
   diagnostics.lastResult = summary;
 }
 
-async function readDryRunFlag(cwd: string): Promise<boolean> {
+function recordAuditStatus(status: ProtectedRequestDryRunAuditStatus): void {
+  if (status.status === "written") diagnostics.auditAppendCount += 1;
+  diagnostics.lastAuditStatus = status;
+}
+
+async function readDryRunFlag(
+  cwd: string,
+): Promise<Pick<AuthConfig, "dryRunAudit" | "dryRunRequestPolicy">> {
   let raw: string;
   try {
     raw = await fs.readFile(configPath(cwd), "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
     throw error;
   }
   const parsed = JSON.parse(raw) as Partial<VaultConfigFile> & {
-    auth?: { dryRunRequestPolicy?: unknown };
+    auth?: { dryRunAudit?: unknown; dryRunRequestPolicy?: unknown };
   };
-  return parsed.auth?.dryRunRequestPolicy === true;
+  return {
+    dryRunRequestPolicy: parsed.auth?.dryRunRequestPolicy === true,
+    dryRunAudit: parsed.auth?.dryRunAudit === true,
+  };
+}
+
+function auditStatusFromPipelineResult(
+  result: ProtectedRequestPipelineResult,
+): ProtectedRequestDryRunAuditStatus {
+  if (result.audit.status === "written") {
+    return {
+      mode: "append",
+      status: "written",
+      eventId: result.audit.event.eventId,
+      reasonCode: result.audit.event.reasonCode,
+      enforcementActive: false,
+      networkExposureSafe: false,
+    };
+  }
+  if (result.audit.status === "failed") {
+    return {
+      mode: "append",
+      status: "failed",
+      error: result.audit.error,
+      enforcementActive: false,
+      networkExposureSafe: false,
+    };
+  }
+  return {
+    mode: "disabled",
+    status: "skipped",
+    enforcementActive: false,
+    networkExposureSafe: false,
+  };
 }
 
 function summaryFromPipelineResult(

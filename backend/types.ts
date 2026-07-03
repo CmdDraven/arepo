@@ -17,6 +17,7 @@ export type AuthConfig = {
   requestedMode?: AuthRequestedMode;
   protectedModeUnavailableReason?: string;
   dryRunRequestPolicy?: boolean;
+  dryRunAudit?: boolean;
 };
 
 export type AuthPosture = {
@@ -39,6 +40,9 @@ export type RequestPolicyRuntimeStatus = {
   dryRunMiddlewareMounted: boolean;
   dryRunObservationOnly: true;
   dryRunRunCount: number;
+  dryRunAuditConfigured: boolean;
+  dryRunAuditAppendCount: number;
+  lastDryRunAuditStatus?: ProtectedRequestDryRunAuditStatus;
   lastDryRunResult?: ProtectedRequestDryRunSummary;
   enforcementActive: false;
   credentialVerificationActive: false;
@@ -48,6 +52,16 @@ export type RequestPolicyRuntimeStatus = {
   acceptsCredentials: false;
   acceptsSessions: false;
   acceptsBearerTokens: false;
+  networkExposureSafe: false;
+};
+
+export type ProtectedRequestDryRunAuditStatus = {
+  mode: "disabled" | "append";
+  status: "skipped" | "written" | "failed";
+  eventId?: string;
+  reasonCode?: string;
+  error?: string;
+  enforcementActive: false;
   networkExposureSafe: false;
 };
 

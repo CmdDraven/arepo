@@ -148,26 +148,30 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    safety is `no`.
 11. Expected result: protected request dry-run status renders as observation-only:
    dry-run configured and mounted are `no` by default, enforcement remains
-   inactive, and no credentials, sessions, bearer tokens, cookies, login, or
-   pairing controls are active or presented.
+   inactive, dry-run audit is disabled, and no credentials, sessions, bearer
+   tokens, cookies, login, or pairing controls are active or presented.
 12. Expected result: if `auth.dryRunRequestPolicy` is explicitly enabled in a
    disposable local config, diagnostics may show dry-run configured/mounted and
    a sanitized last dry-run summary, but requests still succeed or fail only by
    existing V1 route behavior and network safety remains `no`.
-13. Expected result: protected-mode startup gating renders as diagnostic-only:
+13. Expected result: if both `auth.dryRunRequestPolicy` and `auth.dryRunAudit`
+   are explicitly enabled in a disposable local config, diagnostics may show
+   dry-run audit append counts/status, but audit failures do not reject requests
+   and network safety remains `no`.
+14. Expected result: protected-mode startup gating renders as diagnostic-only:
    protected mode may start is `no`, enforcement is inactive, credential
    verification is inactive, and network safety is `no`.
-14. Expected result: unsupported V1 capabilities are visible as disabled:
+15. Expected result: unsupported V1 capabilities are visible as disabled:
    authentication, remote nodes, sync, AI/vector, database support, and
    migrations.
-15. Expected result: the diagnostics card does not contain controls to enable
+16. Expected result: the diagnostics card does not contain controls to enable
    auth, sync, AI/vector features, database support, migrations, federation,
    remote node registration, reverse proxy setup, or LAN exposure.
-16. Stop the backend while leaving the frontend open, then refresh diagnostics
+17. Stop the backend while leaving the frontend open, then refresh diagnostics
     or reload the settings view.
-17. Expected result: the UI shows an understandable backend-unavailable state
+18. Expected result: the UI shows an understandable backend-unavailable state
     instead of implying the vault data is browser-local canonical state.
-18. Restart the backend before continuing the checklist.
+19. Restart the backend before continuing the checklist.
 
 ### Optional Non-Local Bind Warning Check
 

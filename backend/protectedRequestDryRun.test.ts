@@ -4,6 +4,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  readAuthAuditEvents,
+  serializeAuthAuditEventJsonl,
+  type AuthAuditEvent,
+} from "./authAudit.js";
+import { resolveAuthStoragePaths } from "./credentialStore.js";
+import {
   getProtectedRequestDryRunStatus,
   resetProtectedRequestDryRunDiagnostics,
 } from "./protectedRequestDryRun.js";
@@ -12,6 +18,7 @@ import type { LocalNodeRuntimeStatus } from "./types.js";
 
 const bearerMaterial = "dry-run-bearer-token-material";
 const sessionMaterial = "dry-run-session-secret-material";
+const sourceBodyMaterial = "dry-run-source-document-body";
 
 function request(
   method: string,
@@ -80,8 +87,30 @@ test("default config does not mount dry-run middleware", async () => {
   assert.deepEqual((response.body as { vaults: unknown[] }).vaults, []);
   assert.equal(status.requestPolicy.dryRunMiddlewareConfigured, false);
   assert.equal(status.requestPolicy.dryRunMiddlewareMounted, false);
+  assert.equal(status.requestPolicy.dryRunAuditConfigured, false);
+  assert.equal(status.requestPolicy.dryRunAuditAppendCount, 0);
   assert.equal(status.requestPolicy.dryRunRunCount, 0);
   assert.equal(getProtectedRequestDryRunStatus({}).dryRunRunCount, 0);
+});
+
+test("dry-run audit flag alone does nothing unless request-policy dry-run is enabled", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const { cwd, appDataDir } = await workspace({ mode: "disabled", dryRunAudit: true });
+
+  const response = await routeRequest(
+    request("GET", "/api/vaults", undefined, {
+      authorization: `Bearer ${bearerMaterial}`,
+    }),
+    cwd,
+  );
+  const dryRun = getProtectedRequestDryRunStatus({ dryRunAudit: true });
+
+  assert.equal(response.status, 200);
+  assert.equal(dryRun.dryRunMiddlewareConfigured, false);
+  assert.equal(dryRun.dryRunAuditConfigured, true);
+  assert.equal(dryRun.dryRunRunCount, 0);
+  assert.equal(dryRun.dryRunAuditAppendCount, 0);
+  await assert.rejects(() => fs.access(path.join(appDataDir, "auth")), /ENOENT/);
 });
 
 test("explicit dry-run config mounts observation only and calls the protected request pipeline", async () => {
@@ -100,6 +129,9 @@ test("explicit dry-run config mounts observation only and calls the protected re
   assert.equal(dryRun.dryRunMiddlewareConfigured, true);
   assert.equal(dryRun.dryRunMiddlewareMounted, true);
   assert.equal(dryRun.dryRunObservationOnly, true);
+  assert.equal(dryRun.dryRunAuditConfigured, false);
+  assert.equal(dryRun.dryRunAuditAppendCount, 0);
+  assert.equal(dryRun.lastDryRunAuditStatus?.status, "skipped");
   assert.equal(dryRun.dryRunRunCount, 1);
   assert.equal(dryRun.lastDryRunResult?.path, "/api/vaults");
   assert.equal(dryRun.lastDryRunResult?.status, "wouldDeny");
@@ -143,6 +175,129 @@ test("mounted dry-run middleware does not create credentials sessions or audit f
   await assert.rejects(() => fs.access(path.join(appDataDir, "auth")), /ENOENT/);
 });
 
+test("dry-run audit appends sanitized JSONL events when explicitly enabled", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const { cwd, appDataDir } = await workspace({
+    mode: "disabled",
+    dryRunRequestPolicy: true,
+    dryRunAudit: true,
+  });
+
+  const response = await routeRequest(
+    request(
+      "GET",
+      "/api/vaults?token=query-secret",
+      { markdownBody: sourceBodyMaterial },
+      {
+        authorization: `Bearer ${bearerMaterial}`,
+        cookie: `arepo_session=${sessionMaterial}`,
+      },
+    ),
+    cwd,
+  );
+  const paths = resolveAuthStoragePaths(appDataDir);
+  const parsed = await readAuthAuditEvents(paths.auditEvents);
+  const dryRun = getProtectedRequestDryRunStatus({
+    dryRunRequestPolicy: true,
+    dryRunAudit: true,
+  });
+  const serialized = JSON.stringify(parsed.events);
+
+  assert.equal(response.status, 200);
+  assert.equal(parsed.errors.length, 0);
+  assert.equal(parsed.events.length, 1);
+  assert.equal(dryRun.dryRunAuditConfigured, true);
+  assert.equal(dryRun.dryRunAuditAppendCount, 1);
+  assert.equal(dryRun.lastDryRunAuditStatus?.status, "written");
+  assert.equal(serialized.includes(bearerMaterial), false);
+  assert.equal(serialized.includes(sessionMaterial), false);
+  assert.equal(serialized.includes("query-secret"), false);
+  assert.equal(serialized.includes(sourceBodyMaterial), false);
+  assert.equal(serialized.includes(`Bearer ${bearerMaterial}`), false);
+  assert.equal(serialized.includes("arepo_session"), false);
+  assert.equal(serialized.includes("verifierHash"), false);
+  assert.equal(serialized.includes("salt"), false);
+});
+
+test("dry-run audit append preserves existing JSONL events", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const { cwd, appDataDir } = await workspace({
+    mode: "disabled",
+    dryRunRequestPolicy: true,
+    dryRunAudit: true,
+  });
+  const paths = resolveAuthStoragePaths(appDataDir);
+  const existing: AuthAuditEvent = {
+    eventId: "evt-existing",
+    timestamp: "2026-07-03T00:00:00.000Z",
+    kind: "auth.attempt.rejected",
+    result: "rejected",
+    reasonCode: "seed",
+  };
+  await fs.mkdir(path.dirname(paths.auditEvents), { recursive: true });
+  await fs.writeFile(paths.auditEvents, serializeAuthAuditEventJsonl(existing), "utf8");
+
+  const response = await routeRequest(request("GET", "/api/vaults"), cwd);
+  const parsed = await readAuthAuditEvents(paths.auditEvents);
+
+  assert.equal(response.status, 200);
+  assert.equal(parsed.events[0]?.eventId, "evt-existing");
+  assert.equal(parsed.events.length, 2);
+});
+
+test("corrupt existing JSONL lines do not prevent dry-run audit append", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const { cwd, appDataDir } = await workspace({
+    mode: "disabled",
+    dryRunRequestPolicy: true,
+    dryRunAudit: true,
+  });
+  const paths = resolveAuthStoragePaths(appDataDir);
+  await fs.mkdir(path.dirname(paths.auditEvents), { recursive: true });
+  await fs.writeFile(paths.auditEvents, "{bad json\n", "utf8");
+
+  const response = await routeRequest(request("GET", "/api/vaults"), cwd);
+  const parsed = await readAuthAuditEvents(paths.auditEvents);
+
+  assert.equal(response.status, 200);
+  assert.equal(parsed.errors.length, 1);
+  assert.equal(parsed.events.length, 1);
+  assert.equal(
+    getProtectedRequestDryRunStatus({ dryRunRequestPolicy: true, dryRunAudit: true })
+      .lastDryRunAuditStatus?.status,
+    "written",
+  );
+});
+
+test("dry-run audit write failure is diagnostic only", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-dry-run-"));
+  const appDataDir = path.join(cwd, "app-data-file");
+  await fs.writeFile(appDataDir, "not a directory", "utf8");
+  await writeConfig(cwd, appDataDir, {
+    mode: "disabled",
+    dryRunRequestPolicy: true,
+    dryRunAudit: true,
+  });
+
+  const response = await routeRequest(
+    request("GET", "/api/vaults", undefined, {
+      authorization: `Bearer ${bearerMaterial}`,
+    }),
+    cwd,
+  );
+  const dryRun = getProtectedRequestDryRunStatus({
+    dryRunRequestPolicy: true,
+    dryRunAudit: true,
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(dryRun.dryRunAuditAppendCount, 0);
+  assert.equal(dryRun.lastDryRunAuditStatus?.status, "failed");
+  assert.equal(dryRun.lastDryRunAuditStatus?.enforcementActive, false);
+  assert.equal(dryRun.lastDryRunAuditStatus?.networkExposureSafe, false);
+});
+
 test("dry-run diagnostics are sanitized and report inactive enforcement", async () => {
   resetProtectedRequestDryRunDiagnostics();
   const { cwd } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
@@ -161,6 +316,7 @@ test("dry-run diagnostics are sanitized and report inactive enforcement", async 
 
   assert.equal(status.requestPolicy.dryRunMiddlewareConfigured, true);
   assert.equal(status.requestPolicy.dryRunMiddlewareMounted, true);
+  assert.equal(status.requestPolicy.dryRunAuditConfigured, false);
   assert.equal(status.requestPolicy.enforcementActive, false);
   assert.equal(status.requestPolicy.credentialVerificationActive, false);
   assert.equal(status.requestPolicy.auditRequestLoggingActive, false);
@@ -178,7 +334,11 @@ test("dry-run diagnostics are sanitized and report inactive enforcement", async 
 
 test("non-local bind remains unsafe when dry-run is mounted", async () => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+  const { cwd } = await workspace({
+    mode: "disabled",
+    dryRunRequestPolicy: true,
+    dryRunAudit: true,
+  });
   const originalHost = process.env.AREPO_HOST;
   process.env.AREPO_HOST = "0.0.0.0";
   try {
@@ -189,6 +349,7 @@ test("non-local bind remains unsafe when dry-run is mounted", async () => {
     assert.equal(status.runtime.localOnlyMode, false);
     assert.match(status.runtime.startupWarnings[0] ?? "", /no authentication/);
     assert.equal(status.requestPolicy.dryRunMiddlewareMounted, true);
+    assert.equal(status.requestPolicy.dryRunAuditConfigured, true);
     assert.equal(status.requestPolicy.enforcementActive, false);
     assert.equal(status.requestPolicy.networkExposureSafe, false);
     assert.equal(status.protectedModeStartup.nonLocalBindWithDisabledAuth, true);
@@ -204,7 +365,11 @@ test("non-local bind remains unsafe when dry-run is mounted", async () => {
 
 test("requested protected mode remains unavailable when dry-run is mounted", async () => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace({ mode: "protected", dryRunRequestPolicy: true });
+  const { cwd } = await workspace({
+    mode: "protected",
+    dryRunRequestPolicy: true,
+    dryRunAudit: true,
+  });
 
   const response = await routeRequest(request("GET", "/api/node/status"), cwd);
   const status = response.body as LocalNodeRuntimeStatus;
@@ -215,6 +380,7 @@ test("requested protected mode remains unavailable when dry-run is mounted", asy
   assert.equal(status.auth.enforcement, "none");
   assert.equal(status.auth.protectedModeAvailable, false);
   assert.equal(status.requestPolicy.dryRunMiddlewareMounted, true);
+  assert.equal(status.requestPolicy.dryRunAuditConfigured, true);
   assert.equal(status.requestPolicy.enforcementActive, false);
   assert.equal(status.requestPolicy.networkExposureSafe, false);
   assert.equal(status.protectedModeStartup.protectedModeAvailable, false);

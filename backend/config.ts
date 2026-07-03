@@ -238,6 +238,7 @@ function normalizeAuthConfig(auth: unknown): AuthConfig {
     return auth as AuthConfig;
   }
   const dryRunRequestPolicy = (auth as { dryRunRequestPolicy?: unknown }).dryRunRequestPolicy;
+  const dryRunAudit = (auth as { dryRunAudit?: unknown }).dryRunAudit;
   const mode = (auth as { mode?: unknown }).mode;
   if (mode === "protected") {
     const normalized: AuthConfig = {
@@ -248,6 +249,9 @@ function normalizeAuthConfig(auth: unknown): AuthConfig {
     if (dryRunRequestPolicy !== undefined) {
       normalized.dryRunRequestPolicy = dryRunRequestPolicy as boolean;
     }
+    if (dryRunAudit !== undefined) {
+      normalized.dryRunAudit = dryRunAudit as boolean;
+    }
     return normalized;
   }
   const requestedMode = (auth as { requestedMode?: unknown }).requestedMode;
@@ -256,6 +260,9 @@ function normalizeAuthConfig(auth: unknown): AuthConfig {
   };
   if (dryRunRequestPolicy !== undefined) {
     normalized.dryRunRequestPolicy = dryRunRequestPolicy as boolean;
+  }
+  if (dryRunAudit !== undefined) {
+    normalized.dryRunAudit = dryRunAudit as boolean;
   }
   if (requestedMode !== undefined) {
     normalized.requestedMode = requestedMode as AuthConfig["requestedMode"];
@@ -294,6 +301,9 @@ function validateAuthConfig(auth: AuthConfig, file: string): void {
     throw new Error(
       `Invalid AREPO config at ${file}: auth.dryRunRequestPolicy must be boolean when set`,
     );
+  }
+  if (auth.dryRunAudit !== undefined && typeof auth.dryRunAudit !== "boolean") {
+    throw new Error(`Invalid AREPO config at ${file}: auth.dryRunAudit must be boolean when set`);
   }
 }
 

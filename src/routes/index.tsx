@@ -2899,6 +2899,17 @@ type LocalNodeRuntimeStatus = {
     dryRunMiddlewareMounted: boolean;
     dryRunObservationOnly: true;
     dryRunRunCount: number;
+    dryRunAuditConfigured: boolean;
+    dryRunAuditAppendCount: number;
+    lastDryRunAuditStatus?: {
+      mode: "disabled" | "append";
+      status: "skipped" | "written" | "failed";
+      eventId?: string;
+      reasonCode?: string;
+      error?: string;
+      enforcementActive: false;
+      networkExposureSafe: false;
+    };
     lastDryRunResult?: {
       timestamp: string;
       method: string;
@@ -3516,6 +3527,16 @@ function LocalNodeDiagnosticsCard({
                 <span>{status.requestPolicy.dryRunMiddlewareMounted ? "yes" : "no"}</span>
                 <span className="text-muted-foreground">Dry-run requests</span>
                 <span>{status.requestPolicy.dryRunRunCount}</span>
+                <span className="text-muted-foreground">Dry-run audit</span>
+                <span>{status.requestPolicy.dryRunAuditConfigured ? "append" : "disabled"}</span>
+                <span className="text-muted-foreground">Audit appends</span>
+                <span>{status.requestPolicy.dryRunAuditAppendCount}</span>
+                {status.requestPolicy.lastDryRunAuditStatus && (
+                  <>
+                    <span className="text-muted-foreground">Last audit</span>
+                    <span>{status.requestPolicy.lastDryRunAuditStatus.status}</span>
+                  </>
+                )}
                 {status.requestPolicy.lastDryRunResult && (
                   <>
                     <span className="text-muted-foreground">Last dry-run</span>
