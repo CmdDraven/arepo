@@ -209,6 +209,8 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    Reduced anonymous status planning may show as planning-only, but it is not
    mounted or enforced. Stronger-confirmation planning may also show as
    planning-only, but it does not create confirmation tokens or reject requests.
+   Audit requirement planning may show as planning-only, but it does not write
+   audit logs or reject requests.
 18. Expected result: unsupported V1 capabilities are visible as disabled:
    authentication, remote nodes, sync, AI/vector, database support, and
    migrations.

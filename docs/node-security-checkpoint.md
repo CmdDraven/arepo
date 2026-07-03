@@ -69,6 +69,12 @@ Implemented as inert, status-only, or observation-only:
   emergency reset, and remote-node lifecycle operations that will require an
   extra confirmation step in protected mode. It does not create confirmation
   tokens and is not imported by active request handling.
+- `backend/auditRequirementPlanner.ts`: unmounted future audit requirement
+  planner. It classifies auth attempts, credential/session/token lifecycle,
+  vault lifecycle, source mutations, rejected protected requests, emergency
+  reset, and remote-node lifecycle operations into sanitized audit requirement
+  plans. It does not write audit logs and is not imported by active request
+  handling.
 - `backend/protectedRequestDryRun.ts`: optional mounted dry-run observer gated
   by `auth.dryRunRequestPolicy = true`. It runs the protected request pipeline
   for diagnostics only, optionally appends sanitized audit events when
@@ -178,10 +184,11 @@ inactive audit enforcement, inactive revocation checks, inactive CSRF/origin
 enforcement, missing reduced anonymous status enforcement, missing stronger
 confirmation enforcement, explicit enforcement flag disabled, planning-only
 request pipeline, planning-only response planner, planning-only reduced
-anonymous status planner, planning-only stronger-confirmation planner, optional
-dry-run observation-only state, and non-local bind without active protected mode
-when applicable. Dry-run observation, dry-run audit, route plans, reduced
-anonymous response plans, stronger-confirmation plans, and response plans may
+anonymous status planner, planning-only stronger-confirmation planner,
+planning-only audit requirement planner, optional dry-run observation-only
+state, and non-local bind without active protected mode when applicable. Dry-run
+observation, dry-run audit, route plans, reduced anonymous response plans,
+stronger-confirmation plans, audit requirement plans, and response plans may
 reduce uncertainty for implementation work, but they never make the readiness
 manifest enforcement-ready by themselves.
 
@@ -227,6 +234,30 @@ verifier hashes, or salts. The planner is not mounted, current V1 endpoint
 behavior is unchanged, and readiness may report it only as planning scaffold
 while stronger confirmation remains not actively enforced.
 
+## Audit Requirement Planning
+
+Future protected mode must define which security-sensitive operations require
+audit records before those operations become enforceable. The audit requirement
+planner classifies future operation and route-shaped inputs without writing
+audit logs, rejecting requests, creating credentials, or changing runtime
+handlers.
+
+Operations that require audit include auth attempts, credential/session/token
+lifecycle changes, node-secret rotation, vault registration/removal/permission
+changes, source file create/write/rename/delete, conflict overwrite,
+path/origin/CSRF rejection, authorization denial, emergency local-only reset,
+and future remote-node registration/removal. Generated-index reads are
+deliberately classified as not required for audit by default. Source-content
+reads are deliberately classified as recommended for audit rather than silently
+left unspecified.
+
+Planner output uses stable reason codes and sanitized labels only. It must not
+include raw authorization headers, bearer values, cookie values, verifier hashes
+or salts, credential IDs, session IDs, token IDs, audit event IDs, vault roots,
+filesystem paths, raw CORS origins, or source document bodies. The planner is
+not mounted, current V1 endpoint behavior is unchanged, and readiness may report
+it only as planning scaffold while audit enforcement remains inactive.
+
 ## Enforcement Readiness Checklist
 
 This checklist is the gate before any auth middleware is mounted. It separates
@@ -253,6 +284,8 @@ Implemented but unmounted, status-only, or observation-only:
   sanitized HTTP-style response plans without mounting or enforcing them.
 - Browser security, revocation, startup-gating, and request-policy status
   helpers.
+- Audit requirement planner that describes future audit expectations without
+  writing audit logs or enforcing requests.
 
 Mounted but dry-run:
 

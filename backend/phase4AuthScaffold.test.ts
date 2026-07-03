@@ -177,6 +177,7 @@ test("requested protected mode remains unavailable and non-operational", async (
   assert.ok(status.protectedModeReadiness.blockers.includes("credential-verification-inactive"));
   assert.ok(status.protectedModeReadiness.blockers.includes("revocation-checks-inactive"));
   assert.ok(status.protectedModeReadiness.blockers.includes("audit-enforcement-inactive"));
+  assert.ok(status.protectedModeReadiness.blockers.includes("audit-requirement-planning-only"));
   assert.ok(status.protectedModeReadiness.blockers.includes("csrf-origin-enforcement-inactive"));
   assert.ok(
     status.protectedModeReadiness.blockers.includes("reduced-anonymous-status-not-enforced"),
@@ -190,6 +191,8 @@ test("requested protected mode remains unavailable and non-operational", async (
   assert.equal(status.protectedModeReadiness.checks.reducedAnonymousStatusPlannerAvailable, true);
   assert.equal(status.protectedModeReadiness.checks.strongerConfirmationEnforced, false);
   assert.equal(status.protectedModeReadiness.checks.strongerConfirmationPlannerAvailable, true);
+  assert.equal(status.protectedModeReadiness.checks.auditEnforcementActive, false);
+  assert.equal(status.protectedModeReadiness.checks.auditRequirementPlannerAvailable, true);
 
   assert.deepEqual(
     networkExposureValues(status).filter((value) => value),

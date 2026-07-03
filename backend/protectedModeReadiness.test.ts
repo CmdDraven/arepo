@@ -76,6 +76,7 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.ok(readiness.blockers.includes("credential-verification-inactive"));
   assert.ok(readiness.blockers.includes("revocation-checks-inactive"));
   assert.ok(readiness.blockers.includes("audit-enforcement-inactive"));
+  assert.ok(readiness.blockers.includes("audit-requirement-planning-only"));
   assert.ok(readiness.blockers.includes("csrf-origin-enforcement-inactive"));
   assert.ok(readiness.blockers.includes("reduced-anonymous-status-not-enforced"));
   assert.ok(readiness.blockers.includes("reduced-anonymous-status-planning-only"));
@@ -190,21 +191,25 @@ test("non-local bind remains unsafe in readiness manifest", () => {
   assert.equal(readiness.networkExposureSafe, false);
 });
 
-test("response planner pipeline reduced status and confirmation planner presence are planning-only not enforcement", () => {
+test("response planner pipeline reduced status confirmation and audit planner presence are planning-only not enforcement", () => {
   const readiness = manifest();
 
   assert.equal(readiness.checks.protectedRequestPipelineAvailable, true);
   assert.equal(readiness.checks.protectedResponsePlannerAvailable, true);
   assert.equal(readiness.checks.reducedAnonymousStatusPlannerAvailable, true);
   assert.equal(readiness.checks.strongerConfirmationPlannerAvailable, true);
+  assert.equal(readiness.checks.auditRequirementPlannerAvailable, true);
   assert.ok(readiness.blockers.includes("request-pipeline-planning-only"));
   assert.ok(readiness.blockers.includes("response-planner-planning-only"));
   assert.ok(readiness.blockers.includes("reduced-anonymous-status-planning-only"));
   assert.ok(readiness.blockers.includes("stronger-confirmation-planning-only"));
+  assert.ok(readiness.blockers.includes("audit-requirement-planning-only"));
   assert.ok(readiness.blockers.includes("reduced-anonymous-status-not-enforced"));
   assert.ok(readiness.blockers.includes("stronger-confirmation-not-enforced"));
+  assert.ok(readiness.blockers.includes("audit-enforcement-inactive"));
   assert.equal(readiness.checks.reducedAnonymousStatusEnforced, false);
   assert.equal(readiness.checks.strongerConfirmationEnforced, false);
+  assert.equal(readiness.checks.auditEnforcementActive, false);
   assert.equal(readiness.enforcementActive, false);
 });
 

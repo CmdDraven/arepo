@@ -196,6 +196,7 @@ export type ProtectedModeReadinessBlockerCode =
   | "credential-verification-inactive"
   | "credential-acceptance-inactive"
   | "audit-enforcement-inactive"
+  | "audit-requirement-planning-only"
   | "revocation-checks-inactive"
   | "csrf-origin-enforcement-inactive"
   | "reduced-anonymous-status-not-enforced"
@@ -262,6 +263,7 @@ export type ProtectedModeReadinessManifest = {
     protectedResponsePlannerAvailable: boolean;
     reducedAnonymousStatusPlannerAvailable: boolean;
     strongerConfirmationPlannerAvailable: boolean;
+    auditRequirementPlannerAvailable: boolean;
   };
   startup: {
     missingStoreCount: number;

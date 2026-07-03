@@ -1,3 +1,4 @@
+import { planAuditRequirement } from "./auditRequirementPlanner.js";
 import { planProtectedRequestPipeline } from "./protectedRequestPipeline.js";
 import { planProtectedResponse } from "./protectedResponsePlanner.js";
 import { planReducedAnonymousNodeStatus } from "./reducedAnonymousStatusPlanner.js";
@@ -99,6 +100,13 @@ export function buildProtectedModeReadinessManifest(
     label: "Audit enforcement is not active.",
     status: "blocked",
     codes: !input.requestPolicy.auditRequestLoggingActive ? ["audit-enforcement-inactive"] : [],
+  });
+
+  addDetail(details, {
+    group: "audit",
+    label: "Audit requirement planner is available for planning only.",
+    status: "planning-only",
+    codes: ["audit-requirement-planning-only"],
   });
 
   addDetail(details, {
@@ -208,6 +216,7 @@ export function buildProtectedModeReadinessManifest(
       protectedResponsePlannerAvailable: typeof planProtectedResponse === "function",
       reducedAnonymousStatusPlannerAvailable: typeof planReducedAnonymousNodeStatus === "function",
       strongerConfirmationPlannerAvailable: typeof planStrongerConfirmation === "function",
+      auditRequirementPlannerAvailable: typeof planAuditRequirement === "function",
     },
     startup: {
       missingStoreCount: input.startup.missingRequiredStores.length,

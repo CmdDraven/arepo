@@ -3042,6 +3042,7 @@ type LocalNodeRuntimeStatus = {
       protectedResponsePlannerAvailable: boolean;
       reducedAnonymousStatusPlannerAvailable: boolean;
       strongerConfirmationPlannerAvailable: boolean;
+      auditRequirementPlannerAvailable: boolean;
     };
     startup: {
       missingStoreCount: number;
@@ -3658,6 +3659,12 @@ function LocalNodeDiagnosticsCard({
                 <span className="text-muted-foreground">Confirmation planner</span>
                 <span>
                   {status.protectedModeReadiness.checks.strongerConfirmationPlannerAvailable
+                    ? "planning-only"
+                    : "absent"}
+                </span>
+                <span className="text-muted-foreground">Audit planner</span>
+                <span>
+                  {status.protectedModeReadiness.checks.auditRequirementPlannerAvailable
                     ? "planning-only"
                     : "absent"}
                 </span>
