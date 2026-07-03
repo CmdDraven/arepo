@@ -10,12 +10,26 @@ This folder is a disposable example Markdown vault for AREPO. It is kept in the 
 
 It demonstrates:
 
-- folder-qualified wikilinks such as [[Reference/reference-note]] and [[Notes/note]]
-- heading-anchor links such as [[Reference/reference-note#terminology]]
-- backlinks between notes
+- folder-qualified wikilinks such as [[Reference/reference-note]], [[Notes/note]], and [[Notes/Nestest/note]]
+- nested Markdown discovery through `Notes/Nestest/note.md`
+- heading-anchor links such as [[Reference/reference-note#terminology]], [[Notes/note#backlink-target]], and [[Notes/Nestest/note#nested-anchor-target]]
+- backlinks between top-level notes, reference notes, and nested notes
 - intentional broken-link validation
 - graph mode with linked notes and missing-link nodes
 - ignored wikilinks inside fenced code blocks and inline code
+
+Current fixture layout:
+
+```text
+test-vault/
+├── README.md
+├── Notes/
+│   ├── note.md
+│   └── Nestest/
+│       └── note.md
+└── Reference/
+    └── reference-note.md
+```
 
 It is safe to edit, reset, or delete locally while testing. If you want to restore it after manual edits, use your normal Git workflow. AREPO does not require this folder at runtime.
 
@@ -27,3 +41,4 @@ To test it:
 2. Open the Vaults settings UI.
 3. Add a vault using the absolute path to this `test-vault` folder.
 4. Let AREPO build the machine index automatically.
+5. Confirm that `Notes/Nestest/note.md` appears in the tree, resolves links, contributes graph edges, and reports backlinks like the other Markdown files.
