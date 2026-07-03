@@ -75,6 +75,11 @@ Implemented as inert, status-only, or observation-only:
   reset, and remote-node lifecycle operations into sanitized audit requirement
   plans. It does not write audit logs and is not imported by active request
   handling.
+- `backend/browserRequestGuardPlanner.ts`: unmounted future browser-origin and
+  CSRF guard planner. It classifies browser request source, safe versus unsafe
+  methods, origin posture, CSRF requirement state, reduced anonymous status,
+  and route-aware request classes without rejecting requests or changing CORS
+  behavior.
 - `backend/protectedRequestDryRun.ts`: optional mounted dry-run observer gated
   by `auth.dryRunRequestPolicy = true`. It runs the protected request pipeline
   for diagnostics only, optionally appends sanitized audit events when
@@ -185,12 +190,13 @@ enforcement, missing reduced anonymous status enforcement, missing stronger
 confirmation enforcement, explicit enforcement flag disabled, planning-only
 request pipeline, planning-only response planner, planning-only reduced
 anonymous status planner, planning-only stronger-confirmation planner,
-planning-only audit requirement planner, optional dry-run observation-only
-state, and non-local bind without active protected mode when applicable. Dry-run
-observation, dry-run audit, route plans, reduced anonymous response plans,
-stronger-confirmation plans, audit requirement plans, and response plans may
-reduce uncertainty for implementation work, but they never make the readiness
-manifest enforcement-ready by themselves.
+planning-only audit requirement planner, planning-only browser request guard
+planner, optional dry-run observation-only state, and non-local bind without
+active protected mode when applicable. Dry-run observation, dry-run audit, route
+plans, reduced anonymous response plans, stronger-confirmation plans, audit
+requirement plans, browser request guard plans, and response plans may reduce
+uncertainty for implementation work, but they never make the readiness manifest
+enforcement-ready by themselves.
 
 ## Reduced Anonymous Status Planning
 
@@ -258,6 +264,36 @@ filesystem paths, raw CORS origins, or source document bodies. The planner is
 not mounted, current V1 endpoint behavior is unchanged, and readiness may report
 it only as planning scaffold while audit enforcement remains inactive.
 
+## Browser Request Guard Planning
+
+Future browser session protected mode needs explicit browser-origin and CSRF
+guard behavior before any cookie or session flow can be made real. The browser
+request guard planner classifies explicit request-shaped inputs without reading
+active HTTP requests, parsing cookies as trusted auth, rejecting requests,
+creating sessions, generating CSRF tokens, or changing CORS behavior.
+
+The planner distinguishes non-browser or unknown clients, same-origin browser
+requests, allowed browser origins, disallowed browser origins, missing origins,
+and malformed origins. It classifies safe methods such as `GET` and `HEAD`
+separately from unsafe methods such as `POST`, `PUT`, `PATCH`, and `DELETE`.
+Unsafe browser methods require future CSRF protection. Missing, invalid, or
+unsupported CSRF posture is reported with stable reason codes, not by changing
+current V1 endpoint behavior.
+
+Route-aware planning uses the protected route inventory where possible.
+Generated-index and status reads, source-content reads, source mutations, vault
+mutations, auth-management request classes, node-management diagnostics, and
+reduced anonymous status are deliberately classified. Missing, malformed, or
+disallowed browser origins are fail-closed in future protected-mode plans.
+
+Planner output is sanitized. It must not include raw `Origin`, `Referer`, or
+`Host` values, raw authorization headers, bearer values, cookie values, CSRF
+token values, verifier hashes or salts, credential IDs, session IDs, token IDs,
+audit event IDs, vault roots, filesystem paths, raw CORS origins, or source
+document bodies. The planner is not mounted, current V1 endpoint behavior and
+CORS behavior are unchanged, and readiness may report it only as planning
+scaffold while CSRF/origin enforcement remains inactive.
+
 ## Enforcement Readiness Checklist
 
 This checklist is the gate before any auth middleware is mounted. It separates
@@ -286,6 +322,8 @@ Implemented but unmounted, status-only, or observation-only:
   helpers.
 - Audit requirement planner that describes future audit expectations without
   writing audit logs or enforcing requests.
+- Browser request guard planner that describes future origin and CSRF
+  expectations without enforcing requests or changing CORS behavior.
 
 Mounted but dry-run:
 

@@ -199,6 +199,7 @@ export type ProtectedModeReadinessBlockerCode =
   | "audit-requirement-planning-only"
   | "revocation-checks-inactive"
   | "csrf-origin-enforcement-inactive"
+  | "browser-request-guard-planning-only"
   | "reduced-anonymous-status-not-enforced"
   | "stronger-confirmation-not-enforced"
   | "explicit-enforcement-flag-disabled"
@@ -264,6 +265,7 @@ export type ProtectedModeReadinessManifest = {
     reducedAnonymousStatusPlannerAvailable: boolean;
     strongerConfirmationPlannerAvailable: boolean;
     auditRequirementPlannerAvailable: boolean;
+    browserRequestGuardPlannerAvailable: boolean;
   };
   startup: {
     missingStoreCount: number;

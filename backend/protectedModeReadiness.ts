@@ -1,4 +1,5 @@
 import { planAuditRequirement } from "./auditRequirementPlanner.js";
+import { planBrowserRequestGuard } from "./browserRequestGuardPlanner.js";
 import { planProtectedRequestPipeline } from "./protectedRequestPipeline.js";
 import { planProtectedResponse } from "./protectedResponsePlanner.js";
 import { planReducedAnonymousNodeStatus } from "./reducedAnonymousStatusPlanner.js";
@@ -129,6 +130,13 @@ export function buildProtectedModeReadinessManifest(
   });
 
   addDetail(details, {
+    group: "browserSecurity",
+    label: "Browser request guard planner is available for planning only.",
+    status: "planning-only",
+    codes: ["browser-request-guard-planning-only"],
+  });
+
+  addDetail(details, {
     group: "confirmation",
     label: "Stronger confirmation enforcement is not active.",
     status: "blocked",
@@ -217,6 +225,7 @@ export function buildProtectedModeReadinessManifest(
       reducedAnonymousStatusPlannerAvailable: typeof planReducedAnonymousNodeStatus === "function",
       strongerConfirmationPlannerAvailable: typeof planStrongerConfirmation === "function",
       auditRequirementPlannerAvailable: typeof planAuditRequirement === "function",
+      browserRequestGuardPlannerAvailable: typeof planBrowserRequestGuard === "function",
     },
     startup: {
       missingStoreCount: input.startup.missingRequiredStores.length,

@@ -3043,6 +3043,7 @@ type LocalNodeRuntimeStatus = {
       reducedAnonymousStatusPlannerAvailable: boolean;
       strongerConfirmationPlannerAvailable: boolean;
       auditRequirementPlannerAvailable: boolean;
+      browserRequestGuardPlannerAvailable: boolean;
     };
     startup: {
       missingStoreCount: number;
@@ -3665,6 +3666,12 @@ function LocalNodeDiagnosticsCard({
                 <span className="text-muted-foreground">Audit planner</span>
                 <span>
                   {status.protectedModeReadiness.checks.auditRequirementPlannerAvailable
+                    ? "planning-only"
+                    : "absent"}
+                </span>
+                <span className="text-muted-foreground">Browser guard</span>
+                <span>
+                  {status.protectedModeReadiness.checks.browserRequestGuardPlannerAvailable
                     ? "planning-only"
                     : "absent"}
                 </span>

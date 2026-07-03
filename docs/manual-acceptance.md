@@ -210,7 +210,8 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    mounted or enforced. Stronger-confirmation planning may also show as
    planning-only, but it does not create confirmation tokens or reject requests.
    Audit requirement planning may show as planning-only, but it does not write
-   audit logs or reject requests.
+   audit logs or reject requests. Browser request guard planning may show as
+   planning-only, but it does not enforce origin or CSRF checks.
 18. Expected result: unsupported V1 capabilities are visible as disabled:
    authentication, remote nodes, sync, AI/vector, database support, and
    migrations.
