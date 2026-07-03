@@ -3032,6 +3032,9 @@ type LocalNodeRuntimeStatus = {
     checks: {
       credentialVerificationActive: false;
       credentialAcceptanceActive: false;
+      credentialIssuanceActive: false;
+      sessionIssuanceActive: false;
+      tokenIssuanceActive: false;
       auditEnforcementActive: false;
       revocationChecksActive: false;
       csrfOriginEnforcementActive: false;
@@ -3044,6 +3047,7 @@ type LocalNodeRuntimeStatus = {
       strongerConfirmationPlannerAvailable: boolean;
       auditRequirementPlannerAvailable: boolean;
       browserRequestGuardPlannerAvailable: boolean;
+      credentialSessionLifecyclePlannerAvailable: boolean;
     };
     startup: {
       missingStoreCount: number;
@@ -3672,6 +3676,12 @@ function LocalNodeDiagnosticsCard({
                 <span className="text-muted-foreground">Browser guard</span>
                 <span>
                   {status.protectedModeReadiness.checks.browserRequestGuardPlannerAvailable
+                    ? "planning-only"
+                    : "absent"}
+                </span>
+                <span className="text-muted-foreground">Lifecycle planner</span>
+                <span>
+                  {status.protectedModeReadiness.checks.credentialSessionLifecyclePlannerAvailable
                     ? "planning-only"
                     : "absent"}
                 </span>

@@ -1,5 +1,6 @@
 import { planAuditRequirement } from "./auditRequirementPlanner.js";
 import { planBrowserRequestGuard } from "./browserRequestGuardPlanner.js";
+import { planCredentialSessionLifecycle } from "./credentialSessionLifecyclePlanner.js";
 import { planProtectedRequestPipeline } from "./protectedRequestPipeline.js";
 import { planProtectedResponse } from "./protectedResponsePlanner.js";
 import { planReducedAnonymousNodeStatus } from "./reducedAnonymousStatusPlanner.js";
@@ -94,6 +95,20 @@ export function buildProtectedModeReadinessManifest(
         ? (["explicit-enforcement-flag-disabled"] as const)
         : []),
     ],
+  });
+
+  addDetail(details, {
+    group: "lifecycle",
+    label: "Credential, session, and token issuance are not active.",
+    status: "blocked",
+    codes: ["credential-session-issuance-inactive"],
+  });
+
+  addDetail(details, {
+    group: "lifecycle",
+    label: "Credential/session lifecycle planner is available for planning only.",
+    status: "planning-only",
+    codes: ["credential-session-lifecycle-planning-only"],
   });
 
   addDetail(details, {
@@ -214,6 +229,9 @@ export function buildProtectedModeReadinessManifest(
     checks: {
       credentialVerificationActive: false,
       credentialAcceptanceActive: false,
+      credentialIssuanceActive: false,
+      sessionIssuanceActive: false,
+      tokenIssuanceActive: false,
       auditEnforcementActive: false,
       revocationChecksActive: false,
       csrfOriginEnforcementActive: false,
@@ -226,6 +244,8 @@ export function buildProtectedModeReadinessManifest(
       strongerConfirmationPlannerAvailable: typeof planStrongerConfirmation === "function",
       auditRequirementPlannerAvailable: typeof planAuditRequirement === "function",
       browserRequestGuardPlannerAvailable: typeof planBrowserRequestGuard === "function",
+      credentialSessionLifecyclePlannerAvailable:
+        typeof planCredentialSessionLifecycle === "function",
     },
     startup: {
       missingStoreCount: input.startup.missingRequiredStores.length,

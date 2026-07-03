@@ -195,6 +195,8 @@ export type ProtectedModeReadinessBlockerCode =
   | "route-policy-inventory-incomplete"
   | "credential-verification-inactive"
   | "credential-acceptance-inactive"
+  | "credential-session-issuance-inactive"
+  | "credential-session-lifecycle-planning-only"
   | "audit-enforcement-inactive"
   | "audit-requirement-planning-only"
   | "revocation-checks-inactive"
@@ -215,6 +217,7 @@ export type ProtectedModeReadinessGroup =
   | "startup"
   | "routePolicy"
   | "requestPolicy"
+  | "lifecycle"
   | "browserSecurity"
   | "audit"
   | "revocation"
@@ -254,6 +257,9 @@ export type ProtectedModeReadinessManifest = {
   checks: {
     credentialVerificationActive: false;
     credentialAcceptanceActive: false;
+    credentialIssuanceActive: false;
+    sessionIssuanceActive: false;
+    tokenIssuanceActive: false;
     auditEnforcementActive: false;
     revocationChecksActive: false;
     csrfOriginEnforcementActive: false;
@@ -266,6 +272,7 @@ export type ProtectedModeReadinessManifest = {
     strongerConfirmationPlannerAvailable: boolean;
     auditRequirementPlannerAvailable: boolean;
     browserRequestGuardPlannerAvailable: boolean;
+    credentialSessionLifecyclePlannerAvailable: boolean;
   };
   startup: {
     missingStoreCount: number;

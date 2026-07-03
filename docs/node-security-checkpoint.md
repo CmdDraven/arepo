@@ -80,6 +80,11 @@ Implemented as inert, status-only, or observation-only:
   methods, origin posture, CSRF requirement state, reduced anonymous status,
   and route-aware request classes without rejecting requests or changing CORS
   behavior.
+- `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
+  planner for credential, token, browser-session, and revocation operations. It
+  defines requirement codes for creation, verification, rotation, renewal, and
+  revocation without creating credentials, sessions, tokens, cookies, pairing
+  flows, login flows, or trusted actors.
 - `backend/protectedRequestDryRun.ts`: optional mounted dry-run observer gated
   by `auth.dryRunRequestPolicy = true`. It runs the protected request pipeline
   for diagnostics only, optionally appends sanitized audit events when
@@ -191,10 +196,12 @@ confirmation enforcement, explicit enforcement flag disabled, planning-only
 request pipeline, planning-only response planner, planning-only reduced
 anonymous status planner, planning-only stronger-confirmation planner,
 planning-only audit requirement planner, planning-only browser request guard
-planner, optional dry-run observation-only state, and non-local bind without
-active protected mode when applicable. Dry-run observation, dry-run audit, route
-plans, reduced anonymous response plans, stronger-confirmation plans, audit
-requirement plans, browser request guard plans, and response plans may reduce
+planner, inactive credential/session/token issuance, planning-only
+credential/session lifecycle planner, optional dry-run observation-only state,
+and non-local bind without active protected mode when applicable. Dry-run
+observation, dry-run audit, route plans, reduced anonymous response plans,
+stronger-confirmation plans, audit requirement plans, browser request guard
+plans, credential/session lifecycle plans, and response plans may reduce
 uncertainty for implementation work, but they never make the readiness manifest
 enforcement-ready by themselves.
 
@@ -294,6 +301,34 @@ document bodies. The planner is not mounted, current V1 endpoint behavior and
 CORS behavior are unchanged, and readiness may report it only as planning
 scaffold while CSRF/origin enforcement remains inactive.
 
+## Credential And Session Lifecycle Planning
+
+Future protected mode must define lifecycle requirements before AREPO can create
+or accept credentials, browser sessions, API tokens, cookies, login, or pairing
+flows. The credential/session lifecycle planner classifies explicit
+operation-shaped inputs and returns sanitized requirement codes only.
+
+Credential creation, credential secret rotation, and credential revocation
+require stronger confirmation, audit, and revocation-state compatibility.
+Credential verification requires verifier availability, revocation checks, and
+sanitized failure handling. Browser session creation requires secure cookie
+policy planning, expiry, revocation checks, browser origin/CSRF guard
+compatibility, and audit. Browser session renewal requires expiry and revocation
+checks. Browser session revocation requires audit and revocation compatibility.
+API token creation, rotation, and revocation require stronger confirmation,
+audit, expiry or explicit long-lived-token classification, and revocation
+checks. Revoke-all and emergency revoke-all operations require stronger
+confirmation, audit, revocation compatibility, and local-only safety
+assumptions for emergency reset.
+
+Planner output must not include raw authorization headers, bearer values, cookie
+values, CSRF token values, verifier hashes or salts, credential IDs, session
+IDs, token IDs, audit event IDs, vault roots, filesystem paths, raw origins,
+referers, hosts, or source document bodies. The planner is not mounted, current
+V1 endpoint behavior is unchanged, and readiness may report it only as planning
+scaffold while credential/session/token issuance and enforcement remain
+inactive.
+
 ## Enforcement Readiness Checklist
 
 This checklist is the gate before any auth middleware is mounted. It separates
@@ -324,6 +359,9 @@ Implemented but unmounted, status-only, or observation-only:
   writing audit logs or enforcing requests.
 - Browser request guard planner that describes future origin and CSRF
   expectations without enforcing requests or changing CORS behavior.
+- Credential/session lifecycle planner that describes future issuance,
+  verification, rotation, renewal, and revocation requirements without creating
+  credentials, sessions, tokens, or cookies.
 
 Mounted but dry-run:
 

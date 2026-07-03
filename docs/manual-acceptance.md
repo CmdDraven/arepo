@@ -212,6 +212,8 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    Audit requirement planning may show as planning-only, but it does not write
    audit logs or reject requests. Browser request guard planning may show as
    planning-only, but it does not enforce origin or CSRF checks.
+   Credential/session lifecycle planning may show as planning-only, but it does
+   not create credentials, sessions, tokens, cookies, login, or pairing flows.
 18. Expected result: unsupported V1 capabilities are visible as disabled:
    authentication, remote nodes, sync, AI/vector, database support, and
    migrations.

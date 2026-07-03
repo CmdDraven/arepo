@@ -177,6 +177,12 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.protectedModeReadiness.networkExposureSafe, false);
   assert.ok(status.protectedModeReadiness.blockers.includes("auth-mode-disabled"));
   assert.ok(status.protectedModeReadiness.blockers.includes("credential-verification-inactive"));
+  assert.ok(
+    status.protectedModeReadiness.blockers.includes("credential-session-issuance-inactive"),
+  );
+  assert.ok(
+    status.protectedModeReadiness.blockers.includes("credential-session-lifecycle-planning-only"),
+  );
   assert.ok(status.protectedModeReadiness.blockers.includes("revocation-checks-inactive"));
   assert.ok(status.protectedModeReadiness.blockers.includes("audit-enforcement-inactive"));
   assert.ok(status.protectedModeReadiness.blockers.includes("audit-requirement-planning-only"));
@@ -197,6 +203,13 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.protectedModeReadiness.checks.auditRequirementPlannerAvailable, true);
   assert.equal(status.protectedModeReadiness.checks.csrfOriginEnforcementActive, false);
   assert.equal(status.protectedModeReadiness.checks.browserRequestGuardPlannerAvailable, true);
+  assert.equal(status.protectedModeReadiness.checks.credentialIssuanceActive, false);
+  assert.equal(status.protectedModeReadiness.checks.sessionIssuanceActive, false);
+  assert.equal(status.protectedModeReadiness.checks.tokenIssuanceActive, false);
+  assert.equal(
+    status.protectedModeReadiness.checks.credentialSessionLifecyclePlannerAvailable,
+    true,
+  );
   assert.equal(status.protectedModeReadiness.routePolicy.inventoryPresent, true);
   assert.equal(
     status.protectedModeReadiness.routePolicy.routePolicyCount,
