@@ -1,5 +1,6 @@
 import { planProtectedRequestPipeline } from "./protectedRequestPipeline.js";
 import { planProtectedResponse } from "./protectedResponsePlanner.js";
+import { planReducedAnonymousNodeStatus } from "./reducedAnonymousStatusPlanner.js";
 import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
 import type {
   AuthPosture,
@@ -139,6 +140,13 @@ export function buildProtectedModeReadinessManifest(
     codes: ["response-planner-planning-only"],
   });
 
+  addDetail(details, {
+    group: "responsePlanning",
+    label: "Reduced anonymous status planner is available for planning only.",
+    status: "planning-only",
+    codes: ["reduced-anonymous-status-planning-only"],
+  });
+
   if (input.requestPolicy.dryRun.configured || input.requestPolicy.dryRun.observed.count > 0) {
     addDetail(details, {
       group: "dryRun",
@@ -190,6 +198,7 @@ export function buildProtectedModeReadinessManifest(
       explicitEnforcementFlagEnabled: false,
       protectedRequestPipelineAvailable: typeof planProtectedRequestPipeline === "function",
       protectedResponsePlannerAvailable: typeof planProtectedResponse === "function",
+      reducedAnonymousStatusPlannerAvailable: typeof planReducedAnonymousNodeStatus === "function",
     },
     startup: {
       missingStoreCount: input.startup.missingRequiredStores.length,

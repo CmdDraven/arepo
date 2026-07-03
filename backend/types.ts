@@ -203,6 +203,7 @@ export type ProtectedModeReadinessBlockerCode =
   | "explicit-enforcement-flag-disabled"
   | "request-pipeline-planning-only"
   | "response-planner-planning-only"
+  | "reduced-anonymous-status-planning-only"
   | "dry-run-observation-only"
   | "non-local-bind-without-protected-mode";
 
@@ -258,6 +259,7 @@ export type ProtectedModeReadinessManifest = {
     explicitEnforcementFlagEnabled: false;
     protectedRequestPipelineAvailable: boolean;
     protectedResponsePlannerAvailable: boolean;
+    reducedAnonymousStatusPlannerAvailable: boolean;
   };
   startup: {
     missingStoreCount: number;

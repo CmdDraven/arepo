@@ -181,6 +181,11 @@ test("requested protected mode remains unavailable and non-operational", async (
   assert.ok(
     status.protectedModeReadiness.blockers.includes("reduced-anonymous-status-not-enforced"),
   );
+  assert.ok(
+    status.protectedModeReadiness.blockers.includes("reduced-anonymous-status-planning-only"),
+  );
+  assert.equal(status.protectedModeReadiness.checks.reducedAnonymousStatusEnforced, false);
+  assert.equal(status.protectedModeReadiness.checks.reducedAnonymousStatusPlannerAvailable, true);
 
   assert.deepEqual(
     networkExposureValues(status).filter((value) => value),

@@ -3040,6 +3040,7 @@ type LocalNodeRuntimeStatus = {
       explicitEnforcementFlagEnabled: false;
       protectedRequestPipelineAvailable: boolean;
       protectedResponsePlannerAvailable: boolean;
+      reducedAnonymousStatusPlannerAvailable: boolean;
     };
     startup: {
       missingStoreCount: number;
@@ -3644,6 +3645,12 @@ function LocalNodeDiagnosticsCard({
                 <span className="text-muted-foreground">Response planner</span>
                 <span>
                   {status.protectedModeReadiness.checks.protectedResponsePlannerAvailable
+                    ? "planning-only"
+                    : "absent"}
+                </span>
+                <span className="text-muted-foreground">Reduced status</span>
+                <span>
+                  {status.protectedModeReadiness.checks.reducedAnonymousStatusPlannerAvailable
                     ? "planning-only"
                     : "absent"}
                 </span>

@@ -206,6 +206,8 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    `no`, network safety is `no`, blocker count is nonzero, and any displayed
    blockers are stable codes rather than vault roots, filesystem paths,
    credentials, cookies, verifier hashes, salts, or source document content.
+   Reduced anonymous status planning may show as planning-only, but it is not
+   mounted or enforced.
 18. Expected result: unsupported V1 capabilities are visible as disabled:
    authentication, remote nodes, sync, AI/vector, database support, and
    migrations.

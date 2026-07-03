@@ -179,6 +179,14 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.ok(status.protectedModeReadiness.blockers.includes("credential-verification-inactive"));
   assert.ok(status.protectedModeReadiness.blockers.includes("revocation-checks-inactive"));
   assert.ok(status.protectedModeReadiness.blockers.includes("audit-enforcement-inactive"));
+  assert.ok(
+    status.protectedModeReadiness.blockers.includes("reduced-anonymous-status-not-enforced"),
+  );
+  assert.ok(
+    status.protectedModeReadiness.blockers.includes("reduced-anonymous-status-planning-only"),
+  );
+  assert.equal(status.protectedModeReadiness.checks.reducedAnonymousStatusEnforced, false);
+  assert.equal(status.protectedModeReadiness.checks.reducedAnonymousStatusPlannerAvailable, true);
   assert.equal(status.protectedModeReadiness.routePolicy.inventoryPresent, true);
   assert.equal(
     status.protectedModeReadiness.routePolicy.routePolicyCount,

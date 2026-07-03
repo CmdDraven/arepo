@@ -78,6 +78,7 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.ok(readiness.blockers.includes("audit-enforcement-inactive"));
   assert.ok(readiness.blockers.includes("csrf-origin-enforcement-inactive"));
   assert.ok(readiness.blockers.includes("reduced-anonymous-status-not-enforced"));
+  assert.ok(readiness.blockers.includes("reduced-anonymous-status-planning-only"));
   assert.ok(readiness.blockers.includes("explicit-enforcement-flag-disabled"));
   assert.equal(readiness.blockers.includes("auth-store-missing"), false);
   assert.equal(readiness.startup.missingStoreCount, 0);
@@ -187,13 +188,17 @@ test("non-local bind remains unsafe in readiness manifest", () => {
   assert.equal(readiness.networkExposureSafe, false);
 });
 
-test("response planner and pipeline presence are planning-only not enforcement", () => {
+test("response planner pipeline and reduced anonymous planner presence are planning-only not enforcement", () => {
   const readiness = manifest();
 
   assert.equal(readiness.checks.protectedRequestPipelineAvailable, true);
   assert.equal(readiness.checks.protectedResponsePlannerAvailable, true);
+  assert.equal(readiness.checks.reducedAnonymousStatusPlannerAvailable, true);
   assert.ok(readiness.blockers.includes("request-pipeline-planning-only"));
   assert.ok(readiness.blockers.includes("response-planner-planning-only"));
+  assert.ok(readiness.blockers.includes("reduced-anonymous-status-planning-only"));
+  assert.ok(readiness.blockers.includes("reduced-anonymous-status-not-enforced"));
+  assert.equal(readiness.checks.reducedAnonymousStatusEnforced, false);
   assert.equal(readiness.enforcementActive, false);
 });
 

@@ -57,6 +57,12 @@ Implemented as inert, status-only, or observation-only:
   CSRF/origin rejection, stronger-confirmation required, unknown route, and
   protected-mode-not-ready. It is not imported by active request handling and
   reports `enforcementActive: false` and `networkExposureSafe: false`.
+- `backend/reducedAnonymousStatusPlanner.ts`: unmounted future reduced
+  anonymous health/status planner. It defines sanitized liveness/auth-required
+  response shapes for protected mode without vaults, paths, origins, dry-run
+  counters, credential identifiers, route inventory, generated index data, or
+  storage summaries. It is planning scaffold only; current V1 endpoints still
+  return their existing local diagnostics.
 - `backend/protectedRequestDryRun.ts`: optional mounted dry-run observer gated
   by `auth.dryRunRequestPolicy = true`. It runs the protected request pipeline
   for diagnostics only, optionally appends sanitized audit events when
@@ -165,11 +171,33 @@ not ready, inactive credential verification, inactive credential acceptance,
 inactive audit enforcement, inactive revocation checks, inactive CSRF/origin
 enforcement, missing reduced anonymous status enforcement, missing stronger
 confirmation enforcement, explicit enforcement flag disabled, planning-only
-request pipeline, planning-only response planner, optional dry-run
-observation-only state, and non-local bind without active protected mode when
-applicable. Dry-run observation, dry-run audit, route plans, and response plans
-may reduce uncertainty for implementation work, but they never make the
-readiness manifest enforcement-ready by themselves.
+request pipeline, planning-only response planner, planning-only reduced
+anonymous status planner, optional dry-run observation-only state, and non-local
+bind without active protected mode when applicable. Dry-run observation, dry-run
+audit, route plans, reduced anonymous response plans, and response plans may
+reduce uncertainty for implementation work, but they never make the readiness
+manifest enforcement-ready by themselves.
+
+## Reduced Anonymous Status Planning
+
+Future protected mode must not expose the current full `/api/node/status`
+response anonymously. The reduced anonymous status planner defines future
+responses for reduced `/api/health`, reduced `/api/node/status`, and optionally
+reduced `/api/node/auth/dry-run`.
+
+Reduced anonymous plans may expose only service liveness, API version,
+`authRequired: true`, `protectedModeOperational`, `enforcementActive`,
+`networkExposureSafe`, stable reason codes, and minimal public warning labels.
+They must not expose vault IDs, vault names, vault roots, filesystem paths, file
+paths, configured CORS origins, raw host/origin/header/cookie values, source
+document bodies, generated index contents, storage summaries, dry-run counters,
+planned response details for real routes, credential IDs, session IDs, token
+IDs, audit event IDs, verifier hashes/salts, or route inventory details.
+
+This planner is not mounted. Current V1 `/api/health`, `/api/node/status`, and
+`/api/node/auth/dry-run` responses are unchanged. The readiness manifest may
+report the planner as available, but reduced anonymous status remains not
+actively enforced or mounted.
 
 ## Enforcement Readiness Checklist
 
