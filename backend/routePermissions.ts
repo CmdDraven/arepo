@@ -19,6 +19,7 @@ export type RoutePolicyCategory =
   | "nodeDiagnostics"
   | "vaultListing"
   | "vaultRegistration"
+  | "vaultRemoval"
   | "fileListing"
   | "fileRead"
   | "vaultRuntimeStatus"
@@ -35,7 +36,12 @@ export type RoutePolicyCategory =
   | "indexInspect";
 
 export type StrongerConfirmation =
-  "delete" | "conflictOverwrite" | "vaultRegistration" | "authChange" | "tokenRevocation";
+  | "delete"
+  | "conflictOverwrite"
+  | "vaultRegistration"
+  | "vaultRemoval"
+  | "authChange"
+  | "tokenRevocation";
 
 export type RoutePolicyDataAccess = {
   generatedIndex: boolean;
@@ -140,6 +146,18 @@ export const PROTECTED_ROUTE_POLICIES = [
     dataAccess: access({ nodeManagement: true }),
     networkExposureSafe: false,
     notes: "Registering a vault expands AREPO filesystem reach and is administrative.",
+  },
+  {
+    method: "DELETE",
+    routePattern: "/api/vaults/:vaultId",
+    category: "vaultRemoval",
+    requiredPermissions: ["manageVaults"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: ["vaultRemoval"],
+    dataAccess: access({ generatedIndex: true, nodeManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Removing a vault unregisters it from AREPO and may discard verified AREPO-generated cache; it must never delete source files.",
   },
   {
     method: "GET",

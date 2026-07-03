@@ -121,6 +121,32 @@ Expected result:
 6. Expected result: if the backend rejects the vault, the UI shows the backend
    error clearly.
 
+### Remove Vault From AREPO
+
+Use a disposable vault for this check, or be prepared to re-add `test-vault/`
+afterward.
+
+1. Open Vault Settings and find the configured vault entry.
+2. Click `Forget vault`.
+3. Expected result: the confirmation says this removes the vault from AREPO and
+   does not delete the vault folder or source files.
+4. Choose `Keep AREPO-generated index/cache data`, then click
+   `Remove from AREPO`.
+5. Expected result: the vault disappears from the configured vault list and the
+   editor/graph/inspect views do not continue showing stale data for that
+   removed vault.
+6. Expected result: the vault folder and Markdown/source files still exist on
+   disk.
+7. Re-add the same vault and confirm AREPO opens and indexes it normally.
+8. Remove it again, choosing `Discard AREPO-generated index/cache data`.
+9. Expected result: source files still exist, and only verified AREPO-owned
+   generated/index/cache data for that vault is removed.
+10. Optional stale registration check: register a disposable vault, move or
+    delete the vault folder outside AREPO, then use `Forget vault`.
+11. Expected result: AREPO can still remove the stale registration. If generated
+    data cannot be verified as AREPO-owned and vault-specific, the UI shows a
+    diagnostic instead of deleting it.
+
 ## 4. Local Node Diagnostics
 
 Open Vault Settings and inspect the `Local Node Diagnostics` card.

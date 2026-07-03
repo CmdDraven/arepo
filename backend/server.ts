@@ -1,7 +1,7 @@
 import http from "node:http";
 import { URL } from "node:url";
 import { fileURLToPath } from "node:url";
-import { addVault } from "./config.js";
+import { addVault, loadConfig } from "./config.js";
 import { buildIndexFilterResponse, parseIndexFilterKind } from "./indexFilters.js";
 import { buildVaultInspectResponse } from "./indexInspect.js";
 import { buildIndexSearchResponse } from "./indexSearch.js";
@@ -18,6 +18,7 @@ import {
 } from "./nodeRuntime.js";
 import { getVaultStorageSummary } from "./storage.js";
 import { runProtectedRequestDryRun } from "./protectedRequestDryRun.js";
+import { removeVault } from "./vaultLifecycle.js";
 import {
   getVaultRuntimeStatus,
   recordVaultIndexed,
@@ -80,7 +81,8 @@ export async function routeRequest(
     }
 
     if (method === "GET" && url.pathname === "/api/vaults") {
-      const { node } = await startLocalNode(cwd);
+      const config = await loadConfig(cwd, { validateVaultRoots: false });
+      const node = { ...config.node, vaults: config.vaults };
       return json(200, node, cors.headers);
     }
 
@@ -95,6 +97,19 @@ export async function routeRequest(
     if (segments[0] === "api" && segments[1] === "vaults" && segments[2]) {
       const vaultId = decodeURIComponent(segments[2]);
       const action = segments[3];
+
+      if (method === "DELETE" && action === undefined) {
+        const body = asRecord(await readJson(request));
+        const data = await removeVault(
+          {
+            vaultId,
+            generatedDataAction: body.generatedDataAction,
+          },
+          cwd,
+        );
+        return json(200, { ok: true, data }, cors.headers);
+      }
+
       const vault = await getLocalVault(vaultId, cwd);
 
       if (method === "GET" && action === "files") {

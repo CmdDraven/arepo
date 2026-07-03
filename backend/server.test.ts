@@ -57,6 +57,13 @@ function relativeIsInside(parent: string, child: string): boolean {
   return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
+async function fileExists(file: string): Promise<boolean> {
+  return fs
+    .access(file)
+    .then(() => true)
+    .catch(() => false);
+}
+
 function statusBody(response: Awaited<ReturnType<typeof routeRequest>>) {
   return response.body as {
     indexStatus: string;
@@ -388,6 +395,114 @@ test("vault storage endpoint reports content and cache sizes", async () => {
   assert.equal(storage.attachments.bytes, 4);
   assert.equal(storage.appDataCache.fileCount, 1);
   assert.equal(storage.appDataCache.machineIndexBytes > 0, true);
+});
+
+test("removing a vault can keep generated data without deleting source files", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+  const sourceFile = path.join(rootPath, "note.md");
+  await fs.writeFile(sourceFile, "# Note\n", "utf8");
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  const generatedFile = await machineIndexPath(vault, cwd);
+  assert.equal(await fileExists(generatedFile), true);
+
+  const removed = await routeRequest(
+    request("DELETE", `/api/vaults/${vault.id}`, { generatedDataAction: "keep" }),
+    cwd,
+  );
+  assert.equal(removed.status, 200);
+  assert.equal(await fileExists(sourceFile), true);
+  assert.equal(await fileExists(generatedFile), true);
+
+  const list = await routeRequest(request("GET", "/api/vaults"), cwd);
+  assert.deepEqual((list.body as { vaults: VaultInfo[] }).vaults, []);
+  const body = removed.body as {
+    data: { generatedData: { action: string; deletedPaths: string[]; diagnostics: string[] } };
+  };
+  assert.equal(body.data.generatedData.action, "keep");
+  assert.deepEqual(body.data.generatedData.deletedPaths, []);
+  assert.deepEqual(body.data.generatedData.diagnostics, []);
+});
+
+test("removing a vault can discard verified AREPO-generated data without deleting source files", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+  const sourceFile = path.join(rootPath, "note.md");
+  await fs.writeFile(sourceFile, "# Note\n", "utf8");
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  const generatedFile = await machineIndexPath(vault, cwd);
+  assert.equal(await fileExists(generatedFile), true);
+
+  const removed = await routeRequest(
+    request("DELETE", `/api/vaults/${vault.id}`, { generatedDataAction: "discard" }),
+    cwd,
+  );
+  assert.equal(removed.status, 200);
+  assert.equal(await fileExists(sourceFile), true);
+  assert.equal(await fileExists(generatedFile), false);
+
+  const body = removed.body as {
+    data: { generatedData: { action: string; deletedPaths: string[]; diagnostics: string[] } };
+  };
+  assert.equal(body.data.generatedData.action, "discard");
+  assert.deepEqual(body.data.generatedData.deletedPaths, [generatedFile]);
+  assert.deepEqual(body.data.generatedData.diagnostics, []);
+});
+
+test("removing an inaccessible vault registration does not require the vault root to exist", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  await fs.rm(rootPath, { recursive: true, force: true });
+
+  const staleList = await routeRequest(request("GET", "/api/vaults"), cwd);
+  assert.equal(staleList.status, 200);
+  assert.equal((staleList.body as { vaults: VaultInfo[] }).vaults[0]?.id, vault.id);
+
+  const removed = await routeRequest(
+    request("DELETE", `/api/vaults/${vault.id}`, { generatedDataAction: "keep" }),
+    cwd,
+  );
+  assert.equal(removed.status, 200);
+  const list = await routeRequest(request("GET", "/api/vaults"), cwd);
+  assert.deepEqual((list.body as { vaults: VaultInfo[] }).vaults, []);
+});
+
+test("discard generated data refuses to delete unverified cache files", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+  const sourceFile = path.join(rootPath, "note.md");
+  await fs.writeFile(sourceFile, "# Note\n", "utf8");
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  const generatedFile = await machineIndexPath(vault, cwd);
+  await fs.writeFile(generatedFile, JSON.stringify({ kind: "not.arepo" }), "utf8");
+
+  const removed = await routeRequest(
+    request("DELETE", `/api/vaults/${vault.id}`, { generatedDataAction: "discard" }),
+    cwd,
+  );
+  assert.equal(removed.status, 200);
+  assert.equal(await fileExists(sourceFile), true);
+  assert.equal(await fileExists(generatedFile), true);
+
+  const body = removed.body as {
+    data: { generatedData: { deletedPaths: string[]; diagnostics: string[] } };
+  };
+  assert.deepEqual(body.data.generatedData.deletedPaths, []);
+  assert.match(body.data.generatedData.diagnostics[0] ?? "", /could not be verified/);
 });
 
 test("vault indexing works without a user-authored index.md", async () => {

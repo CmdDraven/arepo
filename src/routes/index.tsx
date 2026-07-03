@@ -27,6 +27,7 @@ import {
   ShieldAlert,
   Sun,
   Network,
+  Trash2,
 } from "lucide-react";
 import { FileTree } from "@/components/FileTree";
 import { VaultGraph } from "@/components/VaultGraph";
@@ -55,7 +56,13 @@ import {
   type TreePlacement,
   type TreeUiState,
 } from "@/lib/workspace/workspaceState";
-import { useVault, type VaultInfo, type VaultPermission } from "@/lib/vault/store";
+import {
+  useVault,
+  type GeneratedDataAction,
+  type RemoveVaultResponse,
+  type VaultInfo,
+  type VaultPermission,
+} from "@/lib/vault/store";
 import { renderMarkdown } from "@/lib/vault/render";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -126,6 +133,7 @@ function VaultApp() {
     rename,
     reindex,
     addVault,
+    removeVault,
     refreshNode,
     testHealth,
     reindexVault,
@@ -1513,6 +1521,7 @@ function VaultApp() {
             onClose={() => setShowSettings(false)}
             onSelectVault={vault.selectVault}
             onAddVault={addVault}
+            onRemoveVault={removeVault}
             onReindexVault={reindexVault}
             onRefreshVaults={refreshNode}
             onTestHealth={testHealth}
@@ -1537,6 +1546,7 @@ function VaultApp() {
             onClose={() => setShowSettings(false)}
             onSelectVault={vault.selectVault}
             onAddVault={addVault}
+            onRemoveVault={removeVault}
             onReindexVault={reindexVault}
             onRefreshVaults={refreshNode}
             onTestHealth={testHealth}
@@ -3147,6 +3157,7 @@ function VaultSettingsPanel({
   onClose,
   onSelectVault,
   onAddVault,
+  onRemoveVault,
   onReindexVault,
   onRefreshVaults,
   onTestHealth,
@@ -3163,6 +3174,10 @@ function VaultSettingsPanel({
     displayName?: string,
     permissions?: Partial<VaultPermission>,
   ) => Promise<boolean>;
+  onRemoveVault: (
+    vaultId: string,
+    generatedDataAction: GeneratedDataAction,
+  ) => Promise<RemoveVaultResponse | null>;
   onReindexVault: (vaultId: string) => Promise<boolean>;
   onRefreshVaults: () => Promise<boolean>;
   onTestHealth: () => Promise<boolean>;
@@ -3245,6 +3260,17 @@ function VaultSettingsPanel({
     setBusyVaultId(null);
   };
 
+  const removeOne = async (vaultId: string, generatedDataAction: GeneratedDataAction) => {
+    setBusyVaultId(vaultId);
+    const result = await onRemoveVault(vaultId, generatedDataAction);
+    if (result) {
+      await refreshSummaries();
+      await refreshNodeStatus();
+    }
+    setBusyVaultId(null);
+    return result;
+  };
+
   return (
     <div className="min-h-full bg-background">
       <div className="mx-auto max-w-5xl px-4 py-5 space-y-4">
@@ -3294,6 +3320,7 @@ function VaultSettingsPanel({
               busyVaultId={busyVaultId}
               onSelectVault={onSelectVault}
               onReindexVault={reindexOne}
+              onRemoveVault={removeOne}
               onRefresh={async () => {
                 await onRefreshVaults();
                 await refreshSummaries();
@@ -3660,6 +3687,7 @@ function ConfiguredVaultsCard({
   busyVaultId,
   onSelectVault,
   onReindexVault,
+  onRemoveVault,
   onRefresh,
 }: {
   vaults: VaultInfo[];
@@ -3668,13 +3696,29 @@ function ConfiguredVaultsCard({
   busyVaultId: string | null;
   onSelectVault: (vaultId: string) => void;
   onReindexVault: (vaultId: string) => Promise<void>;
+  onRemoveVault: (
+    vaultId: string,
+    generatedDataAction: GeneratedDataAction,
+  ) => Promise<RemoveVaultResponse | null>;
   onRefresh: () => Promise<void>;
 }) {
   const [refreshing, setRefreshing] = useState(false);
+  const [removeVaultId, setRemoveVaultId] = useState<string | null>(null);
+  const [generatedDataAction, setGeneratedDataAction] = useState<GeneratedDataAction>("keep");
+  const [removeResult, setRemoveResult] = useState<RemoveVaultResponse | null>(null);
+  const generatedDataChoiceName = useId();
   const refresh = async () => {
     setRefreshing(true);
     await onRefresh();
     setRefreshing(false);
+  };
+  const confirmRemove = async (vaultId: string) => {
+    const result = await onRemoveVault(vaultId, generatedDataAction);
+    if (result) {
+      setRemoveResult(result);
+      setRemoveVaultId(null);
+      setGeneratedDataAction("keep");
+    }
   };
   return (
     <section className="border rounded-md">
@@ -3692,6 +3736,32 @@ function ConfiguredVaultsCard({
         </Button>
       </div>
       <div className="divide-y">
+        {removeResult && (
+          <div className="p-3 text-xs space-y-2 border-b bg-muted/20">
+            <div className="font-medium">Removed {removeResult.vault.displayName} from AREPO.</div>
+            <div className="text-muted-foreground">
+              Your vault folder and source files were not deleted.
+            </div>
+            {removeResult.generatedData.action === "discard" ? (
+              removeResult.generatedData.deletedPaths.length > 0 ? (
+                <div>
+                  Discarded {removeResult.generatedData.deletedPaths.length} AREPO-generated
+                  index/cache file
+                  {removeResult.generatedData.deletedPaths.length === 1 ? "" : "s"}.
+                </div>
+              ) : (
+                <div>No verified AREPO-generated index/cache files were deleted.</div>
+              )
+            ) : (
+              <div>AREPO-generated index/cache data was kept.</div>
+            )}
+            {removeResult.generatedData.diagnostics.length > 0 && (
+              <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-amber-900 dark:text-amber-100">
+                {removeResult.generatedData.diagnostics.join(" ")}
+              </div>
+            )}
+          </div>
+        )}
         {vaults.length === 0 ? (
           <div className="p-3 text-sm text-muted-foreground">
             No vaults are configured. Add a local Markdown folder to begin.
@@ -3702,8 +3772,8 @@ function ConfiguredVaultsCard({
             const selected = vault.id === activeVaultId;
             return (
               <div key={vault.id} className="p-3 space-y-3">
-                <div className="flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-start gap-2">
+                  <div className="min-w-0 flex-1 basis-48">
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold truncate">{vault.displayName}</h3>
                       {selected && <Badge variant="secondary">Selected</Badge>}
@@ -3730,6 +3800,20 @@ function ConfiguredVaultsCard({
                   >
                     {busyVaultId === vault.id ? "Indexing..." : "Rebuild index"}
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs border-destructive/40 text-destructive hover:text-destructive"
+                    onClick={() => {
+                      setRemoveResult(null);
+                      setGeneratedDataAction("keep");
+                      setRemoveVaultId(vault.id);
+                    }}
+                    disabled={busyVaultId === vault.id}
+                  >
+                    <Trash2 className="size-3.5" />
+                    Forget vault
+                  </Button>
                 </div>
                 <div className="text-xs font-mono break-all bg-muted/40 rounded px-2 py-1">
                   {vault.rootPath}
@@ -3744,6 +3828,82 @@ function ConfiguredVaultsCard({
                   <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive flex gap-2">
                     <ShieldAlert className="size-4 shrink-0" />
                     Delete permission is enabled for this vault.
+                  </div>
+                )}
+                {removeVaultId === vault.id && (
+                  <div className="rounded border border-destructive/30 bg-destructive/10 p-3 text-xs space-y-3">
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold">Remove vault from AREPO?</div>
+                      <p className="text-muted-foreground">
+                        This will remove this vault from AREPO&apos;s registered vault list. Your
+                        vault folder and source files will not be deleted.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="font-medium">Generated data</div>
+                      {summary?.storage && (
+                        <div className="text-muted-foreground">
+                          Current AREPO map/index cache:{" "}
+                          {formatBytes(summary.storage.appDataCache.bytes)}
+                        </div>
+                      )}
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="radio"
+                          name={generatedDataChoiceName}
+                          value="keep"
+                          checked={generatedDataAction === "keep"}
+                          onChange={() => setGeneratedDataAction("keep")}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="font-medium">Keep AREPO-generated index/cache data</span>
+                          <span className="block text-muted-foreground">
+                            Re-adding this vault may reuse or rebuild generated data according to
+                            existing behavior.
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="radio"
+                          name={generatedDataChoiceName}
+                          value="discard"
+                          checked={generatedDataAction === "discard"}
+                          onChange={() => setGeneratedDataAction("discard")}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="font-medium">
+                            Discard AREPO-generated index/cache data
+                          </span>
+                          <span className="block text-muted-foreground">
+                            Only verified AREPO-owned generated data for this vault will be removed.
+                            Source files and user-authored Markdown are left untouched.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setRemoveVaultId(null)}
+                        disabled={busyVaultId === vault.id}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => void confirmRemove(vault.id)}
+                        disabled={busyVaultId === vault.id}
+                      >
+                        {busyVaultId === vault.id ? "Removing..." : "Remove from AREPO"}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

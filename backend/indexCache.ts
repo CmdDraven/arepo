@@ -20,6 +20,11 @@ export type StoredMachineIndex = {
   data: VaultIndexResponse;
 };
 
+export type GeneratedDataRemoval = {
+  deletedPaths: string[];
+  diagnostics: string[];
+};
+
 export async function getMachineIndex(
   vault: VaultInfo,
   cwd = process.cwd(),
@@ -80,9 +85,75 @@ export async function machineIndexPath(vault: VaultInfo, cwd = process.cwd()): P
   );
 }
 
+export async function removeMachineIndexIfOwned(
+  vault: VaultInfo,
+  cwd = process.cwd(),
+): Promise<GeneratedDataRemoval> {
+  const file = await machineIndexPath(vault, cwd);
+  const indexesDir = path.join(await getAppDataDir(cwd), "indexes");
+  if (!isPathInside(indexesDir, file)) {
+    return {
+      deletedPaths: [],
+      diagnostics: [
+        `Generated index path was not removed because it is outside AREPO app-data indexes: ${file}`,
+      ],
+    };
+  }
+
+  const stat = await fs.lstat(file).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!stat) return { deletedPaths: [], diagnostics: [] };
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    return {
+      deletedPaths: [],
+      diagnostics: [
+        `Generated index path was not removed because it is not a regular AREPO-owned file: ${file}`,
+      ],
+    };
+  }
+
+  const raw = await fs.readFile(file, "utf8");
+  let stored: Partial<StoredMachineIndex>;
+  try {
+    stored = JSON.parse(raw) as Partial<StoredMachineIndex>;
+  } catch {
+    return {
+      deletedPaths: [],
+      diagnostics: [
+        `Generated index path was not removed because its AREPO ownership marker could not be parsed: ${file}`,
+      ],
+    };
+  }
+
+  const expectedRootHash = await vaultRootHash(vault);
+  if (
+    stored.kind !== "arepo.machineIndex" ||
+    stored.version !== MACHINE_INDEX_VERSION ||
+    stored.vault?.id !== vault.id ||
+    stored.vault?.rootPathHash !== expectedRootHash
+  ) {
+    return {
+      deletedPaths: [],
+      diagnostics: [
+        `Generated index path was not removed because it could not be verified as AREPO-owned data for vault ${vault.id}: ${file}`,
+      ],
+    };
+  }
+
+  await fs.unlink(file);
+  return { deletedPaths: [file], diagnostics: [] };
+}
+
 export async function vaultRootHash(vault: VaultInfo): Promise<string> {
   const root = await fs.realpath(vault.rootPath).catch(() => path.resolve(vault.rootPath));
   return crypto.createHash("sha256").update(root, "utf8").digest("hex").slice(0, 16);
+}
+
+function isPathInside(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child);
+  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
 function safeVaultKey(vaultId: string): string {

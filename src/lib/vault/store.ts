@@ -20,6 +20,18 @@ export type VaultInfo = {
   permissions: VaultPermission;
 };
 
+export type GeneratedDataAction = "keep" | "discard";
+
+export type RemoveVaultResponse = {
+  vault: VaultInfo;
+  remainingVaults: VaultInfo[];
+  generatedData: {
+    action: GeneratedDataAction;
+    deletedPaths: string[];
+    diagnostics: string[];
+  };
+};
+
 export type NodeInfo = {
   nodeId: string;
   displayName: string;
@@ -114,6 +126,10 @@ export type VaultStore = {
     displayName?: string,
     permissions?: Partial<VaultPermission>,
   ) => Promise<boolean>;
+  removeVault: (
+    vaultId: string,
+    generatedDataAction: GeneratedDataAction,
+  ) => Promise<RemoveVaultResponse | null>;
   refreshNode: () => Promise<boolean>;
   testHealth: () => Promise<boolean>;
   selectVault: (vaultId: string) => void;
@@ -535,6 +551,39 @@ export function useVault(): VaultStore {
     [loadNode],
   );
 
+  const removeVault = useCallback(
+    async (vaultId: string, generatedDataAction: GeneratedDataAction) => {
+      setMutationError(null);
+      try {
+        const response = await api<OperationResult<RemoveVaultResponse>>(
+          `/api/vaults/${encodeURIComponent(vaultId)}`,
+          {
+            method: "DELETE",
+            body: JSON.stringify({ generatedDataAction }),
+          },
+        );
+        if (!response.ok || !response.data) throw new Error("Vault removal failed");
+        await loadNode();
+        if (activeVaultId === vaultId) {
+          const nextVaultId = response.data.remainingVaults[0]?.id ?? null;
+          setActiveVaultId(nextVaultId);
+          if (typeof window !== "undefined") {
+            if (nextVaultId) {
+              window.localStorage.setItem(LAST_VAULT_KEY, nextVaultId);
+            } else {
+              window.localStorage.removeItem(LAST_VAULT_KEY);
+            }
+          }
+        }
+        return response.data;
+      } catch (err) {
+        setMutationError(errorMessage(err));
+        return null;
+      }
+    },
+    [activeVaultId, loadNode],
+  );
+
   return {
     files,
     fileMeta,
@@ -563,6 +612,7 @@ export function useVault(): VaultStore {
     refreshActiveVault,
     refreshVaultStatus,
     addVault,
+    removeVault,
     refreshNode,
     testHealth,
     selectVault: setActiveVaultId,

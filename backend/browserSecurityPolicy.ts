@@ -69,6 +69,7 @@ const categoryRequestClasses: Record<RoutePolicyCategory, BrowserSecurityRequest
   nodeDiagnostics: "safeReadMetadata",
   vaultListing: "safeReadMetadata",
   vaultRegistration: "vaultManagement",
+  vaultRemoval: "vaultManagement",
   fileListing: "safeReadMetadata",
   fileRead: "sourceContentRead",
   vaultRuntimeStatus: "safeReadMetadata",

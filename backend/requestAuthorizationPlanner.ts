@@ -280,6 +280,8 @@ function matchRoutePolicy(request: RequestShapedCredentialInput): ProtectedRoute
   const tail = vaultRoute?.[2] ?? "";
   if (!vaultRoute) return undefined;
   switch (tail) {
+    case "":
+      return policyFor(method, "/api/vaults/:vaultId");
     case "files":
       return policyFor(method, "/api/vaults/:vaultId/files");
     case "file":
