@@ -65,6 +65,25 @@ export type ProtectedRequestDryRunAuditStatus = {
   networkExposureSafe: false;
 };
 
+export type ProtectedRequestDryRunResponsePlanSummary = {
+  kind:
+    | "allow"
+    | "reduced-anonymous"
+    | "unauthenticated"
+    | "unauthorized"
+    | "csrf-required"
+    | "origin-rejected"
+    | "stronger-confirmation-required"
+    | "not-found-or-unknown-route"
+    | "service-unavailable-or-not-ready";
+  httpStatus: number;
+  reasonCode: string;
+  authRequired: boolean;
+  confirmationRequired: boolean;
+  enforcementActive: false;
+  networkExposureSafe: false;
+};
+
 export type ProtectedRequestDryRunSummary = {
   timestamp: string;
   method: string;
@@ -74,6 +93,7 @@ export type ProtectedRequestDryRunSummary = {
   credentialStatus?: string;
   credentialSource?: string;
   reasonCodes: readonly string[];
+  plannedResponse?: ProtectedRequestDryRunResponsePlanSummary;
   enforcementActive: false;
   networkExposureSafe: false;
   error?: string;
@@ -94,6 +114,7 @@ export type ProtectedRequestDryRunCanaryStatus = {
     status: ProtectedRequestDryRunSummary["status"];
     reasonCodes: readonly string[];
   };
+  lastResponsePlan?: ProtectedRequestDryRunResponsePlanSummary;
   lastAuditStatus?: {
     mode: ProtectedRequestDryRunAuditStatus["mode"];
     status: ProtectedRequestDryRunAuditStatus["status"];

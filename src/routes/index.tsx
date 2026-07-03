@@ -2929,6 +2929,15 @@ type LocalNodeRuntimeStatus = {
       credentialStatus?: string;
       credentialSource?: string;
       reasonCodes: string[];
+      plannedResponse?: {
+        kind: string;
+        httpStatus: number;
+        reasonCode: string;
+        authRequired: boolean;
+        confirmationRequired: boolean;
+        enforcementActive: false;
+        networkExposureSafe: false;
+      };
       enforcementActive: false;
       networkExposureSafe: false;
       error?: string;
@@ -3573,6 +3582,16 @@ function LocalNodeDiagnosticsCard({
                         status.requestPolicy.lastDryRunResult.path}{" "}
                       ({status.requestPolicy.lastDryRunResult.status})
                     </span>
+                    {status.requestPolicy.lastDryRunResult.plannedResponse && (
+                      <>
+                        <span className="text-muted-foreground">Planned response</span>
+                        <span>
+                          {status.requestPolicy.lastDryRunResult.plannedResponse.kind} (
+                          {status.requestPolicy.lastDryRunResult.plannedResponse.httpStatus},{" "}
+                          {status.requestPolicy.lastDryRunResult.plannedResponse.reasonCode})
+                        </span>
+                      </>
+                    )}
                   </>
                 )}
                 <span className="text-muted-foreground">Enforcement</span>

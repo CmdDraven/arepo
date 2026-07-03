@@ -8,17 +8,38 @@ import {
   serializeAuthAuditEventJsonl,
   type AuthAuditEvent,
 } from "./authAudit.js";
-import { resolveAuthStoragePaths } from "./credentialStore.js";
+import {
+  resolveAuthStoragePaths,
+  writeCredentialStore,
+  writeTokenVerifierStore,
+  type CredentialMetadata,
+  type TokenVerifierMetadata,
+} from "./credentialStore.js";
+import { TOKEN_VERIFIER_SCHEME, createTokenVerifierMetadata } from "./credentialVerifier.js";
 import {
   getProtectedRequestDryRunStatus,
   resetProtectedRequestDryRunDiagnostics,
 } from "./protectedRequestDryRun.js";
 import { routeRequest, type RequestLike } from "./server.js";
 import type { LocalNodeRuntimeStatus, ProtectedRequestDryRunCanaryStatus } from "./types.js";
+import type { RoutePermission } from "./routePermissions.js";
 
 const bearerMaterial = "dry-run-bearer-token-material";
 const sessionMaterial = "dry-run-session-secret-material";
 const sourceBodyMaterial = "dry-run-source-document-body";
+const now = "2026-07-02T00:00:00.000Z";
+const future = "2026-07-04T00:00:00.000Z";
+const tokenSalt = Buffer.from(
+  "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+  "hex",
+);
+const tokenHashParameters = {
+  scheme: TOKEN_VERIFIER_SCHEME,
+  iterations: 100_000,
+  digest: "sha256" as const,
+  keyLength: 32,
+  saltLength: 32,
+} as const;
 
 function request(
   method: string,
@@ -69,6 +90,52 @@ async function workspace(
   return { cwd, appDataDir };
 }
 
+function credential(vaultId: string, permissions: readonly RoutePermission[]): CredentialMetadata {
+  return {
+    credentialId: "dry-run-credential-1",
+    actorKind: "apiToken",
+    label: "Dry-run API token",
+    nodePermissions: [],
+    vaultGrants: [{ vaultId, permissions }],
+    createdAt: now,
+    expiresAt: future,
+    verifierIds: ["dry-run-verifier-1"],
+    sessionIds: [],
+    auditRefs: [],
+  };
+}
+
+function tokenVerifier(): TokenVerifierMetadata {
+  return createTokenVerifierMetadata({
+    tokenMaterial: bearerMaterial,
+    credentialId: "dry-run-credential-1",
+    verifierId: "dry-run-verifier-1",
+    createdAt: now,
+    expiresAt: future,
+    salt: tokenSalt,
+    hashParameters: tokenHashParameters,
+  });
+}
+
+async function writeDryRunCredential(
+  appDataDir: string,
+  vaultId: string,
+  permissions: readonly RoutePermission[],
+): Promise<void> {
+  await writeCredentialStore(appDataDir, { credentials: [credential(vaultId, permissions)] });
+  await writeTokenVerifierStore(appDataDir, { tokenVerifiers: [tokenVerifier()] });
+}
+
+async function addTestVault(cwd: string): Promise<{ vaultId: string; rootPath: string }> {
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-dry-run-vault-"));
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vaultId = (created.body as { data: { vault: { id: string } } }).data.vault.id;
+  resetProtectedRequestDryRunDiagnostics();
+  return { vaultId, rootPath };
+}
+
 test("default config does not mount dry-run middleware", async () => {
   resetProtectedRequestDryRunDiagnostics();
   const { cwd } = await workspace();
@@ -90,6 +157,7 @@ test("default config does not mount dry-run middleware", async () => {
   assert.equal(status.requestPolicy.dryRunAuditConfigured, false);
   assert.equal(status.requestPolicy.dryRunAuditAppendCount, 0);
   assert.equal(status.requestPolicy.dryRunRunCount, 0);
+  assert.equal(status.requestPolicy.lastDryRunResult?.plannedResponse, undefined);
   assert.equal(getProtectedRequestDryRunStatus({}).dryRunRunCount, 0);
 });
 
@@ -115,6 +183,7 @@ test("dry-run canary endpoint reports disabled observation status by default", a
   assert.equal(body.dryRunAuditConfigured, false);
   assert.equal(body.dryRunRunCount, 0);
   assert.equal(body.dryRunAuditAppendCount, 0);
+  assert.equal(body.lastResponsePlan, undefined);
   assert.equal(body.enforcementActive, false);
   assert.equal(body.protectedModeOperational, false);
   assert.equal(body.networkExposureSafe, false);
@@ -146,6 +215,12 @@ test("dry-run canary endpoint reports sanitized mounted dry-run status", async (
   assert.equal(body.dryRunRunCount, 1);
   assert.equal(body.lastDryRunStatus?.method, "GET");
   assert.equal(body.lastDryRunStatus?.status, "wouldDeny");
+  assert.equal(body.lastResponsePlan?.kind, "unauthenticated");
+  assert.equal(body.lastResponsePlan?.httpStatus, 401);
+  assert.equal(body.lastResponsePlan?.authRequired, true);
+  assert.equal(body.lastResponsePlan?.confirmationRequired, false);
+  assert.equal(body.lastResponsePlan?.enforcementActive, false);
+  assert.equal(body.lastResponsePlan?.networkExposureSafe, false);
   assert.equal(body.enforcementActive, false);
   assert.equal(body.protectedModeOperational, false);
   assert.equal(body.networkExposureSafe, false);
@@ -161,6 +236,91 @@ test("dry-run canary endpoint reports sanitized mounted dry-run status", async (
   assert.equal(serialized.includes("verifierHash"), false);
   assert.equal(serialized.includes("salt"), false);
   assert.equal(serialized.includes(sourceBodyMaterial), false);
+});
+
+test("dry-run response plan records unauthenticated without changing V1 response", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const { cwd } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+
+  const response = await routeRequest(request("GET", "/api/vaults"), cwd);
+  const dryRun = getProtectedRequestDryRunStatus({ dryRunRequestPolicy: true });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((response.body as { vaults: unknown[] }).vaults, []);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.kind, "unauthenticated");
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.httpStatus, 401);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.authRequired, true);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.enforcementActive, false);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.networkExposureSafe, false);
+});
+
+test("dry-run response plan records unauthorized without changing V1 source read", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const { cwd, appDataDir } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+  const { vaultId, rootPath } = await addTestVault(cwd);
+  await writeDryRunCredential(appDataDir, vaultId, ["readIndex"]);
+
+  const response = await routeRequest(
+    request("GET", `/api/vaults/${vaultId}/file?path=note.md`, undefined, {
+      authorization: `Bearer ${bearerMaterial}`,
+      "x-vault-root": rootPath,
+      "x-source-body": sourceBodyMaterial,
+    }),
+    cwd,
+  );
+  const dryRun = getProtectedRequestDryRunStatus({ dryRunRequestPolicy: true });
+  const serialized = JSON.stringify(dryRun.lastDryRunResult);
+
+  assert.equal(response.status, 200);
+  assert.equal((response.body as { content: string }).content, "# Note\n");
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.kind, "unauthorized");
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.httpStatus, 403);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.authRequired, true);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.confirmationRequired, false);
+  assert.equal(serialized.includes(bearerMaterial), false);
+  assert.equal(serialized.includes(sessionMaterial), false);
+  assert.equal(serialized.includes(`Bearer ${bearerMaterial}`), false);
+  assert.equal(serialized.includes(rootPath), false);
+  assert.equal(serialized.includes(sourceBodyMaterial), false);
+  assert.equal(serialized.includes("dry-run-credential-1"), false);
+  assert.equal(serialized.includes("dry-run-verifier-1"), false);
+  assert.equal(serialized.includes("verifierHash"), false);
+  assert.equal(serialized.includes("salt"), false);
+});
+
+test("dry-run response plan records stronger confirmation without changing V1 write", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const { cwd, appDataDir } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+  const { vaultId, rootPath } = await addTestVault(cwd);
+  await writeDryRunCredential(appDataDir, vaultId, ["readContent", "writeContent"]);
+
+  const response = await routeRequest(
+    request(
+      "PUT",
+      `/api/vaults/${vaultId}/file?path=note.md`,
+      { content: "# Updated\n", markdownBody: sourceBodyMaterial },
+      {
+        authorization: `Bearer ${bearerMaterial}`,
+        "x-vault-root": rootPath,
+      },
+    ),
+    cwd,
+  );
+  const dryRun = getProtectedRequestDryRunStatus({ dryRunRequestPolicy: true });
+  const serialized = JSON.stringify(dryRun.lastDryRunResult);
+
+  assert.equal(response.status, 200);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.kind, "stronger-confirmation-required");
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.httpStatus, 428);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.authRequired, true);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.confirmationRequired, true);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.enforcementActive, false);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.networkExposureSafe, false);
+  assert.equal(serialized.includes(bearerMaterial), false);
+  assert.equal(serialized.includes(rootPath), false);
+  assert.equal(serialized.includes(sourceBodyMaterial), false);
+  assert.equal(serialized.includes("dry-run-credential-1"), false);
+  assert.equal(serialized.includes("dry-run-verifier-1"), false);
 });
 
 test("dry-run canary endpoint reports sanitized audit append status", async () => {
@@ -190,6 +350,10 @@ test("dry-run canary endpoint reports sanitized audit append status", async () =
   assert.equal(body.dryRunMounted, true);
   assert.equal(body.dryRunAuditConfigured, true);
   assert.equal(body.dryRunAuditAppendCount, 1);
+  assert.equal(body.lastResponsePlan?.kind, "unauthenticated");
+  assert.equal(body.lastResponsePlan?.httpStatus, 401);
+  assert.equal(body.lastResponsePlan?.enforcementActive, false);
+  assert.equal(body.lastResponsePlan?.networkExposureSafe, false);
   assert.equal(body.lastAuditStatus?.status, "written");
   assert.equal(body.enforcementActive, false);
   assert.equal(body.protectedModeOperational, false);
@@ -249,6 +413,10 @@ test("explicit dry-run config mounts observation only and calls the protected re
   assert.equal(dryRun.dryRunRunCount, 1);
   assert.equal(dryRun.lastDryRunResult?.path, "/api/vaults");
   assert.equal(dryRun.lastDryRunResult?.status, "wouldDeny");
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.kind, "unauthenticated");
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.httpStatus, 401);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.enforcementActive, false);
+  assert.equal(dryRun.lastDryRunResult?.plannedResponse?.networkExposureSafe, false);
   assert.equal(dryRun.lastDryRunResult?.enforcementActive, false);
   assert.equal(dryRun.lastDryRunResult?.networkExposureSafe, false);
 });
@@ -431,6 +599,10 @@ test("dry-run diagnostics are sanitized and report inactive enforcement", async 
   assert.equal(status.requestPolicy.dryRunMiddlewareConfigured, true);
   assert.equal(status.requestPolicy.dryRunMiddlewareMounted, true);
   assert.equal(status.requestPolicy.dryRunAuditConfigured, false);
+  assert.equal(status.requestPolicy.lastDryRunResult?.plannedResponse?.kind, "unauthenticated");
+  assert.equal(status.requestPolicy.lastDryRunResult?.plannedResponse?.httpStatus, 401);
+  assert.equal(status.requestPolicy.lastDryRunResult?.plannedResponse?.enforcementActive, false);
+  assert.equal(status.requestPolicy.lastDryRunResult?.plannedResponse?.networkExposureSafe, false);
   assert.equal(status.requestPolicy.enforcementActive, false);
   assert.equal(status.requestPolicy.credentialVerificationActive, false);
   assert.equal(status.requestPolicy.auditRequestLoggingActive, false);

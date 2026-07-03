@@ -60,8 +60,10 @@ Implemented as inert, status-only, or observation-only:
 - `backend/protectedRequestDryRun.ts`: optional mounted dry-run observer gated
   by `auth.dryRunRequestPolicy = true`. It runs the protected request pipeline
   for diagnostics only, optionally appends sanitized audit events when
-  `auth.dryRunAudit = true`, stores bounded sanitized summaries/counters, always
-  continues to the normal handler, and never sends 401/403 responses.
+  `auth.dryRunAudit = true`, computes sanitized future response-plan summaries
+  such as "would respond as 401/403/428", stores bounded sanitized
+  summaries/counters, always continues to the normal handler, and never sends
+  planned 401/403/428 responses.
 - `GET /api/node/auth/dry-run`: local diagnostic canary endpoint for sanitized
   protected-request dry-run status. It is observation-only, omits credential
   details, vault roots, filesystem paths, source content, and raw request
@@ -93,11 +95,14 @@ planner, and pipeline helpers only when `auth.dryRunRequestPolicy` is explicitly
 true, and its result is not trusted by route handlers. If `auth.dryRunAudit` is
 also true, the observer may append sanitized JSONL audit events for observation
 only; audit write failures are diagnostic and do not reject requests. The
-dry-run canary endpoint reports sanitized observation health only and must be
-reduced or protected before future protected-mode or non-local deployments. It
-does not attach an authenticated actor, does not reject real HTTP requests, and
-does not make LAN, reverse-proxy, or internet exposure safe. The startup
-assessment is diagnostic only and does not reject active API requests.
+dry-run observer may compute a sanitized future response plan, but planned
+responses are diagnostics only and are never sent to clients in this slice. The
+dry-run canary endpoint reports sanitized observation health and planned
+response summaries only and must be reduced or protected before future
+protected-mode or non-local deployments. It does not attach an authenticated
+actor, does not reject real HTTP requests, and does not make LAN, reverse-proxy,
+or internet exposure safe. The startup assessment is diagnostic only and does
+not reject active API requests.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds
@@ -144,6 +149,10 @@ Mounted but dry-run:
   `auth.dryRunRequestPolicy = true`. It runs planning for observation only,
   stores bounded sanitized diagnostics, always continues to the normal handler,
   and keeps `enforcementActive` and `networkExposureSafe` false.
+- Mounted response-plan dry-run diagnostics behind the same explicit observer.
+  They summarize only planned response kind, planned status, stable reason code,
+  auth-required, confirmation-required, `enforcementActive: false`, and
+  `networkExposureSafe: false`; planned responses are never sent.
 - Optional dry-run audit append behind both `auth.dryRunRequestPolicy = true`
   and `auth.dryRunAudit = true`. It writes sanitized observation events only;
   append failures are reported in diagnostics and never reject requests.

@@ -178,8 +178,9 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    tokens, cookies, login, or pairing controls are active or presented.
 12. Expected result: if `auth.dryRunRequestPolicy` is explicitly enabled in a
    disposable local config, diagnostics may show dry-run configured/mounted and
-   a sanitized last dry-run summary, but requests still succeed or fail only by
-   existing V1 route behavior and network safety remains `no`.
+   a sanitized last dry-run summary plus a planned response kind/status/reason,
+   but planned responses are not sent and requests still succeed or fail only by
+   existing V1 route behavior. Network safety remains `no`.
 13. Expected result: if both `auth.dryRunRequestPolicy` and `auth.dryRunAudit`
    are explicitly enabled in a disposable local config, diagnostics may show
    dry-run audit append counts/status, but audit failures do not reject requests
@@ -187,10 +188,11 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
 14. Optional API check: request `GET /api/node/auth/dry-run`.
 15. Expected result: the response is diagnostic-only and sanitized. It may show
    dry-run configured/mounted state, counters, high-level status, and reason
-   codes, but it must not include raw credentials, cookies, authorization
-   header values, vault roots, filesystem paths, source document bodies,
-   verifier hashes, or salts. It must report enforcement inactive, protected
-   mode non-operational, and network safety `false`.
+   codes, plus a planned response kind/status/reason. It must not include raw
+   credentials, cookies, authorization header values, vault roots, filesystem
+   paths, source document bodies, verifier hashes, or salts. It must report
+   enforcement inactive, protected mode non-operational, and network safety
+   `false`.
 16. Expected result: protected-mode startup gating renders as diagnostic-only:
    protected mode may start is `no`, enforcement is inactive, credential
    verification is inactive, and network safety is `no`.

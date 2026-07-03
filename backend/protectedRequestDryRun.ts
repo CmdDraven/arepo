@@ -6,10 +6,12 @@ import {
   planProtectedRequestPipeline,
   type ProtectedRequestPipelineResult,
 } from "./protectedRequestPipeline.js";
+import { planProtectedResponse } from "./protectedResponsePlanner.js";
 import type {
   AuthConfig,
   ProtectedRequestDryRunCanaryStatus,
   ProtectedRequestDryRunAuditStatus,
+  ProtectedRequestDryRunResponsePlanSummary,
   ProtectedRequestDryRunSummary,
   RequestPolicyRuntimeStatus,
   VaultConfigFile,
@@ -95,6 +97,7 @@ export function getProtectedRequestDryRunCanaryStatus(
           reasonCodes: status.lastDryRunResult.reasonCodes,
         }
       : undefined,
+    lastResponsePlan: status.lastDryRunResult?.plannedResponse,
     lastAuditStatus: status.lastDryRunAuditStatus
       ? {
           mode: status.lastDryRunAuditStatus.mode,
@@ -231,6 +234,7 @@ function summaryFromPipelineResult(
   url: URL,
   result: ProtectedRequestPipelineResult,
 ): ProtectedRequestDryRunSummary {
+  const plannedResponse = responseSummaryFromPipelineResult(result);
   return {
     timestamp: new Date().toISOString(),
     method: request.method ?? "GET",
@@ -244,6 +248,22 @@ function summaryFromPipelineResult(
     credentialStatus: result.credential.status,
     credentialSource: result.credential.credentialSource,
     reasonCodes: result.reasonCodes.slice(0, 12),
+    plannedResponse,
+    enforcementActive: false,
+    networkExposureSafe: false,
+  };
+}
+
+function responseSummaryFromPipelineResult(
+  result: ProtectedRequestPipelineResult,
+): ProtectedRequestDryRunResponsePlanSummary {
+  const plan = planProtectedResponse({ pipelineResult: result });
+  return {
+    kind: plan.kind,
+    httpStatus: plan.httpStatus,
+    reasonCode: plan.body.reasonCode,
+    authRequired: plan.body.authRequired,
+    confirmationRequired: plan.body.confirmationRequired,
     enforcementActive: false,
     networkExposureSafe: false,
   };
