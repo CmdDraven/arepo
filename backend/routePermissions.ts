@@ -17,6 +17,7 @@ export type RoutePolicyCategory =
   | "corsPreflight"
   | "health"
   | "nodeDiagnostics"
+  | "dryRunDiagnostics"
   | "vaultListing"
   | "vaultRegistration"
   | "vaultRemoval"
@@ -118,6 +119,18 @@ export const PROTECTED_ROUTE_POLICIES = [
     networkExposureSafe: false,
     notes:
       "Full diagnostics include runtime posture, warnings, vault counts, and capability flags.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/node/auth/dry-run",
+    category: "dryRunDiagnostics",
+    requiredPermissions: ["manageNode"],
+    anonymousReducedStatusMayExist: true,
+    strongerConfirmation: [],
+    dataAccess: access({ nodeManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Diagnostic-only canary for protected-request dry-run status; future protected mode should expose only reduced anonymous fields or require manageNode.",
   },
   {
     method: "GET",

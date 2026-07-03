@@ -56,6 +56,11 @@ Implemented as inert, status-only, or observation-only:
   for diagnostics only, optionally appends sanitized audit events when
   `auth.dryRunAudit = true`, stores bounded sanitized summaries/counters, always
   continues to the normal handler, and never sends 401/403 responses.
+- `GET /api/node/auth/dry-run`: local diagnostic canary endpoint for sanitized
+  protected-request dry-run status. It is observation-only, omits credential
+  details, vault roots, filesystem paths, source content, and raw request
+  headers/cookies, and reports `enforcementActive: false`,
+  `protectedModeOperational: false`, and `networkExposureSafe: false`.
 - `backend/authAudit.ts`: inert audit event types plus JSONL serialize, parse,
   append, and read helpers.
 - `backend/authRevocation.ts`: inert revocation planning helpers for
@@ -81,10 +86,12 @@ request handling. The optional dry-run observer may call verifier, adapter,
 planner, and pipeline helpers only when `auth.dryRunRequestPolicy` is explicitly
 true, and its result is not trusted by route handlers. If `auth.dryRunAudit` is
 also true, the observer may append sanitized JSONL audit events for observation
-only; audit write failures are diagnostic and do not reject requests. It does
-not attach an authenticated actor, does not reject real HTTP requests, and does
-not make LAN, reverse-proxy, or internet exposure safe. The startup assessment
-is diagnostic only and does not reject active API requests.
+only; audit write failures are diagnostic and do not reject requests. The
+dry-run canary endpoint reports sanitized observation health only and must be
+reduced or protected before future protected-mode or non-local deployments. It
+does not attach an authenticated actor, does not reject real HTTP requests, and
+does not make LAN, reverse-proxy, or internet exposure safe. The startup
+assessment is diagnostic only and does not reject active API requests.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds
@@ -132,6 +139,10 @@ Mounted but dry-run:
 - Optional dry-run audit append behind both `auth.dryRunRequestPolicy = true`
   and `auth.dryRunAudit = true`. It writes sanitized observation events only;
   append failures are reported in diagnostics and never reject requests.
+- `GET /api/node/auth/dry-run` dry-run canary endpoint. It exposes only
+  sanitized observation status and counters, not credentials, vault roots,
+  filesystem paths, source document bodies, raw authorization headers, or raw
+  cookies.
 - No auth, route authorization, revocation, CSRF/origin, or audit enforcement
   middleware is mounted in active request handling.
 
@@ -370,6 +381,7 @@ mutations require `writeContent`, and deletes require `deleteFiles`.
 | `OPTIONS *` | CORS preflight response | No content permission; origin policy only | A successful preflight must never authorize the following request. |
 | `GET /api/health` | Local node health and node identity | Anonymous reduced response only, or `manageNode` for current full node identity | In protected mode, anonymous health should expose only service liveness and that auth is required. Full node identity should require auth. |
 | `GET /api/node/status` | Node diagnostics, runtime posture, startup warnings, vault counts, capability flags, auth posture | `manageNode` for the full current response | A reduced anonymous status may report only liveness, protected-mode requirement, and safe public warnings. It must not expose vault names, roots, counts, origins, or detailed runtime diagnostics. |
+| `GET /api/node/auth/dry-run` | Sanitized dry-run canary diagnostics for observation-only protected-request planning | `manageNode` for full protected-mode diagnostics; deliberately reduced anonymous canary may exist | Current response omits credential details, vault roots, filesystem paths, source bodies, raw headers, and raw cookies. It is not authoritative and must not imply enforcement or network safety. |
 | `GET /api/vaults` | List configured vaults and permissions | `readIndex` for each returned vault, plus `manageVaults` for full registration metadata | A non-admin credential should see only vaults it can access and should not receive filesystem roots unless explicitly allowed. |
 | `POST /api/vaults` | Register a local vault and build its generated index | `manageVaults` and local-operator confirmation | Adding a vault expands AREPO filesystem reach and should be treated as administrative. |
 | `DELETE /api/vaults/:vaultId` | Remove a vault registration from AREPO; optionally discard verified AREPO-generated cache for that vault | `manageVaults` and local-operator confirmation | Removal must unregister the vault without deleting the vault folder, source files, attachments, or user-authored Markdown. Generated-data discard must only target verified AREPO-owned vault-specific cache. |

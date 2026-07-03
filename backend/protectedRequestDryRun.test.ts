@@ -14,7 +14,7 @@ import {
   resetProtectedRequestDryRunDiagnostics,
 } from "./protectedRequestDryRun.js";
 import { routeRequest, type RequestLike } from "./server.js";
-import type { LocalNodeRuntimeStatus } from "./types.js";
+import type { LocalNodeRuntimeStatus, ProtectedRequestDryRunCanaryStatus } from "./types.js";
 
 const bearerMaterial = "dry-run-bearer-token-material";
 const sessionMaterial = "dry-run-session-secret-material";
@@ -91,6 +91,120 @@ test("default config does not mount dry-run middleware", async () => {
   assert.equal(status.requestPolicy.dryRunAuditAppendCount, 0);
   assert.equal(status.requestPolicy.dryRunRunCount, 0);
   assert.equal(getProtectedRequestDryRunStatus({}).dryRunRunCount, 0);
+});
+
+test("dry-run canary endpoint reports disabled observation status by default", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const { cwd } = await workspace();
+
+  const response = await routeRequest(
+    request("GET", "/api/node/auth/dry-run", undefined, {
+      authorization: `Bearer ${bearerMaterial}`,
+      cookie: `arepo_session=${sessionMaterial}`,
+    }),
+    cwd,
+  );
+  const body = response.body as ProtectedRequestDryRunCanaryStatus;
+  const serialized = JSON.stringify(body);
+
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.diagnosticOnly, true);
+  assert.equal(body.dryRunConfigured, false);
+  assert.equal(body.dryRunMounted, false);
+  assert.equal(body.dryRunAuditConfigured, false);
+  assert.equal(body.dryRunRunCount, 0);
+  assert.equal(body.dryRunAuditAppendCount, 0);
+  assert.equal(body.enforcementActive, false);
+  assert.equal(body.protectedModeOperational, false);
+  assert.equal(body.networkExposureSafe, false);
+  assert.equal(serialized.includes(bearerMaterial), false);
+  assert.equal(serialized.includes(sessionMaterial), false);
+});
+
+test("dry-run canary endpoint reports sanitized mounted dry-run status", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const { cwd } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+  const filesystemPath = "/tmp/arepo-sensitive-vault/Notes/secret.md";
+
+  const response = await routeRequest(
+    request("GET", "/api/node/auth/dry-run", undefined, {
+      authorization: `Bearer ${bearerMaterial}`,
+      cookie: `arepo_session=${sessionMaterial}`,
+      "x-source-body": sourceBodyMaterial,
+      "x-vault-root": filesystemPath,
+    }),
+    cwd,
+  );
+  const body = response.body as ProtectedRequestDryRunCanaryStatus;
+  const serialized = JSON.stringify(body);
+
+  assert.equal(response.status, 200);
+  assert.equal(body.dryRunConfigured, true);
+  assert.equal(body.dryRunMounted, true);
+  assert.equal(body.dryRunAuditConfigured, false);
+  assert.equal(body.dryRunRunCount, 1);
+  assert.equal(body.lastDryRunStatus?.method, "GET");
+  assert.equal(body.lastDryRunStatus?.status, "wouldDeny");
+  assert.equal(body.enforcementActive, false);
+  assert.equal(body.protectedModeOperational, false);
+  assert.equal(body.networkExposureSafe, false);
+  assert.equal(serialized.includes("path"), false);
+  assert.equal(serialized.includes("/api/node/auth/dry-run"), false);
+  assert.equal(serialized.includes(filesystemPath), false);
+  assert.equal(serialized.includes(bearerMaterial), false);
+  assert.equal(serialized.includes(sessionMaterial), false);
+  assert.equal(serialized.includes(`Bearer ${bearerMaterial}`), false);
+  assert.equal(serialized.includes(`"authorization":"Bearer ${bearerMaterial}"`), false);
+  assert.equal(serialized.includes("cookie"), false);
+  assert.equal(serialized.includes("arepo_session"), false);
+  assert.equal(serialized.includes("verifierHash"), false);
+  assert.equal(serialized.includes("salt"), false);
+  assert.equal(serialized.includes(sourceBodyMaterial), false);
+});
+
+test("dry-run canary endpoint reports sanitized audit append status", async () => {
+  resetProtectedRequestDryRunDiagnostics();
+  const { cwd, appDataDir } = await workspace({
+    mode: "disabled",
+    dryRunRequestPolicy: true,
+    dryRunAudit: true,
+  });
+  const paths = resolveAuthStoragePaths(appDataDir);
+  await fs.mkdir(path.dirname(paths.auditEvents), { recursive: true });
+  await fs.writeFile(paths.auditEvents, "{ corrupt jsonl\n", "utf8");
+
+  const response = await routeRequest(
+    request("GET", "/api/node/auth/dry-run", undefined, {
+      authorization: `Bearer ${bearerMaterial}`,
+      cookie: `arepo_session=${sessionMaterial}`,
+    }),
+    cwd,
+  );
+  const body = response.body as ProtectedRequestDryRunCanaryStatus;
+  const parsed = await readAuthAuditEvents(paths.auditEvents);
+  const serialized = JSON.stringify(body);
+
+  assert.equal(response.status, 200);
+  assert.equal(body.dryRunConfigured, true);
+  assert.equal(body.dryRunMounted, true);
+  assert.equal(body.dryRunAuditConfigured, true);
+  assert.equal(body.dryRunAuditAppendCount, 1);
+  assert.equal(body.lastAuditStatus?.status, "written");
+  assert.equal(body.enforcementActive, false);
+  assert.equal(body.protectedModeOperational, false);
+  assert.equal(body.networkExposureSafe, false);
+  assert.equal(parsed.errors.length, 1);
+  assert.equal(parsed.events.length, 1);
+  assert.equal(serialized.includes(bearerMaterial), false);
+  assert.equal(serialized.includes(sessionMaterial), false);
+  assert.equal(serialized.includes(`Bearer ${bearerMaterial}`), false);
+  assert.equal(serialized.includes(`"authorization":"Bearer ${bearerMaterial}"`), false);
+  assert.equal(serialized.includes("cookie"), false);
+  assert.equal(serialized.includes("eventId"), false);
+  assert.equal(serialized.includes(paths.auditEvents), false);
+  assert.equal(serialized.includes("verifierHash"), false);
+  assert.equal(serialized.includes("salt"), false);
 });
 
 test("dry-run audit flag alone does nothing unless request-policy dry-run is enabled", async () => {

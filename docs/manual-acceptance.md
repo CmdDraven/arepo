@@ -184,20 +184,27 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    are explicitly enabled in a disposable local config, diagnostics may show
    dry-run audit append counts/status, but audit failures do not reject requests
    and network safety remains `no`.
-14. Expected result: protected-mode startup gating renders as diagnostic-only:
+14. Optional API check: request `GET /api/node/auth/dry-run`.
+15. Expected result: the response is diagnostic-only and sanitized. It may show
+   dry-run configured/mounted state, counters, high-level status, and reason
+   codes, but it must not include raw credentials, cookies, authorization
+   header values, vault roots, filesystem paths, source document bodies,
+   verifier hashes, or salts. It must report enforcement inactive, protected
+   mode non-operational, and network safety `false`.
+16. Expected result: protected-mode startup gating renders as diagnostic-only:
    protected mode may start is `no`, enforcement is inactive, credential
    verification is inactive, and network safety is `no`.
-15. Expected result: unsupported V1 capabilities are visible as disabled:
+17. Expected result: unsupported V1 capabilities are visible as disabled:
    authentication, remote nodes, sync, AI/vector, database support, and
    migrations.
-16. Expected result: the diagnostics card does not contain controls to enable
+18. Expected result: the diagnostics card does not contain controls to enable
    auth, sync, AI/vector features, database support, migrations, federation,
    remote node registration, reverse proxy setup, or LAN exposure.
-17. Stop the backend while leaving the frontend open, then refresh diagnostics
+19. Stop the backend while leaving the frontend open, then refresh diagnostics
     or reload the settings view.
-18. Expected result: the UI shows an understandable backend-unavailable state
+20. Expected result: the UI shows an understandable backend-unavailable state
     instead of implying the vault data is browser-local canonical state.
-19. Restart the backend before continuing the checklist.
+21. Restart the backend before continuing the checklist.
 
 ### Optional Non-Local Bind Warning Check
 

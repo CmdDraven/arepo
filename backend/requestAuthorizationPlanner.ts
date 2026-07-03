@@ -274,6 +274,9 @@ function matchRoutePolicy(request: RequestShapedCredentialInput): ProtectedRoute
   }
   if (pathname === "/api/health") return policyFor(method, "/api/health");
   if (pathname === "/api/node/status") return policyFor(method, "/api/node/status");
+  if (pathname === "/api/node/auth/dry-run") {
+    return policyFor(method, "/api/node/auth/dry-run");
+  }
   if (pathname === "/api/vaults") return policyFor(method, "/api/vaults");
 
   const vaultRoute = /^\/api\/vaults\/([^/]+)(?:\/(.+))?$/.exec(pathname);

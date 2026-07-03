@@ -17,7 +17,10 @@ import {
   resolveBackendRuntimeOptions,
 } from "./nodeRuntime.js";
 import { getVaultStorageSummary } from "./storage.js";
-import { runProtectedRequestDryRun } from "./protectedRequestDryRun.js";
+import {
+  getProtectedRequestDryRunCanaryStatus,
+  runProtectedRequestDryRun,
+} from "./protectedRequestDryRun.js";
 import { removeVault } from "./vaultLifecycle.js";
 import {
   getVaultRuntimeStatus,
@@ -78,6 +81,11 @@ export async function routeRequest(
 
     if (method === "GET" && url.pathname === "/api/node/status") {
       return json(200, await getLocalNodeRuntimeStatus(cwd), cors.headers);
+    }
+
+    if (method === "GET" && url.pathname === "/api/node/auth/dry-run") {
+      const config = await loadConfig(cwd, { validateVaultRoots: false });
+      return json(200, getProtectedRequestDryRunCanaryStatus(config.auth), cors.headers);
     }
 
     if (method === "GET" && url.pathname === "/api/vaults") {

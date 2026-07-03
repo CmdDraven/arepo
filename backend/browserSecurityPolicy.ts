@@ -67,6 +67,7 @@ const categoryRequestClasses: Record<RoutePolicyCategory, BrowserSecurityRequest
   corsPreflight: "preflight",
   health: "safeReadMetadata",
   nodeDiagnostics: "safeReadMetadata",
+  dryRunDiagnostics: "safeReadMetadata",
   vaultListing: "safeReadMetadata",
   vaultRegistration: "vaultManagement",
   vaultRemoval: "vaultManagement",

@@ -8,6 +8,7 @@ import {
 } from "./protectedRequestPipeline.js";
 import type {
   AuthConfig,
+  ProtectedRequestDryRunCanaryStatus,
   ProtectedRequestDryRunAuditStatus,
   ProtectedRequestDryRunSummary,
   RequestPolicyRuntimeStatus,
@@ -70,6 +71,40 @@ export function getProtectedRequestDryRunStatus(
     dryRunAuditAppendCount: diagnostics.auditAppendCount,
     lastDryRunAuditStatus: diagnostics.lastAuditStatus,
     lastDryRunResult: diagnostics.lastResult,
+  };
+}
+
+export function getProtectedRequestDryRunCanaryStatus(
+  auth: Pick<AuthConfig, "dryRunAudit" | "dryRunRequestPolicy">,
+): ProtectedRequestDryRunCanaryStatus {
+  const status = getProtectedRequestDryRunStatus(auth);
+  return {
+    ok: true,
+    diagnosticOnly: true,
+    dryRunConfigured: status.dryRunMiddlewareConfigured,
+    dryRunMounted: status.dryRunMiddlewareMounted,
+    dryRunObservationOnly: true,
+    dryRunAuditConfigured: status.dryRunAuditConfigured,
+    dryRunRunCount: status.dryRunRunCount,
+    dryRunAuditAppendCount: status.dryRunAuditAppendCount,
+    lastDryRunStatus: status.lastDryRunResult
+      ? {
+          timestamp: status.lastDryRunResult.timestamp,
+          method: status.lastDryRunResult.method,
+          status: status.lastDryRunResult.status,
+          reasonCodes: status.lastDryRunResult.reasonCodes,
+        }
+      : undefined,
+    lastAuditStatus: status.lastDryRunAuditStatus
+      ? {
+          mode: status.lastDryRunAuditStatus.mode,
+          status: status.lastDryRunAuditStatus.status,
+          reasonCode: status.lastDryRunAuditStatus.reasonCode,
+        }
+      : undefined,
+    enforcementActive: false,
+    protectedModeOperational: false,
+    networkExposureSafe: false,
   };
 }
 

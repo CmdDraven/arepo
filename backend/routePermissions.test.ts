@@ -13,6 +13,7 @@ const currentBackendRoutes = [
   "OPTIONS *",
   "GET /api/health",
   "GET /api/node/status",
+  "GET /api/node/auth/dry-run",
   "GET /api/vaults",
   "POST /api/vaults",
   "DELETE /api/vaults/:vaultId",
@@ -126,6 +127,15 @@ test("full node status diagnostics are classified as manageNode", () => {
   assertRequires(policy, "manageNode");
   assert.equal(policy.anonymousReducedStatusMayExist, true);
   assert.equal(policy.dataAccess.nodeManagement, true);
+});
+
+test("dry-run canary diagnostics are classified as manageNode with reduced future exposure", () => {
+  const policy = policyFor("GET /api/node/auth/dry-run");
+  assertRequires(policy, "manageNode");
+  assert.equal(policy.anonymousReducedStatusMayExist, true);
+  assert.equal(policy.dataAccess.nodeManagement, true);
+  assert.equal(policy.dataAccess.sourceContent, false);
+  assert.equal(policy.dataAccess.generatedIndex, false);
 });
 
 test("no route policy marks network exposure as safe", () => {

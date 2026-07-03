@@ -79,6 +79,31 @@ export type ProtectedRequestDryRunSummary = {
   error?: string;
 };
 
+export type ProtectedRequestDryRunCanaryStatus = {
+  ok: true;
+  diagnosticOnly: true;
+  dryRunConfigured: boolean;
+  dryRunMounted: boolean;
+  dryRunObservationOnly: true;
+  dryRunAuditConfigured: boolean;
+  dryRunRunCount: number;
+  dryRunAuditAppendCount: number;
+  lastDryRunStatus?: {
+    timestamp: string;
+    method: string;
+    status: ProtectedRequestDryRunSummary["status"];
+    reasonCodes: readonly string[];
+  };
+  lastAuditStatus?: {
+    mode: ProtectedRequestDryRunAuditStatus["mode"];
+    status: ProtectedRequestDryRunAuditStatus["status"];
+    reasonCode?: string;
+  };
+  enforcementActive: false;
+  protectedModeOperational: false;
+  networkExposureSafe: false;
+};
+
 export type ProtectedModeStoreName = "credentials" | "tokenVerifiers" | "sessions" | "revocations";
 
 export type ProtectedModeStoreDiagnostic = {
