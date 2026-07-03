@@ -201,17 +201,22 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
 16. Expected result: protected-mode startup gating renders as diagnostic-only:
    protected mode may start is `no`, enforcement is inactive, credential
    verification is inactive, and network safety is `no`.
-17. Expected result: unsupported V1 capabilities are visible as disabled:
+17. Expected result: protected-mode readiness renders as diagnostic-only: ready
+   to enforce is `no`, protected mode operational is `no`, enforcement active is
+   `no`, network safety is `no`, blocker count is nonzero, and any displayed
+   blockers are stable codes rather than vault roots, filesystem paths,
+   credentials, cookies, verifier hashes, salts, or source document content.
+18. Expected result: unsupported V1 capabilities are visible as disabled:
    authentication, remote nodes, sync, AI/vector, database support, and
    migrations.
-18. Expected result: the diagnostics card does not contain controls to enable
+19. Expected result: the diagnostics card does not contain controls to enable
    auth, sync, AI/vector features, database support, migrations, federation,
    remote node registration, reverse proxy setup, or LAN exposure.
-19. Stop the backend while leaving the frontend open, then refresh diagnostics
+20. Stop the backend while leaving the frontend open, then refresh diagnostics
     or reload the settings view.
-20. Expected result: the UI shows an understandable backend-unavailable state
+21. Expected result: the UI shows an understandable backend-unavailable state
     instead of implying the vault data is browser-local canonical state.
-21. Restart the backend before continuing the checklist.
+22. Restart the backend before continuing the checklist.
 
 ### Optional Non-Local Bind Warning Check
 

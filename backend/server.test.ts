@@ -171,6 +171,20 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.protectedModeStartup.revocationChecksActive, false);
   assert.equal(status.protectedModeStartup.csrfOriginEnforcementActive, false);
   assert.equal(status.protectedModeStartup.networkExposureSafe, false);
+  assert.equal(status.protectedModeReadiness.readyForEnforcement, false);
+  assert.equal(status.protectedModeReadiness.enforcementActive, false);
+  assert.equal(status.protectedModeReadiness.protectedModeOperational, false);
+  assert.equal(status.protectedModeReadiness.networkExposureSafe, false);
+  assert.ok(status.protectedModeReadiness.blockers.includes("auth-mode-disabled"));
+  assert.ok(status.protectedModeReadiness.blockers.includes("credential-verification-inactive"));
+  assert.ok(status.protectedModeReadiness.blockers.includes("revocation-checks-inactive"));
+  assert.ok(status.protectedModeReadiness.blockers.includes("audit-enforcement-inactive"));
+  assert.equal(status.protectedModeReadiness.routePolicy.inventoryPresent, true);
+  assert.equal(
+    status.protectedModeReadiness.routePolicy.routePolicyCount,
+    PROTECTED_ROUTE_POLICIES.length,
+  );
+  assert.equal(status.protectedModeReadiness.routePolicy.complete, true);
   assert.equal(status.vaultCount, 1);
   assert.equal(status.vaults[0]?.vaultId, vault.id);
   assert.equal(status.vaults[0]?.storageSummaryAvailable, true);
@@ -203,6 +217,10 @@ test("node status endpoint reports non-local bind warning", async () => {
     assert.equal(status.requestPolicy.networkExposureSafe, false);
     assert.equal(status.protectedModeStartup.nonLocalBindWithDisabledAuth, true);
     assert.equal(status.protectedModeStartup.networkExposureSafe, false);
+    assert.ok(
+      status.protectedModeReadiness.blockers.includes("non-local-bind-without-protected-mode"),
+    );
+    assert.equal(status.protectedModeReadiness.networkExposureSafe, false);
   } finally {
     if (originalHost === undefined) {
       delete process.env.AREPO_HOST;

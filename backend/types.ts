@@ -182,6 +182,95 @@ export type ProtectedModeStartupAssessment = {
   networkExposureSafe: false;
 };
 
+export type ProtectedModeReadinessBlockerCode =
+  | "auth-mode-disabled"
+  | "protected-mode-requested-unavailable"
+  | "protected-mode-unavailable"
+  | "protected-mode-not-operational"
+  | "startup-gate-not-ready"
+  | "auth-store-missing"
+  | "auth-store-corrupt"
+  | "auth-store-path-unsafe"
+  | "route-policy-inventory-missing"
+  | "route-policy-inventory-incomplete"
+  | "credential-verification-inactive"
+  | "credential-acceptance-inactive"
+  | "audit-enforcement-inactive"
+  | "revocation-checks-inactive"
+  | "csrf-origin-enforcement-inactive"
+  | "reduced-anonymous-status-not-enforced"
+  | "stronger-confirmation-not-enforced"
+  | "explicit-enforcement-flag-disabled"
+  | "request-pipeline-planning-only"
+  | "response-planner-planning-only"
+  | "dry-run-observation-only"
+  | "non-local-bind-without-protected-mode";
+
+export type ProtectedModeReadinessGroup =
+  | "auth"
+  | "startup"
+  | "routePolicy"
+  | "requestPolicy"
+  | "browserSecurity"
+  | "audit"
+  | "revocation"
+  | "confirmation"
+  | "dryRun"
+  | "pipeline"
+  | "responsePlanning"
+  | "network";
+
+export type ProtectedModeReadinessBlockerDetail = {
+  group: ProtectedModeReadinessGroup;
+  label: string;
+  codes: readonly ProtectedModeReadinessBlockerCode[];
+  count?: number;
+  status: "blocked" | "planning-only" | "unsafe";
+};
+
+export type ProtectedModeReadinessManifest = {
+  readyForEnforcement: false;
+  enforcementActive: false;
+  protectedModeOperational: false;
+  networkExposureSafe: false;
+  requestedAuthMode: AuthRequestedMode;
+  operationalAuthMode: AuthMode;
+  protectedModeAvailable: false;
+  protectedModeMayStart: false;
+  blockerCount: number;
+  blockers: readonly ProtectedModeReadinessBlockerCode[];
+  blockerDetails: readonly ProtectedModeReadinessBlockerDetail[];
+  routePolicy: {
+    inventoryPresent: boolean;
+    routePolicyCount: number;
+    expectedMinimum: number;
+    complete: boolean;
+  };
+  dryRun: ProtectedRequestDryRunTerminologyStatus;
+  checks: {
+    credentialVerificationActive: false;
+    credentialAcceptanceActive: false;
+    auditEnforcementActive: false;
+    revocationChecksActive: false;
+    csrfOriginEnforcementActive: false;
+    reducedAnonymousStatusEnforced: false;
+    strongerConfirmationEnforced: false;
+    explicitEnforcementFlagEnabled: false;
+    protectedRequestPipelineAvailable: boolean;
+    protectedResponsePlannerAvailable: boolean;
+  };
+  startup: {
+    missingStoreCount: number;
+    corruptStoreCount: number;
+    unsafeStorePathCount: number;
+    permissionWarningCount: number;
+  };
+  network: {
+    localOnlyMode: boolean;
+    nonLocalBindWithDisabledAuth: boolean;
+  };
+};
+
 export type VaultInfo = {
   id: string;
   displayName: string;
@@ -215,6 +304,7 @@ export type LocalNodeRuntimeStatus = {
   auth: AuthPosture;
   requestPolicy: RequestPolicyRuntimeStatus;
   protectedModeStartup: ProtectedModeStartupAssessment;
+  protectedModeReadiness: ProtectedModeReadinessManifest;
   vaultCount: number;
   vaults: LocalNodeVaultRuntimeSummary[];
   capabilities: {

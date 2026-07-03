@@ -233,9 +233,10 @@ in V1.
   internet.
 - `GET /api/node/status` reports auth posture, status-only request-policy
   readiness, optional observation-only dry-run state, and diagnostic
-  protected-mode startup gating. In V1 it should report disabled auth, no
-  enforcement, protected mode unavailable, inactive credential/session/token
-  checks, and network exposure unsafe.
+  protected-mode startup gating plus a sanitized enforcement-readiness manifest.
+  In V1 it should report disabled auth, no enforcement, protected mode
+  unavailable, inactive credential/session/token checks, not ready for
+  enforcement, and network exposure unsafe.
 - Phase 4 includes protected-mode policy, planner, credential-store persistence,
   audit, revocation, browser-security helpers, request-policy status plumbing,
   optional dry-run request planning, optional dry-run audit append, and

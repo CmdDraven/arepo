@@ -3012,6 +3012,46 @@ type LocalNodeRuntimeStatus = {
     csrfOriginEnforcementActive: false;
     networkExposureSafe: false;
   };
+  protectedModeReadiness: {
+    readyForEnforcement: false;
+    enforcementActive: false;
+    protectedModeOperational: false;
+    networkExposureSafe: false;
+    requestedAuthMode: "disabled" | "protected";
+    operationalAuthMode: "disabled";
+    protectedModeAvailable: false;
+    protectedModeMayStart: false;
+    blockerCount: number;
+    blockers: string[];
+    routePolicy: {
+      inventoryPresent: boolean;
+      routePolicyCount: number;
+      expectedMinimum: number;
+      complete: boolean;
+    };
+    checks: {
+      credentialVerificationActive: false;
+      credentialAcceptanceActive: false;
+      auditEnforcementActive: false;
+      revocationChecksActive: false;
+      csrfOriginEnforcementActive: false;
+      reducedAnonymousStatusEnforced: false;
+      strongerConfirmationEnforced: false;
+      explicitEnforcementFlagEnabled: false;
+      protectedRequestPipelineAvailable: boolean;
+      protectedResponsePlannerAvailable: boolean;
+    };
+    startup: {
+      missingStoreCount: number;
+      corruptStoreCount: number;
+      unsafeStorePathCount: number;
+      permissionWarningCount: number;
+    };
+    network: {
+      localOnlyMode: boolean;
+      nonLocalBindWithDisabledAuth: boolean;
+    };
+  };
   vaultCount: number;
   vaults: {
     vaultId: string;
@@ -3574,6 +3614,57 @@ function LocalNodeDiagnosticsCard({
               )}
               <p className="text-xs text-muted-foreground">
                 Startup gating is diagnostic only. It does not verify credentials or enforce auth.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs font-semibold">Protected-mode readiness</div>
+              <div className="grid grid-cols-[150px_1fr] gap-x-3 gap-y-1 text-xs">
+                <span className="text-muted-foreground">Ready to enforce</span>
+                <span>{status.protectedModeReadiness.readyForEnforcement ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Operational</span>
+                <span>{status.protectedModeReadiness.protectedModeOperational ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Enforcement active</span>
+                <span>{status.protectedModeReadiness.enforcementActive ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Network safe</span>
+                <span>{status.protectedModeReadiness.networkExposureSafe ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Blockers</span>
+                <span>{status.protectedModeReadiness.blockerCount}</span>
+                <span className="text-muted-foreground">Route policy</span>
+                <span>
+                  {status.protectedModeReadiness.routePolicy.routePolicyCount}/
+                  {status.protectedModeReadiness.routePolicy.expectedMinimum} planned
+                </span>
+                <span className="text-muted-foreground">Pipeline</span>
+                <span>
+                  {status.protectedModeReadiness.checks.protectedRequestPipelineAvailable
+                    ? "planning-only"
+                    : "absent"}
+                </span>
+                <span className="text-muted-foreground">Response planner</span>
+                <span>
+                  {status.protectedModeReadiness.checks.protectedResponsePlannerAvailable
+                    ? "planning-only"
+                    : "absent"}
+                </span>
+              </div>
+              {status.protectedModeReadiness.blockers.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {status.protectedModeReadiness.blockers.slice(0, 8).map((blocker) => (
+                    <Badge key={blocker} variant="secondary" className="font-mono">
+                      {blocker}
+                    </Badge>
+                  ))}
+                  {status.protectedModeReadiness.blockers.length > 8 && (
+                    <Badge variant="secondary">
+                      +{status.protectedModeReadiness.blockers.length - 8}
+                    </Badge>
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Readiness is diagnostic only. It explains why protected mode cannot enforce yet and
+                does not make non-local exposure safe.
               </p>
             </div>
 

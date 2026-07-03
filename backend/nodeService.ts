@@ -1,5 +1,6 @@
 import { getNodeInfo, getVault, loadConfig, resolveAppDataDir } from "./config.js";
 import { resolveAuthPosture, resolveBackendRuntimeOptions } from "./nodeRuntime.js";
+import { buildProtectedModeReadinessManifest } from "./protectedModeReadiness.js";
 import { assessProtectedModeStartup } from "./protectedModeStartup.js";
 import { getRequestPolicyRuntimeStatus } from "./requestPolicyStatus.js";
 import { getVaultRuntimeStatus, startConfiguredVaultWatchers } from "./vaultWatch.js";
@@ -53,6 +54,15 @@ export async function getLocalNodeRuntimeStatus(
   const { config, node } = await startLocalNode(cwd);
   const runtime = resolveBackendRuntimeOptions(env);
   const appDataDir = resolveAppDataDir(config, cwd);
+  const localOnlyMode = node.mode === "local" && runtime.nonLocalWarning === undefined;
+  const auth = resolveAuthPosture(config.auth, runtime);
+  const requestPolicy = getRequestPolicyRuntimeStatus(config.auth);
+  const protectedModeStartup = await assessProtectedModeStartup({
+    auth: config.auth,
+    appDataDir,
+    vaultRoots: node.vaults.map((vault) => vault.rootPath),
+    runtime,
+  });
   const vaultStatuses = await Promise.all(
     node.vaults.map(async (vault) => summarizeVaultRuntime(vault, cwd)),
   );
@@ -67,17 +77,18 @@ export async function getLocalNodeRuntimeStatus(
     runtime: {
       host: runtime.host,
       port: runtime.port,
-      localOnlyMode: node.mode === "local" && runtime.nonLocalWarning === undefined,
+      localOnlyMode,
       allowedOrigins: runtime.allowedOrigins,
       startupWarnings: runtime.nonLocalWarning ? [runtime.nonLocalWarning] : [],
     },
-    auth: resolveAuthPosture(config.auth, runtime),
-    requestPolicy: getRequestPolicyRuntimeStatus(config.auth),
-    protectedModeStartup: await assessProtectedModeStartup({
-      auth: config.auth,
-      appDataDir,
-      vaultRoots: node.vaults.map((vault) => vault.rootPath),
-      runtime,
+    auth,
+    requestPolicy,
+    protectedModeStartup,
+    protectedModeReadiness: buildProtectedModeReadinessManifest({
+      auth,
+      startup: protectedModeStartup,
+      requestPolicy,
+      localOnlyMode,
     }),
     vaultCount: node.vaults.length,
     vaults: vaultStatuses,

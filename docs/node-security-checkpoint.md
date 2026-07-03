@@ -85,6 +85,13 @@ Implemented as inert, status-only, or observation-only:
   protected mode. It reports requested/operational auth mode, missing or corrupt
   auth stores, unsafe auth paths, permission warnings, inactive enforcement
   flags, and `networkExposureSafe: false`.
+- `backend/protectedModeReadiness.ts`: centralized sanitized enforcement
+  readiness manifest. It combines auth posture, startup gating, route policy
+  coverage, request-policy status, dry-run state, pipeline/planner availability,
+  and network posture into stable blocker codes explaining why protected mode is
+  not ready to enforce. It reports `readyForEnforcement: false`,
+  `enforcementActive: false`, `protectedModeOperational: false`, and
+  `networkExposureSafe: false`.
 
 None of these modules enforce authentication, authorization, CSRF, origin
 checks, or revocation in active request handling. They do not generate
@@ -101,8 +108,8 @@ dry-run canary endpoint reports sanitized observation health and planned
 response summaries only and must be reduced or protected before future
 protected-mode or non-local deployments. It does not attach an authenticated
 actor, does not reject real HTTP requests, and does not make LAN, reverse-proxy,
-or internet exposure safe. The startup assessment is diagnostic only and does
-not reject active API requests.
+or internet exposure safe. The startup assessment and readiness manifest are
+diagnostic only and do not reject active API requests.
 
 Current runtime behavior remains V1 local-node/no-auth behavior unless existing
 local configuration changes the bind address or vault list. The backend binds
@@ -135,6 +142,34 @@ The current invariant is that `enforced`, `enforcementActive`,
 observer can be configured and mounted, can observe requests, can compute planned
 future responses, and can attempt sanitized audit appends, but none of that means
 authentication or authorization is active.
+
+## Enforcement Readiness Manifest
+
+`/api/node/status` includes a protected-mode readiness manifest for local
+diagnostics. The manifest is the single sanitized summary of why AREPO is not
+ready to enforce protected-mode requests. It exposes stable blocker codes and
+counts only; it must not include raw authorization headers, bearer tokens, cookie
+values, verifier hashes or salts, credential IDs, session IDs, token IDs, audit
+event IDs, vault roots, filesystem paths, source document bodies, or raw CORS
+origin lists beyond the existing runtime diagnostics surface.
+
+The manifest currently always reports:
+
+- `readyForEnforcement: false`
+- `enforcementActive: false`
+- `protectedModeOperational: false`
+- `networkExposureSafe: false`
+
+Expected blocker families include disabled/unavailable auth mode, startup gate
+not ready, inactive credential verification, inactive credential acceptance,
+inactive audit enforcement, inactive revocation checks, inactive CSRF/origin
+enforcement, missing reduced anonymous status enforcement, missing stronger
+confirmation enforcement, explicit enforcement flag disabled, planning-only
+request pipeline, planning-only response planner, optional dry-run
+observation-only state, and non-local bind without active protected mode when
+applicable. Dry-run observation, dry-run audit, route plans, and response plans
+may reduce uncertainty for implementation work, but they never make the
+readiness manifest enforcement-ready by themselves.
 
 ## Enforcement Readiness Checklist
 

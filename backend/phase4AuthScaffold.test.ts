@@ -169,6 +169,18 @@ test("requested protected mode remains unavailable and non-operational", async (
   assert.equal(status.protectedModeStartup.revocationChecksActive, false);
   assert.equal(status.protectedModeStartup.csrfOriginEnforcementActive, false);
   assert.equal(status.protectedModeStartup.networkExposureSafe, false);
+  assert.equal(status.protectedModeReadiness.readyForEnforcement, false);
+  assert.equal(status.protectedModeReadiness.enforcementActive, false);
+  assert.equal(status.protectedModeReadiness.protectedModeOperational, false);
+  assert.equal(status.protectedModeReadiness.networkExposureSafe, false);
+  assert.ok(status.protectedModeReadiness.blockers.includes("explicit-enforcement-flag-disabled"));
+  assert.ok(status.protectedModeReadiness.blockers.includes("credential-verification-inactive"));
+  assert.ok(status.protectedModeReadiness.blockers.includes("revocation-checks-inactive"));
+  assert.ok(status.protectedModeReadiness.blockers.includes("audit-enforcement-inactive"));
+  assert.ok(status.protectedModeReadiness.blockers.includes("csrf-origin-enforcement-inactive"));
+  assert.ok(
+    status.protectedModeReadiness.blockers.includes("reduced-anonymous-status-not-enforced"),
+  );
 
   assert.deepEqual(
     networkExposureValues(status).filter((value) => value),
@@ -194,6 +206,10 @@ test("non-local bind remains unsafe without enforcement", async () => {
     assert.equal(status.requestPolicy.networkExposureSafe, false);
     assert.equal(status.protectedModeStartup.nonLocalBindWithDisabledAuth, true);
     assert.equal(status.protectedModeStartup.networkExposureSafe, false);
+    assert.ok(
+      status.protectedModeReadiness.blockers.includes("non-local-bind-without-protected-mode"),
+    );
+    assert.equal(status.protectedModeReadiness.networkExposureSafe, false);
     assert.deepEqual(
       networkExposureValues(status).filter((value) => value),
       [],
