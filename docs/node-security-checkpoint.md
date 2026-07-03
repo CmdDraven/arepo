@@ -51,6 +51,12 @@ Implemented as inert, status-only, or observation-only:
   verification, route-aware authorization planning, browser policy planning,
   and optional sanitized audit writes. It is non-enforcing and is only called by
   tests or the explicitly configured dry-run observer.
+- `backend/protectedResponsePlanner.ts`: unmounted future response planner that
+  maps protected request pipeline decisions to sanitized HTTP-style response
+  plans such as reduced anonymous response, unauthenticated, unauthorized,
+  CSRF/origin rejection, stronger-confirmation required, unknown route, and
+  protected-mode-not-ready. It is not imported by active request handling and
+  reports `enforcementActive: false` and `networkExposureSafe: false`.
 - `backend/protectedRequestDryRun.ts`: optional mounted dry-run observer gated
   by `auth.dryRunRequestPolicy = true`. It runs the protected request pipeline
   for diagnostics only, optionally appends sanitized audit events when
@@ -127,6 +133,8 @@ Implemented but unmounted, status-only, or observation-only:
 - Protected request pipeline that composes store loading, credential adapter
   verification, route planning, browser policy planning, and optional sanitized
   audit writes for explicit request-shaped inputs.
+- Protected response planner that converts future protected-mode decisions into
+  sanitized HTTP-style response plans without mounting or enforcing them.
 - Browser security, revocation, startup-gating, and request-policy status
   helpers.
 
@@ -160,6 +168,9 @@ Required before first auth middleware:
   enforcement deliberately and only after disabled-mode regression tests still
   prove V1 local/no-auth behavior remains available when `auth.mode =
   "disabled"`.
+- The protected response planner must be mounted deliberately only after
+  response bodies, status codes, audit behavior, reduced anonymous diagnostics,
+  and disabled-mode behavior are tested together.
 - Route authorization must cover every active endpoint and unknown routes must
   fail closed in protected mode.
 - Audit writes must be active, sanitized, append-only, and resilient to corrupt
@@ -375,6 +386,38 @@ broken links, duplicate IDs, duplicate anchors, issue messages, and generated
 metadata. They should require `readIndex`, but not automatically require
 `readContent`. Direct source file reads require `readContent`. Source file
 mutations require `writeContent`, and deletes require `deleteFiles`.
+
+### Future Protected Responses
+
+`backend/protectedResponsePlanner.ts` is unmounted scaffolding for future
+protected-mode HTTP responses. It does not reject active requests and is not
+imported by active route handlers. The planned response categories are:
+
+- `allow`: future protected handler may continue after authentication,
+  authorization, browser policy, revocation, and confirmation checks pass.
+- `reduced-anonymous`: future reduced health/status response with no vault
+  roots, filesystem paths, credential IDs, session IDs, source content, or
+  detailed runtime inventory.
+- `unauthenticated`: future 401-style response for missing, malformed,
+  not-found, expired, or revoked credential material.
+- `unauthorized`: future 403-style response for authenticated credentials that
+  lack route, node, or vault permissions.
+- `csrf-required` and `origin-rejected`: future browser-session rejection plans
+  for missing/failed CSRF or untrusted/missing origin where origin is required.
+- `stronger-confirmation-required`: future 409/428-style response for delete,
+  conflict overwrite, vault registration/removal, auth changes, and token
+  revocation when normal permission is present but confirmation is still needed.
+- `not-found-or-unknown-route`: future fail-closed response when a route is not
+  covered by the protected route inventory.
+- `service-unavailable-or-not-ready`: future 503-style response for
+  protected-mode startup/store readiness failures.
+
+Every current response plan is sanitized and includes `enforcementActive:
+false`, `protectedModeOperational: false` where applicable, and
+`networkExposureSafe: false`. Plans must not include raw bearer tokens, session
+secrets, authorization header values, cookies, verifier hashes/salts, vault
+roots, filesystem paths, source document bodies, credential IDs, session IDs,
+token IDs, or audit event IDs.
 
 | Current endpoint | Current behavior | Future protected-mode requirement | Notes |
 | --- | --- | --- | --- |
