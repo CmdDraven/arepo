@@ -16,8 +16,21 @@ test("request policy runtime status reports inventory and inactive enforcement",
   assert.equal(status.dryRunMiddlewareMounted, false);
   assert.equal(status.dryRunObservationOnly, true);
   assert.equal(status.dryRunAuditConfigured, false);
+  assert.equal(status.dryRunAuditAttemptedCount, 0);
   assert.equal(status.dryRunAuditAppendCount, 0);
+  assert.equal(status.dryRun.configured, false);
+  assert.equal(status.dryRun.mounted, false);
+  assert.equal(status.dryRun.observed.count, 0);
+  assert.equal(status.dryRun.planned.computed, false);
+  assert.equal(status.dryRun.audited.configured, false);
+  assert.equal(status.dryRun.audited.attemptedCount, 0);
+  assert.equal(status.dryRun.audited.appendedCount, 0);
+  assert.equal(status.dryRun.enforced, false);
+  assert.equal(status.dryRun.enforcementActive, false);
+  assert.equal(status.dryRun.protectedModeOperational, false);
+  assert.equal(status.dryRun.networkExposureSafe, false);
   assert.equal(status.enforcementActive, false);
+  assert.equal(status.enforced, false);
   assert.equal(status.credentialVerificationActive, false);
   assert.equal(status.auditRequestLoggingActive, false);
   assert.equal(status.revocationChecksActive, false);
@@ -38,7 +51,16 @@ test("request policy runtime status reports explicit dry-run observation only", 
   assert.equal(status.dryRunMiddlewareMounted, true);
   assert.equal(status.dryRunObservationOnly, true);
   assert.equal(status.dryRunAuditConfigured, false);
+  assert.equal(status.dryRunAuditAttemptedCount, 0);
   assert.equal(status.dryRunAuditAppendCount, 0);
+  assert.equal(status.dryRun.configured, true);
+  assert.equal(status.dryRun.mounted, true);
+  assert.equal(status.dryRun.observed.count, 0);
+  assert.equal(status.dryRun.planned.computed, false);
+  assert.equal(status.dryRun.audited.configured, false);
+  assert.equal(status.dryRun.audited.attemptedCount, 0);
+  assert.equal(status.dryRun.audited.appendedCount, 0);
+  assert.equal(status.dryRun.enforced, false);
   assert.equal(status.lastDryRunAuditStatus, undefined);
   assert.equal(status.enforcementActive, false);
   assert.equal(status.credentialVerificationActive, false);
@@ -55,7 +77,13 @@ test("request policy runtime status reports dry-run audit only with both flags",
   });
   assert.equal(auditWithoutDryRun.dryRunMiddlewareConfigured, false);
   assert.equal(auditWithoutDryRun.dryRunAuditConfigured, true);
+  assert.equal(auditWithoutDryRun.dryRunAuditAttemptedCount, 0);
   assert.equal(auditWithoutDryRun.dryRunAuditAppendCount, 0);
+  assert.equal(auditWithoutDryRun.dryRun.configured, false);
+  assert.equal(auditWithoutDryRun.dryRun.mounted, false);
+  assert.equal(auditWithoutDryRun.dryRun.audited.configured, true);
+  assert.equal(auditWithoutDryRun.dryRun.audited.attemptedCount, 0);
+  assert.equal(auditWithoutDryRun.dryRun.audited.appendedCount, 0);
 
   const auditWithDryRun = getRequestPolicyRuntimeStatus({
     mode: "disabled",
@@ -64,7 +92,12 @@ test("request policy runtime status reports dry-run audit only with both flags",
   });
   assert.equal(auditWithDryRun.dryRunMiddlewareConfigured, true);
   assert.equal(auditWithDryRun.dryRunAuditConfigured, true);
+  assert.equal(auditWithDryRun.dryRun.configured, true);
+  assert.equal(auditWithDryRun.dryRun.mounted, true);
+  assert.equal(auditWithDryRun.dryRun.audited.configured, true);
+  assert.equal(auditWithDryRun.dryRun.audited.attemptedCount, 0);
   assert.equal(auditWithDryRun.enforcementActive, false);
+  assert.equal(auditWithDryRun.enforced, false);
   assert.equal(auditWithDryRun.networkExposureSafe, false);
 });
 

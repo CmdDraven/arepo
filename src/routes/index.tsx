@@ -2910,6 +2910,7 @@ type LocalNodeRuntimeStatus = {
     dryRunObservationOnly: true;
     dryRunRunCount: number;
     dryRunAuditConfigured: boolean;
+    dryRunAuditAttemptedCount: number;
     dryRunAuditAppendCount: number;
     lastDryRunAuditStatus?: {
       mode: "disabled" | "append";
@@ -2942,7 +2943,39 @@ type LocalNodeRuntimeStatus = {
       networkExposureSafe: false;
       error?: string;
     };
+    dryRun: {
+      configured: boolean;
+      mounted: boolean;
+      observed: {
+        count: number;
+        lastStatus?: "wouldAllow" | "wouldDeny" | "anonymousReduced" | "failed";
+      };
+      planned: {
+        computed: boolean;
+        lastResponse?: {
+          kind: string;
+          httpStatus: number;
+          reasonCode: string;
+          authRequired: boolean;
+          confirmationRequired: boolean;
+          enforcementActive: false;
+          networkExposureSafe: false;
+        };
+      };
+      audited: {
+        configured: boolean;
+        attemptedCount: number;
+        appendedCount: number;
+        lastStatus?: "skipped" | "written" | "failed";
+        lastReasonCode?: string;
+      };
+      enforced: false;
+      enforcementActive: false;
+      protectedModeOperational: false;
+      networkExposureSafe: false;
+    };
     enforcementActive: false;
+    enforced: false;
     credentialVerificationActive: false;
     auditRequestLoggingActive: false;
     revocationChecksActive: false;
@@ -3420,6 +3453,10 @@ function LocalNodeDiagnosticsCard({
     : error
       ? "Unavailable"
       : "Checking";
+  const dryRunStatus = status?.requestPolicy.dryRun;
+  const lastObserved = status?.requestPolicy.lastDryRunResult;
+  const plannedResponse =
+    dryRunStatus?.planned.lastResponse ?? status?.requestPolicy.lastDryRunResult?.plannedResponse;
 
   return (
     <section className="border rounded-md">
@@ -3557,45 +3594,60 @@ function LocalNodeDiagnosticsCard({
                 <span>
                   {status.requestPolicy.authorizationPlannerPresent ? "present" : "absent"}
                 </span>
-                <span className="text-muted-foreground">Dry-run configured</span>
-                <span>{status.requestPolicy.dryRunMiddlewareConfigured ? "yes" : "no"}</span>
-                <span className="text-muted-foreground">Dry-run mounted</span>
-                <span>{status.requestPolicy.dryRunMiddlewareMounted ? "yes" : "no"}</span>
-                <span className="text-muted-foreground">Dry-run requests</span>
-                <span>{status.requestPolicy.dryRunRunCount}</span>
-                <span className="text-muted-foreground">Dry-run audit</span>
-                <span>{status.requestPolicy.dryRunAuditConfigured ? "append" : "disabled"}</span>
-                <span className="text-muted-foreground">Audit appends</span>
-                <span>{status.requestPolicy.dryRunAuditAppendCount}</span>
-                {status.requestPolicy.lastDryRunAuditStatus && (
+                <span className="text-muted-foreground">Observer configured</span>
+                <span>{dryRunStatus?.configured ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Observer mounted</span>
+                <span>{dryRunStatus?.mounted ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Observed requests</span>
+                <span>{dryRunStatus?.observed.count ?? status.requestPolicy.dryRunRunCount}</span>
+                <span className="text-muted-foreground">Audit configured</span>
+                <span>{dryRunStatus?.audited.configured ? "append" : "disabled"}</span>
+                <span className="text-muted-foreground">Audit attempted</span>
+                <span>
+                  {dryRunStatus?.audited.attemptedCount ??
+                    status.requestPolicy.dryRunAuditAttemptedCount}
+                </span>
+                <span className="text-muted-foreground">Audit appended</span>
+                <span>
+                  {dryRunStatus?.audited.appendedCount ??
+                    status.requestPolicy.dryRunAuditAppendCount}
+                </span>
+                {(dryRunStatus?.audited.lastStatus ||
+                  status.requestPolicy.lastDryRunAuditStatus) && (
                   <>
                     <span className="text-muted-foreground">Last audit</span>
-                    <span>{status.requestPolicy.lastDryRunAuditStatus.status}</span>
+                    <span>
+                      {dryRunStatus?.audited.lastStatus ??
+                        status.requestPolicy.lastDryRunAuditStatus?.status}
+                    </span>
                   </>
                 )}
-                {status.requestPolicy.lastDryRunResult && (
+                {lastObserved && (
                   <>
-                    <span className="text-muted-foreground">Last dry-run</span>
+                    <span className="text-muted-foreground">Last observed</span>
                     <span>
-                      {status.requestPolicy.lastDryRunResult.method}{" "}
-                      {status.requestPolicy.lastDryRunResult.routePattern ??
-                        status.requestPolicy.lastDryRunResult.path}{" "}
-                      ({status.requestPolicy.lastDryRunResult.status})
+                      {lastObserved.method} {lastObserved.routePattern ?? lastObserved.path} (
+                      {dryRunStatus?.observed.lastStatus ?? lastObserved.status})
                     </span>
-                    {status.requestPolicy.lastDryRunResult.plannedResponse && (
+                    {plannedResponse && (
                       <>
                         <span className="text-muted-foreground">Planned response</span>
                         <span>
-                          {status.requestPolicy.lastDryRunResult.plannedResponse.kind} (
-                          {status.requestPolicy.lastDryRunResult.plannedResponse.httpStatus},{" "}
-                          {status.requestPolicy.lastDryRunResult.plannedResponse.reasonCode})
+                          {plannedResponse.kind} ({plannedResponse.httpStatus},{" "}
+                          {plannedResponse.reasonCode})
                         </span>
                       </>
                     )}
                   </>
                 )}
-                <span className="text-muted-foreground">Enforcement</span>
-                <span>{status.requestPolicy.enforcementActive ? "active" : "inactive"}</span>
+                <span className="text-muted-foreground">Enforced</span>
+                <span>{dryRunStatus?.enforced ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Enforcement active</span>
+                <span>
+                  {status.requestPolicy.enforcementActive || dryRunStatus?.enforcementActive
+                    ? "active"
+                    : "inactive"}
+                </span>
                 <span className="text-muted-foreground">Credential checks</span>
                 <span>
                   {status.requestPolicy.credentialVerificationActive ? "active" : "inactive"}
@@ -3608,8 +3660,9 @@ function LocalNodeDiagnosticsCard({
                 <span>{status.requestPolicy.networkExposureSafe ? "yes" : "no"}</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Policy plumbing is observation-only. Dry-run planning never accepts credentials for
-                handlers, rejects requests, or protects non-local exposure.
+                Policy plumbing is observation-only. Mounted dry-run may observe requests, plan
+                future responses, and attempt sanitized audit writes, but it never sends planned
+                responses, rejects requests, or protects non-local exposure.
               </p>
             </div>
 

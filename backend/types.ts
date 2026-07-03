@@ -41,10 +41,13 @@ export type RequestPolicyRuntimeStatus = {
   dryRunObservationOnly: true;
   dryRunRunCount: number;
   dryRunAuditConfigured: boolean;
+  dryRunAuditAttemptedCount: number;
   dryRunAuditAppendCount: number;
   lastDryRunAuditStatus?: ProtectedRequestDryRunAuditStatus;
   lastDryRunResult?: ProtectedRequestDryRunSummary;
+  dryRun: ProtectedRequestDryRunTerminologyStatus;
   enforcementActive: false;
+  enforced: false;
   credentialVerificationActive: false;
   auditRequestLoggingActive: false;
   revocationChecksActive: false;
@@ -106,6 +109,7 @@ export type ProtectedRequestDryRunCanaryStatus = {
   dryRunMounted: boolean;
   dryRunObservationOnly: true;
   dryRunAuditConfigured: boolean;
+  dryRunAuditAttemptedCount: number;
   dryRunRunCount: number;
   dryRunAuditAppendCount: number;
   lastDryRunStatus?: {
@@ -120,6 +124,32 @@ export type ProtectedRequestDryRunCanaryStatus = {
     status: ProtectedRequestDryRunAuditStatus["status"];
     reasonCode?: string;
   };
+  enforcementActive: false;
+  enforced: false;
+  protectedModeOperational: false;
+  networkExposureSafe: false;
+  dryRun: ProtectedRequestDryRunTerminologyStatus;
+};
+
+export type ProtectedRequestDryRunTerminologyStatus = {
+  configured: boolean;
+  mounted: boolean;
+  observed: {
+    count: number;
+    lastStatus?: ProtectedRequestDryRunSummary["status"];
+  };
+  planned: {
+    computed: boolean;
+    lastResponse?: ProtectedRequestDryRunResponsePlanSummary;
+  };
+  audited: {
+    configured: boolean;
+    attemptedCount: number;
+    appendedCount: number;
+    lastStatus?: ProtectedRequestDryRunAuditStatus["status"];
+    lastReasonCode?: string;
+  };
+  enforced: false;
   enforcementActive: false;
   protectedModeOperational: false;
   networkExposureSafe: false;

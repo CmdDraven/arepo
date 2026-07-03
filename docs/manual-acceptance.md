@@ -172,27 +172,32 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    route policy inventory is present, enforcement is inactive, credential
    verification is inactive, CSRF/origin enforcement is inactive, and network
    safety is `no`.
-11. Expected result: protected request dry-run status renders as observation-only:
-   dry-run configured and mounted are `no` by default, enforcement remains
-   inactive, dry-run audit is disabled, and no credentials, sessions, bearer
-   tokens, cookies, login, or pairing controls are active or presented.
+11. Expected result: protected request dry-run status renders with the Phase 4
+   vocabulary: observer configured, observer mounted, observed requests, planned
+   response, audit configured, audit attempted, audit appended, and enforced.
+   By default observer configured/mounted are `no`, observed requests are `0`,
+   audit is disabled, enforced is `no`, enforcement remains inactive, and no
+   credentials, sessions, bearer tokens, cookies, login, or pairing controls are
+   active or presented.
 12. Expected result: if `auth.dryRunRequestPolicy` is explicitly enabled in a
-   disposable local config, diagnostics may show dry-run configured/mounted and
-   a sanitized last dry-run summary plus a planned response kind/status/reason,
-   but planned responses are not sent and requests still succeed or fail only by
-   existing V1 route behavior. Network safety remains `no`.
+   disposable local config, diagnostics may show observer configured/mounted,
+   increment observed request counts, and show a sanitized last observed request
+   plus a planned response kind/status/reason. Planned responses are not sent
+   and requests still succeed or fail only by existing V1 route behavior.
+   Network safety remains `no`.
 13. Expected result: if both `auth.dryRunRequestPolicy` and `auth.dryRunAudit`
    are explicitly enabled in a disposable local config, diagnostics may show
-   dry-run audit append counts/status, but audit failures do not reject requests
-   and network safety remains `no`.
+   audit configured, audit attempted, audit appended, and last audit status. An
+   attempted audit is still observation-only; audit failures do not reject
+   requests and network safety remains `no`.
 14. Optional API check: request `GET /api/node/auth/dry-run`.
 15. Expected result: the response is diagnostic-only and sanitized. It may show
-   dry-run configured/mounted state, counters, high-level status, and reason
-   codes, plus a planned response kind/status/reason. It must not include raw
-   credentials, cookies, authorization header values, vault roots, filesystem
-   paths, source document bodies, verifier hashes, or salts. It must report
-   enforcement inactive, protected mode non-operational, and network safety
-   `false`.
+   configured/mounted/observed/planned/audited state, counters, high-level
+   status, and reason codes, plus a planned response kind/status/reason. It must
+   not include raw credentials, cookies, authorization header values, vault
+   roots, filesystem paths, source document bodies, verifier hashes, or salts. It
+   must report enforced `false`, enforcement inactive, protected mode
+   non-operational, and network safety `false`.
 16. Expected result: protected-mode startup gating renders as diagnostic-only:
    protected mode may start is `no`, enforcement is inactive, credential
    verification is inactive, and network safety is `no`.

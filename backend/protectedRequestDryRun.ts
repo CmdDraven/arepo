@@ -29,6 +29,7 @@ export type ProtectedRequestDryRunResult =
 
 type DryRunDiagnostics = {
   runCount: number;
+  auditAttemptCount: number;
   auditAppendCount: number;
   lastResult?: ProtectedRequestDryRunSummary;
   lastAuditStatus?: ProtectedRequestDryRunAuditStatus;
@@ -36,6 +37,7 @@ type DryRunDiagnostics = {
 
 const diagnostics: DryRunDiagnostics = {
   runCount: 0,
+  auditAttemptCount: 0,
   auditAppendCount: 0,
 };
 
@@ -58,21 +60,48 @@ export function getProtectedRequestDryRunStatus(
   | "dryRunObservationOnly"
   | "dryRunRunCount"
   | "dryRunAuditConfigured"
+  | "dryRunAuditAttemptedCount"
   | "dryRunAuditAppendCount"
   | "lastDryRunAuditStatus"
   | "lastDryRunResult"
+  | "dryRun"
 > {
   const enabled = isProtectedRequestDryRunEnabled(auth);
   const auditConfigured = auth.dryRunAudit === true;
+  const dryRun = {
+    configured: enabled,
+    mounted: enabled,
+    observed: {
+      count: diagnostics.runCount,
+      lastStatus: diagnostics.lastResult?.status,
+    },
+    planned: {
+      computed: diagnostics.lastResult?.plannedResponse !== undefined,
+      lastResponse: diagnostics.lastResult?.plannedResponse,
+    },
+    audited: {
+      configured: auditConfigured,
+      attemptedCount: diagnostics.auditAttemptCount,
+      appendedCount: diagnostics.auditAppendCount,
+      lastStatus: diagnostics.lastAuditStatus?.status,
+      lastReasonCode: diagnostics.lastAuditStatus?.reasonCode,
+    },
+    enforced: false,
+    enforcementActive: false,
+    protectedModeOperational: false,
+    networkExposureSafe: false,
+  } as const;
   return {
     dryRunMiddlewareConfigured: enabled,
     dryRunMiddlewareMounted: enabled,
     dryRunObservationOnly: true,
     dryRunRunCount: diagnostics.runCount,
     dryRunAuditConfigured: auditConfigured,
+    dryRunAuditAttemptedCount: diagnostics.auditAttemptCount,
     dryRunAuditAppendCount: diagnostics.auditAppendCount,
     lastDryRunAuditStatus: diagnostics.lastAuditStatus,
     lastDryRunResult: diagnostics.lastResult,
+    dryRun,
   };
 }
 
@@ -88,6 +117,7 @@ export function getProtectedRequestDryRunCanaryStatus(
     dryRunObservationOnly: true,
     dryRunAuditConfigured: status.dryRunAuditConfigured,
     dryRunRunCount: status.dryRunRunCount,
+    dryRunAuditAttemptedCount: status.dryRunAuditAttemptedCount,
     dryRunAuditAppendCount: status.dryRunAuditAppendCount,
     lastDryRunStatus: status.lastDryRunResult
       ? {
@@ -106,13 +136,16 @@ export function getProtectedRequestDryRunCanaryStatus(
         }
       : undefined,
     enforcementActive: false,
+    enforced: false,
     protectedModeOperational: false,
     networkExposureSafe: false,
+    dryRun: status.dryRun,
   };
 }
 
 export function resetProtectedRequestDryRunDiagnostics(): void {
   diagnostics.runCount = 0;
+  diagnostics.auditAttemptCount = 0;
   diagnostics.auditAppendCount = 0;
   diagnostics.lastResult = undefined;
   diagnostics.lastAuditStatus = undefined;
@@ -176,6 +209,7 @@ function recordDryRunSummary(summary: ProtectedRequestDryRunSummary): void {
 }
 
 function recordAuditStatus(status: ProtectedRequestDryRunAuditStatus): void {
+  if (status.status === "written" || status.status === "failed") diagnostics.auditAttemptCount += 1;
   if (status.status === "written") diagnostics.auditAppendCount += 1;
   diagnostics.lastAuditStatus = status;
 }

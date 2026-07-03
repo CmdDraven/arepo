@@ -116,6 +116,26 @@ enforcement, route authorization middleware, audit wiring, revocation checks,
 startup safety checks, and regression tests that cover protected, dry-run, and
 disabled-auth modes.
 
+## Dry-run Vocabulary
+
+Phase 4 status objects, the Local Node Diagnostics UI, the dry-run canary, and
+tests use these terms consistently:
+
+- `configured`: the feature is explicitly enabled in config.
+- `mounted`: the dry-run observer is present in the request pipeline and capable
+  of observing requests.
+- `observed`: a request was processed by dry-run diagnostics.
+- `planned`: a future protected response plan was computed, but not sent.
+- `audited`: a sanitized dry-run audit event was appended or attempted.
+- `enforced`: a real request was rejected, allowed, or modified based on
+  protected-mode auth decisions.
+
+The current invariant is that `enforced`, `enforcementActive`,
+`protectedModeOperational`, and `networkExposureSafe` are always false. A dry-run
+observer can be configured and mounted, can observe requests, can compute planned
+future responses, and can attempt sanitized audit appends, but none of that means
+authentication or authorization is active.
+
 ## Enforcement Readiness Checklist
 
 This checklist is the gate before any auth middleware is mounted. It separates

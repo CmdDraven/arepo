@@ -14,6 +14,7 @@ export function getRequestPolicyRuntimeStatus(auth: AuthConfig): RequestPolicyRu
     authorizationPlannerPresent: typeof planProtectedRouteAuthorization === "function",
     ...dryRunStatus,
     enforcementActive: false,
+    enforced: false,
     credentialVerificationActive: false,
     auditRequestLoggingActive: false,
     revocationChecksActive: false,
