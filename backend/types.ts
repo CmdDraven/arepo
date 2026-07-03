@@ -204,6 +204,7 @@ export type ProtectedModeReadinessBlockerCode =
   | "request-pipeline-planning-only"
   | "response-planner-planning-only"
   | "reduced-anonymous-status-planning-only"
+  | "stronger-confirmation-planning-only"
   | "dry-run-observation-only"
   | "non-local-bind-without-protected-mode";
 
@@ -260,6 +261,7 @@ export type ProtectedModeReadinessManifest = {
     protectedRequestPipelineAvailable: boolean;
     protectedResponsePlannerAvailable: boolean;
     reducedAnonymousStatusPlannerAvailable: boolean;
+    strongerConfirmationPlannerAvailable: boolean;
   };
   startup: {
     missingStoreCount: number;

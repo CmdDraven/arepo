@@ -207,7 +207,8 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    blockers are stable codes rather than vault roots, filesystem paths,
    credentials, cookies, verifier hashes, salts, or source document content.
    Reduced anonymous status planning may show as planning-only, but it is not
-   mounted or enforced.
+   mounted or enforced. Stronger-confirmation planning may also show as
+   planning-only, but it does not create confirmation tokens or reject requests.
 18. Expected result: unsupported V1 capabilities are visible as disabled:
    authentication, remote nodes, sync, AI/vector, database support, and
    migrations.

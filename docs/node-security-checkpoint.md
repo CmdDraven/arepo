@@ -63,6 +63,12 @@ Implemented as inert, status-only, or observation-only:
   counters, credential identifiers, route inventory, generated index data, or
   storage summaries. It is planning scaffold only; current V1 endpoints still
   return their existing local diagnostics.
+- `backend/strongerConfirmationPlanner.ts`: unmounted future
+  stronger-confirmation planner. It identifies delete, conflict overwrite,
+  vault lifecycle, auth management, credential revocation, node-secret rotation,
+  emergency reset, and remote-node lifecycle operations that will require an
+  extra confirmation step in protected mode. It does not create confirmation
+  tokens and is not imported by active request handling.
 - `backend/protectedRequestDryRun.ts`: optional mounted dry-run observer gated
   by `auth.dryRunRequestPolicy = true`. It runs the protected request pipeline
   for diagnostics only, optionally appends sanitized audit events when
@@ -172,9 +178,10 @@ inactive audit enforcement, inactive revocation checks, inactive CSRF/origin
 enforcement, missing reduced anonymous status enforcement, missing stronger
 confirmation enforcement, explicit enforcement flag disabled, planning-only
 request pipeline, planning-only response planner, planning-only reduced
-anonymous status planner, optional dry-run observation-only state, and non-local
-bind without active protected mode when applicable. Dry-run observation, dry-run
-audit, route plans, reduced anonymous response plans, and response plans may
+anonymous status planner, planning-only stronger-confirmation planner, optional
+dry-run observation-only state, and non-local bind without active protected mode
+when applicable. Dry-run observation, dry-run audit, route plans, reduced
+anonymous response plans, stronger-confirmation plans, and response plans may
 reduce uncertainty for implementation work, but they never make the readiness
 manifest enforcement-ready by themselves.
 
@@ -198,6 +205,27 @@ This planner is not mounted. Current V1 `/api/health`, `/api/node/status`, and
 `/api/node/auth/dry-run` responses are unchanged. The readiness manifest may
 report the planner as available, but reduced anonymous status remains not
 actively enforced or mounted.
+
+## Stronger-Confirmation Planning
+
+Some future protected-mode operations need an extra confirmation step beyond
+normal authentication and authorization. The stronger-confirmation planner
+classifies those operations without generating confirmation tokens, enforcing
+requests, or changing runtime handlers.
+
+Current and future operation classes that require stronger confirmation include
+source-file delete, conflict overwrite, vault registration/removal, vault
+permission changes, auth mode changes, credential creation/revocation, node
+secret rotation, emergency local-only reset, and future remote-node
+registration/removal. Safe read/index operations do not require stronger
+confirmation.
+
+Planner output is sanitized and uses stable reason codes only. It must not
+include filesystem paths, vault roots, source document bodies, raw headers,
+cookies, bearer values, credential IDs, session IDs, token IDs, audit event IDs,
+verifier hashes, or salts. The planner is not mounted, current V1 endpoint
+behavior is unchanged, and readiness may report it only as planning scaffold
+while stronger confirmation remains not actively enforced.
 
 ## Enforcement Readiness Checklist
 

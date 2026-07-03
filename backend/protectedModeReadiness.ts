@@ -2,6 +2,7 @@ import { planProtectedRequestPipeline } from "./protectedRequestPipeline.js";
 import { planProtectedResponse } from "./protectedResponsePlanner.js";
 import { planReducedAnonymousNodeStatus } from "./reducedAnonymousStatusPlanner.js";
 import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
+import { planStrongerConfirmation } from "./strongerConfirmationPlanner.js";
 import type {
   AuthPosture,
   ProtectedModeReadinessBlockerCode,
@@ -127,6 +128,13 @@ export function buildProtectedModeReadinessManifest(
   });
 
   addDetail(details, {
+    group: "confirmation",
+    label: "Stronger confirmation planner is available for planning only.",
+    status: "planning-only",
+    codes: ["stronger-confirmation-planning-only"],
+  });
+
+  addDetail(details, {
     group: "pipeline",
     label: "Protected request pipeline is available for planning only.",
     status: "planning-only",
@@ -199,6 +207,7 @@ export function buildProtectedModeReadinessManifest(
       protectedRequestPipelineAvailable: typeof planProtectedRequestPipeline === "function",
       protectedResponsePlannerAvailable: typeof planProtectedResponse === "function",
       reducedAnonymousStatusPlannerAvailable: typeof planReducedAnonymousNodeStatus === "function",
+      strongerConfirmationPlannerAvailable: typeof planStrongerConfirmation === "function",
     },
     startup: {
       missingStoreCount: input.startup.missingRequiredStores.length,

@@ -185,8 +185,12 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.ok(
     status.protectedModeReadiness.blockers.includes("reduced-anonymous-status-planning-only"),
   );
+  assert.ok(status.protectedModeReadiness.blockers.includes("stronger-confirmation-not-enforced"));
+  assert.ok(status.protectedModeReadiness.blockers.includes("stronger-confirmation-planning-only"));
   assert.equal(status.protectedModeReadiness.checks.reducedAnonymousStatusEnforced, false);
   assert.equal(status.protectedModeReadiness.checks.reducedAnonymousStatusPlannerAvailable, true);
+  assert.equal(status.protectedModeReadiness.checks.strongerConfirmationEnforced, false);
+  assert.equal(status.protectedModeReadiness.checks.strongerConfirmationPlannerAvailable, true);
   assert.equal(status.protectedModeReadiness.routePolicy.inventoryPresent, true);
   assert.equal(
     status.protectedModeReadiness.routePolicy.routePolicyCount,
