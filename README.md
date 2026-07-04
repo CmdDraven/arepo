@@ -26,8 +26,9 @@ AREPO does not replace those tools.
 AREPO is designed to run as a standalone local tool. It does not require a
 hosted project platform, cloud account, hosted database, or remote storage
 provider for basic local use. Runtime error handling logs locally to the
-browser or backend console; do not expose the unauthenticated local backend to
-untrusted networks.
+browser or backend console. Disabled auth remains the default compatibility
+mode, and protected mode is available for deliberate local bearer-token testing,
+but neither mode makes LAN, reverse-proxy, or internet exposure safe.
 
 ## Modes
 
@@ -47,9 +48,9 @@ registration.
 See [docs/roadmap.md](docs/roadmap.md) for the current local-node roadmap and
 [docs/local-node-self-host.md](docs/local-node-self-host.md) for single-node
 self-host notes. Phase 4 security design work is tracked in
-[docs/node-security-checkpoint.md](docs/node-security-checkpoint.md). Current
-Phase 4 protected-mode helpers are inert and do not mean authentication or
-LAN-safe deployment is implemented.
+[docs/node-security-checkpoint.md](docs/node-security-checkpoint.md). The local
+protected-mode operator flow is documented in
+[docs/protected-mode-operator-workflow.md](docs/protected-mode-operator-workflow.md).
 
 ## Run Locally
 
@@ -182,8 +183,8 @@ accessible.
 
 Vault Settings also shows read-only local node diagnostics from
 `GET /api/node/status`, including backend host/port, startup warnings, vault
-runtime health, explicit disabled auth posture, and disabled V1 capability
-flags.
+runtime health, auth posture, protected-mode readiness, and disabled V1
+capability flags.
 
 `appDataDir` is optional. It controls where AREPO writes local generated data
 such as machine index caches. You can also set `AREPO_APP_DATA_DIR`; the
@@ -215,36 +216,44 @@ AREPO cache files to appear beside user notes.
 - `POST /api/vaults/:vaultId/reindex`
 - `GET /api/vaults/:vaultId/index`
 - `GET /api/vaults/:vaultId/storage`
+- `POST /api/node/credentials/bootstrap`
+- `GET /api/node/credentials`
+- `POST /api/node/credentials`
+- `POST /api/node/credentials/:credentialId/revoke`
+- `POST /api/node/credentials/:credentialId/rotate`
 
 `POST /api/vaults/:vaultId/reindex` means "rebuild the generated machine index
 from Markdown files." It does not create or require a user-authored `index.md`.
 
 `GET /api/node/status` is a local-node-only diagnostic surface. It reports node
 identity, local runtime host/port, startup warnings such as non-local binding,
-auth posture, vault count, per-vault watcher/index health, storage-summary
-availability, and explicit capability flags showing that auth, sync, AI,
-database support, migration support, and remote node registration are not active
-in V1.
+auth posture, vault count, per-vault watcher/index health,
+storage-summary availability, protected-mode readiness, safe credential
+lifecycle posture when authorized, and explicit capability flags showing that
+browser login, browser sessions, sync, AI, database support, migration support,
+and remote node registration are not active in V1.
 
 ## Security Model
 
 - The backend binds to `127.0.0.1` by default.
-- There is no authentication yet. Do not expose the backend to a LAN or the
-  internet.
-- `GET /api/node/status` reports auth posture, status-only request-policy
-  readiness, optional observation-only dry-run state, and diagnostic
-  protected-mode startup gating plus a sanitized enforcement-readiness manifest.
-  In V1 it should report disabled auth, no enforcement, protected mode
-  unavailable, inactive credential/session/token checks, not ready for
-  enforcement, and network exposure unsafe.
-- Phase 4 includes protected-mode policy, planner, credential-store persistence,
-  audit, revocation, browser-security helpers, request-policy status plumbing,
-  optional dry-run request planning, optional dry-run audit append, and
-  protected-mode startup diagnostics, but no credentials, sessions, bearer
-  tokens, cookies, CSRF/origin enforcement, login, pairing, or authorization
-  enforcement are active. Dry-run planning and dry-run audit are disabled by
-  default and do not reject requests or make handlers trust an authenticated
-  actor.
+- Disabled auth remains the default local compatibility mode.
+- `auth.mode = "protected"` enables local bearer-token request authorization.
+  Protected mode verifies bearer tokens, enforces route permissions, fails
+  closed when readiness is incomplete, returns reduced anonymous status, and
+  writes sanitized audit records.
+- Protected mode still does not make LAN, reverse-proxy, or internet exposure
+  safe.
+- Bearer tokens are secrets. Raw bearer tokens are returned only once during
+  bootstrap, create, or rotate responses and must not be pasted into bug
+  reports, screenshots, docs, logs, or commits.
+- AREPO does not currently provide browser login, browser sessions,
+  CSRF-protected browser authentication, frontend token storage, or a full
+  credential-management UI.
+- `x-arepo-confirmation: confirm` is a backend/operator confirmation signal for
+  protected routes, not final browser UX.
+- `GET /api/node/status` returns reduced anonymous diagnostics in protected
+  mode. A valid authorized bearer token may receive full diagnostics and safe
+  credential lifecycle posture.
 - Non-local binding requires explicit `AREPO_HOST` configuration and prints a
   startup warning.
 - CORS is restricted to the local frontend dev origins by default:
@@ -262,6 +271,10 @@ in V1.
   JSON, and unsafe permission shapes are rejected.
 - The index/cache is rebuildable from Markdown files and is not canonical state.
 - Syncthing, Git, and Borg/Restic/Kopia remain external responsibilities.
+
+See [docs/protected-mode-operator-workflow.md](docs/protected-mode-operator-workflow.md)
+for protected-mode configuration, bootstrap, credential creation, rotation,
+revocation, failure checks, and audit sanitization steps.
 
 The backend accepts only POSIX-style relative vault paths. It rejects absolute
 paths, `..`, empty segments, duplicate slashes, symlink path traversal, and paths
@@ -414,8 +427,10 @@ and includes Local Node Diagnostics checks.
 
 ## Limitations
 
-- Localhost-only backend; no auth yet.
+- Localhost-first backend; disabled auth is the default compatibility mode.
+- Protected mode supports local bearer-token authorization for API/operator
+  workflows, but it is not a LAN, reverse-proxy, or internet safety claim.
 - No live sync, Git replacement, or backup system.
 - No remote node registration yet.
 - Markdown preview is sanitized in the browser, but the backend API should still
-  not be exposed to untrusted networks until authentication is designed.
+  not be exposed to untrusted networks.

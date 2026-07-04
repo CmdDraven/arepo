@@ -147,7 +147,7 @@ test("non-local bind remains unsafe without enforcement", async () => {
     const status = response.body as LocalNodeRuntimeStatus;
 
     assert.equal(status.runtime.localOnlyMode, false);
-    assert.match(status.runtime.startupWarnings[0] ?? "", /no authentication/);
+    assert.match(status.runtime.startupWarnings[0] ?? "", /Non-local exposure is unsafe/);
     assert.equal(status.auth.mode, "disabled");
     assert.equal(status.auth.enforcement, "none");
     assert.match(status.auth.warning, /non-local binding is unsafe/);

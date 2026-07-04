@@ -46,10 +46,10 @@ test("node runtime rejects invalid backend ports", () => {
   );
 });
 
-test("node runtime surfaces a no-auth warning for non-local binding", () => {
+test("node runtime surfaces an unsafe warning for non-local binding", () => {
   const options = resolveBackendRuntimeOptions({ AREPO_HOST: "0.0.0.0" } as NodeJS.ProcessEnv);
   assert.equal(options.host, "0.0.0.0");
-  assert.match(options.nonLocalWarning ?? "", /no authentication/);
+  assert.match(options.nonLocalWarning ?? "", /Non-local exposure is unsafe/);
   assert.equal(nonLocalBindWarning("0.0.0.0"), options.nonLocalWarning);
 });
 
@@ -77,13 +77,13 @@ test("auth posture does not make non-local binding safe", () => {
   assert.match(auth.warning, /non-local binding is unsafe/);
 });
 
-test("auth posture reports requested protected mode as unavailable and unenforced", () => {
+test("auth posture reports requested protected mode as disabled when mode remains disabled", () => {
   const runtime = resolveBackendRuntimeOptions({} as NodeJS.ProcessEnv);
   const auth = resolveAuthPosture(
     {
       mode: "disabled",
       requestedMode: "protected",
-      protectedModeUnavailableReason: "Protected mode is not implemented in this build",
+      protectedModeUnavailableReason: "Protected mode was requested but auth.mode is disabled",
     },
     runtime,
   );
@@ -93,6 +93,6 @@ test("auth posture reports requested protected mode as unavailable and unenforce
   assert.equal(auth.enforcement, "none");
   assert.equal(auth.protectedModeAvailable, false);
   assert.equal(auth.protectedModeRequested, true);
-  assert.match(auth.warning, /not implemented/);
-  assert.match(auth.error ?? "", /not implemented/);
+  assert.match(auth.warning, /auth\.mode is disabled/);
+  assert.match(auth.error ?? "", /auth\.mode is disabled/);
 });

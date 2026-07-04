@@ -5,9 +5,12 @@ is the repository's committed `test-vault/` folder. It is safe to edit and reset
 locally, but it is not a real user vault.
 
 This is the canonical manual daily-driver acceptance gate for AREPO V1 local
-mode. It verifies current local-node behavior only. It must not be used to imply
-that LAN exposure, reverse-proxy exposure, auth, sync, AI/vector features,
-database support, migrations, federation, or remote nodes are implemented.
+mode. It verifies current local-node behavior only. Disabled mode remains the
+default compatibility path. Protected mode has a separate local operator flow in
+[Protected Mode Operator Workflow](protected-mode-operator-workflow.md), but it
+must not be used to imply that LAN exposure, reverse-proxy exposure, sync,
+AI/vector features, database support, migrations, federation, or remote nodes
+are implemented.
 
 ## Prerequisites
 
@@ -162,16 +165,17 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
 6. Expected result: each configured vault shows watcher/index health, including
    index status and changed-path counts.
 7. Expected result: storage-summary availability renders for each vault.
-8. Expected result: authentication posture renders as disabled/inactive:
-   operational `mode` is `disabled`, requested mode is either `disabled` or an
-   unavailable future mode, enforcement is `none`, and protected mode is
-   unavailable.
-9. Expected result: no credentials, sessions, bearer tokens, login, pairing, or
-   protected-mode controls are active or presented.
-10. Expected result: protected-mode policy plumbing renders as status-only:
-   route policy inventory is present, enforcement is inactive, credential
-   verification is inactive, CSRF/origin enforcement is inactive, and network
-   safety is `no`.
+8. Expected result: in the default compatibility path, authentication posture
+   renders as disabled/inactive: operational `mode` is `disabled`, requested
+   mode is `disabled` unless explicitly configured otherwise, and enforcement is
+   `none`.
+9. Expected result: no browser login, browser sessions, bearer-token storage,
+   pairing UI, or credential-management UI is active or presented.
+10. Expected result: protected-mode policy plumbing renders accurately for the
+   configured mode: route policy inventory is present, disabled mode shows no
+   enforcement, protected mode shows active local bearer-token enforcement only
+   when configured and ready, CSRF/origin enforcement for browser sessions is
+   inactive, and network safety is `no`.
 11. Expected result: protected request dry-run status renders with the Phase 4
    vocabulary: observer configured, observer mounted, observed requests, planned
    response, audit configured, audit attempted, audit appended, and enforced.
@@ -196,26 +200,19 @@ Open Vault Settings and inspect the `Local Node Diagnostics` card.
    status, and reason codes, plus a planned response kind/status/reason. It must
    not include raw credentials, cookies, authorization header values, vault
    roots, filesystem paths, source document bodies, verifier hashes, or salts. It
-   must report enforced `false`, enforcement inactive, protected mode
-   non-operational, and network safety `false`.
-16. Expected result: protected-mode startup gating renders as diagnostic-only:
-   protected mode may start is `no`, enforcement is inactive, credential
-   verification is inactive, and network safety is `no`.
-17. Expected result: protected-mode readiness renders as diagnostic-only: ready
-   to enforce is `no`, protected mode operational is `no`, enforcement active is
-   `no`, network safety is `no`, blocker count is nonzero, and any displayed
-   blockers are stable codes rather than vault roots, filesystem paths,
-   credentials, cookies, verifier hashes, salts, or source document content.
-   Reduced anonymous status planning may show as planning-only, but it is not
-   mounted or enforced. Stronger-confirmation planning may also show as
-   planning-only, but it does not create confirmation tokens or reject requests.
-   Audit requirement planning may show as planning-only, but it does not write
-   audit logs or reject requests. Browser request guard planning may show as
-   planning-only, but it does not enforce origin or CSRF checks.
-   Credential/session lifecycle planning may show as planning-only, but it does
-   not create credentials, sessions, tokens, cookies, login, or pairing flows.
+   must report whether dry-run enforcement is active and must keep network
+   safety `false`.
+16. Expected result: protected-mode startup and readiness diagnostics render
+   stable blocker codes when readiness is incomplete. Displayed blockers must
+   not include vault roots, filesystem paths, credentials, cookies, verifier
+   hashes, salts, or source document content.
+17. Expected result: in protected mode, anonymous `GET /api/node/status` and
+   `GET /api/health` return reduced diagnostics. Authorized status with a valid
+   bearer token may return full diagnostics and safe credential lifecycle
+   posture only.
 18. Expected result: unsupported V1 capabilities are visible as disabled:
-   authentication, remote nodes, sync, AI/vector, database support, and
+   browser login, browser sessions, live CSRF-protected browser auth, frontend
+   token storage, remote nodes, sync, AI/vector, database support, and
    migrations.
 19. Expected result: the diagnostics card does not contain controls to enable
    auth, sync, AI/vector features, database support, migrations, federation,
@@ -239,9 +236,10 @@ to a LAN-facing address.
    ```
 
 3. Open Vault Settings and inspect Local Node Diagnostics.
-4. Expected result: a prominent no-auth warning is shown.
-5. Expected result: authentication posture still shows disabled auth, no
-   enforcement, and protected mode unavailable.
+4. Expected result: a prominent warning is shown.
+5. Expected result: if auth mode is disabled, authentication posture still shows
+   disabled auth and no enforcement. If auth mode is protected, the UI must not
+   describe the non-local bind as LAN-safe or internet-safe.
 6. Expected result: no UI controls claim that protected mode, LAN-safe mode,
    reverse-proxy safety, or internet exposure is available.
 7. Expected result: the card does not describe this as safe for LAN, internet,
@@ -251,6 +249,72 @@ to a LAN-facing address.
    ```bash
    npm run backend:dev:server
    ```
+
+### Protected Mode Operator Checklist
+
+Use [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
+the copy-pasteable commands. This checklist is a manual acceptance summary for
+that workflow.
+
+Default disabled mode:
+
+- Start with default config.
+- Confirm existing UI/API behavior still works.
+- Confirm `/api/node/status` reports disabled auth posture.
+
+Protected mode before bootstrap:
+
+- Start with `auth.mode = "protected"` and valid auth/audit stores.
+- Confirm anonymous `/api/node/status` returns reduced status.
+- Confirm protected vault/file routes deny anonymous access.
+- Confirm protected mode does not silently downgrade to disabled mode.
+
+Bootstrap:
+
+- Run localhost bootstrap.
+- Confirm the raw bearer token appears once.
+- Confirm repeating bootstrap is denied once an active credential exists.
+- Confirm bootstrap is localhost-only.
+
+Authorized operation:
+
+- Use the token to call `/api/node/status` and confirm full diagnostics.
+- Use the token to call a protected read endpoint.
+- Use the token plus `x-arepo-confirmation: confirm` to create a second
+  credential.
+- List credentials and confirm no raw token, token hash, salt, or verifier
+  internals appear.
+
+Rotation:
+
+- Rotate a credential.
+- Confirm the new token appears once.
+- Confirm the old token no longer works.
+- Confirm the new token works.
+
+Revocation:
+
+- Revoke a credential.
+- Confirm the revoked token no longer works.
+- Confirm listing shows safe revoked status/metadata.
+
+Sanitization:
+
+- Confirm auth failure responses do not include bearer token material.
+- Confirm audit records do not include bearer token material, authorization
+  headers, cookies, hashes, salts, confirmation header values, or verifier
+  internals.
+- Confirm reduced anonymous status does not expose credential lifecycle details
+  beyond intentionally safe fields.
+
+Remaining limitations:
+
+- No browser login.
+- No browser sessions.
+- No live CSRF enforcement path.
+- No frontend token storage.
+- No full credential-management UI.
+- Protected mode does not make LAN, reverse-proxy, or internet exposure safe.
 
 ## 5. First-Run Empty State
 
@@ -727,8 +791,9 @@ Confirm the following throughout local-mode acceptance:
 - Sync remains external through tools such as Syncthing.
 - Version history remains external through Git.
 - Backups remain external through Borg, Restic, or Kopia.
-- The local backend has no auth yet and must not be exposed to a LAN or the
-  internet.
+- Disabled mode is the default local compatibility mode. Protected mode enforces
+  local bearer-token authorization when explicitly configured, but it still must
+  not be treated as LAN, reverse-proxy, or internet safe.
 - Vite dev frontend port overrides continue to use the local `/api` proxy.
 - If the frontend is served without the Vite dev proxy, `AREPO_ALLOWED_ORIGINS`
   must include the new frontend origin; wildcard CORS is not acceptable.
@@ -736,9 +801,10 @@ Confirm the following throughout local-mode acceptance:
   that can be enabled.
 - Index filters are read-only views over the generated machine index and do not
   modify source Markdown files.
-- No UI or API flow in this checklist enables auth, sync, AI/vector features,
-  database support, migrations, federation, remote node registration, reverse
-  proxy setup, or LAN exposure.
+- No UI flow in this checklist enables browser login, browser sessions,
+  frontend token storage, sync, AI/vector features, database support,
+  migrations, federation, remote node registration, reverse proxy setup, or LAN
+  exposure.
 
 ## 20. Storage Reporting
 

@@ -1,14 +1,20 @@
 # Browser Session Security Design
 
-This is a Phase 4 design note for future protected mode. AREPO does not
-implement browser sessions, cookies, CSRF middleware, origin enforcement, token
-enforcement, login, pairing, or auth middleware yet. The V1 backend remains
-unauthenticated and must not be exposed to untrusted networks.
+This is a Phase 4 design note for future browser-session protected mode. AREPO
+now has local bearer-token protected-mode enforcement for API/operator
+workflows, documented in
+[Protected Mode Operator Workflow](protected-mode-operator-workflow.md). AREPO
+does not implement browser sessions, cookies, live CSRF-protected browser
+authentication, browser login, pairing UI, or frontend token storage. Protected
+mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
 
 ## Current V1 Posture
 
 - The backend binds to `127.0.0.1` by default.
-- There is no authentication and no session model.
+- Disabled auth remains the default compatibility mode.
+- `auth.mode = "protected"` enforces local bearer-token authorization for
+  backend API/operator requests.
+- There is no browser session model.
 - CORS is a browser-origin filter, not authentication.
 - The existing allowed CORS origins only control which browser origins may read
   responses; they do not identify a trusted user, device, or node.

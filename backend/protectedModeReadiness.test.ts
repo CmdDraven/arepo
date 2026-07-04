@@ -24,8 +24,8 @@ const requestedProtectedAuth: AuthPosture = {
   ...disabledAuth,
   requestedMode: "protected",
   protectedModeRequested: true,
-  warning: "Protected mode was requested but is not implemented.",
-  error: "Protected mode unavailable.",
+  warning: "Protected mode was requested but auth.mode is disabled.",
+  error: "Protected mode unavailable while auth.mode is disabled.",
 };
 
 const startup: ProtectedModeStartupAssessment = {

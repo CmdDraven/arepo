@@ -32,35 +32,34 @@ It does not own sync, backup, version history, or source-file custody.
 ## Phase 3: Single-Node Self-Host Readiness
 
 - Keep the default backend bind address at `127.0.0.1`.
-- Require explicit configuration for non-local binding and print a no-auth
-  warning when enabled.
+- Require explicit configuration for non-local binding and print a warning when
+  enabled.
 - Document safe CORS configuration for alternate frontend origins.
 - Improve headless startup diagnostics for malformed config, inaccessible vault
   roots, invalid ports, and permission problems.
-- Keep reverse proxy or LAN exposure unsupported for untrusted networks until
-  authentication exists.
+- Keep reverse proxy or LAN exposure unsupported for untrusted networks.
 
 ## Phase 4: Node Security Checkpoint
 
-Status: in progress: design plus inert backend scaffolding and status-only
-request-policy plumbing. Protected mode is not implemented. See
-[docs/node-security-checkpoint.md](node-security-checkpoint.md).
+Status: in progress. Local bearer-token protected mode now enforces route
+authorization for API/operator workflows, with credential bootstrap, create,
+list, revoke, rotate, reduced anonymous status, and sanitized audit records. See
+[docs/node-security-checkpoint.md](node-security-checkpoint.md) and
+[docs/protected-mode-operator-workflow.md](protected-mode-operator-workflow.md).
 
 Before true remote nodes, design authentication and trust boundaries. The design
 must cover local-only mode, one self-hosted node, a future hub UI, remote node
 registration, candidate token or mTLS approaches, vault-level permissions,
 audit/event logging, and revocation.
 
-Current Phase 4 scaffolding reports auth posture and status-only request-policy
-readiness, and defines type-only or pure planning helpers for route permissions,
-dry-run authorization, credential storage boundaries, audit events, revocation
-planning, and browser security policy. These helpers do not reject requests,
-accept credentials, or enforce authentication or authorization.
+Current Phase 4 implementation reports auth posture and readiness, enforces
+bearer-token authorization in protected mode, and keeps browser-session, CSRF,
+frontend token storage, remote-node, and federation work deferred.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
-network presence as trust. Phase 4 has not completed authentication, token
-enforcement, LAN-safe deployment, remote node registration, sync, federation,
-or protected-mode self-hosting.
+network presence as trust. Phase 4 has not completed browser login, browser
+sessions, CSRF-protected browser auth, LAN-safe deployment, remote node
+registration, sync, federation, or protected-mode self-hosting.
 
 ## Phase 5: Mapping Improvements
 

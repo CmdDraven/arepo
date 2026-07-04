@@ -278,7 +278,7 @@ function csrfTokenPresent(headers: RequestLike["headers"]): boolean {
 }
 
 function strongerConfirmationPresent(headers: RequestLike["headers"]): boolean {
-  return Boolean(headerValue(headers, "x-arepo-confirmation"));
+  return headerValue(headers, "x-arepo-confirmation") === "confirm";
 }
 
 function isLocalRequest(request: RequestLike): boolean {

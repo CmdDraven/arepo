@@ -1,9 +1,14 @@
 # Credential Storage Design
 
-This is a Phase 4 design note for future protected mode. AREPO does not
-implement credential storage, token generation, sessions, auth middleware, or
-auth enforcement yet. The V1 backend remains unauthenticated and must not be
-exposed to untrusted networks.
+This is a Phase 4 design note for protected-mode credential storage. AREPO now
+implements local bearer-token credential storage, token generation,
+verification, revocation, rotation, protected request enforcement, and sanitized
+audit records for API/operator workflows. Browser sessions, browser login,
+pairing UI, frontend token storage, and live CSRF-protected browser
+authentication are still not implemented. See
+[Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for the
+current local operator flow. Protected mode must not be treated as safe for LAN,
+reverse-proxy, or internet exposure.
 
 ## Storage Boundaries
 
@@ -27,9 +32,8 @@ content, editable node posture, generated app data, and secret material.
 
 ## Proposed App Data Layout
 
-The exact app-data root is still controlled by existing AREPO app-data
-resolution. A future protected-mode implementation should keep auth material
-under a dedicated subdirectory:
+The exact app-data root is controlled by existing AREPO app-data resolution.
+Protected mode keeps auth material under a dedicated subdirectory:
 
 ```text
 <appDataDir>/

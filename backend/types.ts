@@ -535,4 +535,4 @@ export const DEFAULT_AUTH_CONFIG: AuthConfig = {
 };
 
 export const PROTECTED_MODE_UNAVAILABLE_REASON =
-  "Protected mode was requested, but protected-mode authentication is not implemented yet";
+  "Protected mode was requested, but auth.mode remains disabled; set auth.mode to protected for local bearer-token enforcement";

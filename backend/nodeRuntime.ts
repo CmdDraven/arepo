@@ -60,7 +60,7 @@ export function isLocalBindHost(host: string): boolean {
 export function nonLocalBindWarning(host: string): string {
   return (
     `WARNING: AREPO backend binding to non-local address "${host}". ` +
-    "V1 has no authentication; do not expose this server to untrusted networks."
+    "Non-local exposure is unsafe; disabled mode has no authentication and protected mode is not LAN, reverse-proxy, or internet safe."
   );
 }
 

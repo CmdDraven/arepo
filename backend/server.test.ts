@@ -326,7 +326,7 @@ test("node status endpoint reports non-local bind warning", async () => {
     const status = response.body as LocalNodeRuntimeStatus;
     assert.equal(status.runtime.host, "0.0.0.0");
     assert.equal(status.runtime.localOnlyMode, false);
-    assert.match(status.runtime.startupWarnings[0] ?? "", /no authentication/);
+    assert.match(status.runtime.startupWarnings[0] ?? "", /Non-local exposure is unsafe/);
     assert.equal(status.auth.mode, "disabled");
     assert.equal(status.auth.requestedMode, "disabled");
     assert.equal(status.auth.enabled, false);
@@ -662,6 +662,21 @@ test("protected credential create revoke and audit responses remain sanitized", 
   );
   assert.equal(noConfirmation.status, 428);
 
+  const wrongConfirmation = await routeRequest(
+    request(
+      "POST",
+      "/api/node/credentials",
+      { label: "Created token", nodePermissions: ["manageNode"] },
+      {
+        authorization: `Bearer ${protectedBearerToken}`,
+        "x-arepo-confirmation": "not-confirm",
+      },
+    ),
+    cwd,
+  );
+  assert.equal(wrongConfirmation.status, 428);
+  assert.equal(JSON.stringify(wrongConfirmation.body).includes("not-confirm"), false);
+
   const created = await routeRequest(
     request(
       "POST",
@@ -669,7 +684,7 @@ test("protected credential create revoke and audit responses remain sanitized", 
       { label: "Created token", nodePermissions: ["manageNode"] },
       {
         authorization: `Bearer ${protectedBearerToken}`,
-        "x-arepo-confirmation": "authChange",
+        "x-arepo-confirmation": "confirm",
       },
     ),
     cwd,
@@ -712,6 +727,21 @@ test("protected credential create revoke and audit responses remain sanitized", 
   );
   assert.equal(revokeWithoutConfirmation.status, 428);
 
+  const revokeWithWrongConfirmation = await routeRequest(
+    request(
+      "POST",
+      `/api/node/credentials/${encodeURIComponent(credentialId)}/revoke`,
+      {},
+      {
+        authorization: `Bearer ${protectedBearerToken}`,
+        "x-arepo-confirmation": "not-confirm",
+      },
+    ),
+    cwd,
+  );
+  assert.equal(revokeWithWrongConfirmation.status, 428);
+  assert.equal(JSON.stringify(revokeWithWrongConfirmation.body).includes("not-confirm"), false);
+
   const revoked = await routeRequest(
     request(
       "POST",
@@ -719,7 +749,7 @@ test("protected credential create revoke and audit responses remain sanitized", 
       { reason: "test revocation" },
       {
         authorization: `Bearer ${protectedBearerToken}`,
-        "x-arepo-confirmation": "tokenRevocation",
+        "x-arepo-confirmation": "confirm",
       },
     ),
     cwd,
@@ -734,7 +764,7 @@ test("protected credential create revoke and audit responses remain sanitized", 
       {},
       {
         authorization: `Bearer ${protectedBearerToken}`,
-        "x-arepo-confirmation": "tokenRevocation",
+        "x-arepo-confirmation": "confirm",
       },
     ),
     cwd,
@@ -757,6 +787,7 @@ test("protected credential create revoke and audit responses remain sanitized", 
   assert.equal(serializedAudit.includes(protectedBearerToken), false);
   assert.equal(serializedAudit.includes("verifierHash"), false);
   assert.equal(serializedAudit.includes("salt"), false);
+  assert.equal(serializedAudit.includes("not-confirm"), false);
 });
 
 test("protected credential rotation revokes old token and returns replacement once", async () => {
@@ -766,6 +797,21 @@ test("protected credential rotation revokes old token and returns replacement on
   await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode", "manageAuth"] });
 
   const bootstrapCredentialId = "server-protected-credential";
+  const wrongConfirmation = await routeRequest(
+    request(
+      "POST",
+      `/api/node/credentials/${bootstrapCredentialId}/rotate`,
+      { label: "Rotated operator" },
+      {
+        authorization: `Bearer ${protectedBearerToken}`,
+        "x-arepo-confirmation": "not-confirm",
+      },
+    ),
+    cwd,
+  );
+  assert.equal(wrongConfirmation.status, 428);
+  assert.equal(JSON.stringify(wrongConfirmation.body).includes("not-confirm"), false);
+
   const rotated = await routeRequest(
     request(
       "POST",
@@ -773,7 +819,7 @@ test("protected credential rotation revokes old token and returns replacement on
       { label: "Rotated operator" },
       {
         authorization: `Bearer ${protectedBearerToken}`,
-        "x-arepo-confirmation": "authChange",
+        "x-arepo-confirmation": "confirm",
       },
     ),
     cwd,

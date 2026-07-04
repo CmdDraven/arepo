@@ -1,25 +1,48 @@
 # Node Security Checkpoint
 
-Phase 4 is a design checkpoint before AREPO implements authentication, remote
-nodes, federation, sync, or LAN-safe deployment.
+Phase 4 is the security checkpoint for AREPO protected mode before remote nodes,
+federation, sync, or any LAN-safe deployment claim.
 
 This document is not an implementation plan for exposing the current backend.
-AREPO V1 remains a local-only, unauthenticated Node backend. It binds to
-`127.0.0.1` by default and must not be exposed to untrusted networks.
+AREPO V1 remains a local-first Node backend. It binds to `127.0.0.1` by
+default, disabled auth remains the compatibility mode, and protected mode now
+enforces local bearer-token authorization when explicitly configured. Protected
+mode still must not be treated as safe for LAN, reverse-proxy, or internet
+exposure.
 
 ## Current Phase 4 Implementation Status
 
-Phase 4 is in progress. AREPO now has security design documents, inert backend
-scaffolding, status-only request-policy plumbing, optional observation-only
-dry-run request planning, and optional dry-run audit append for future protected
-mode, but protected mode is not implemented.
+Phase 4 is in progress. AREPO now has an operational protected-mode path for
+local bearer-token API/operator use:
 
-Implemented as inert, status-only, or observation-only:
+- `auth.mode = "disabled"` remains the default local compatibility path.
+- `auth.mode = "protected"` verifies bearer tokens on live requests, enforces
+  route permissions, fails closed when readiness is incomplete, returns reduced
+  anonymous `/api/node/status` and `/api/health`, and appends sanitized audit
+  records.
+- Credential lifecycle APIs exist for localhost-only bootstrap, credential
+  listing, creation, revocation, and rotation.
+- Raw bearer tokens are returned only once during bootstrap, create, or rotate.
+- `x-arepo-confirmation: confirm` is required for protected credential
+  management routes that need stronger confirmation.
+- Browser login, browser sessions, live CSRF-protected browser auth, frontend
+  token storage, remote node registration, federation, and LAN/reverse-proxy
+  safety remain out of scope.
+
+See [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
+the current local operator commands and manual acceptance flow.
+
+The remaining sections preserve design rationale and historical checkpoint
+language. Where older text says a component is future/planning-only, prefer the
+current implementation status above and the operator workflow for operational
+protected-mode behavior.
+
+Implemented components include:
 
 - Auth posture/config/status reporting: omitted auth config defaults to
-  `auth.mode = "disabled"`. If config requests protected mode,
-  `/api/node/status` reports requested protected mode as unavailable while
-  operational auth remains disabled with no enforcement.
+  `auth.mode = "disabled"`. If `auth.mode = "protected"`, status reports
+  protected-mode readiness, reduced anonymous diagnostics, and safe credential
+  lifecycle posture for authorized callers.
 - `backend/routePermissions.ts`: type-only future route permission inventory.
 - `backend/authPlanner.ts`: pure dry-run authorization planner for hypothetical
   credentials and route policies.
@@ -38,37 +61,33 @@ Implemented as inert, status-only, or observation-only:
 - `backend/credentialVerificationAudit.ts`: non-HTTP audit integration helpers
   that convert verification results into sanitized auth audit events and append
   them to the existing JSONL audit log when called explicitly.
-- `backend/httpCredentialAdapter.ts`: unmounted request-shaped credential
-  extraction adapter for future protected mode. It can parse explicit test
-  inputs for bearer headers or browser-session cookies, call the non-HTTP
-  verification service, and return sanitized audit intent.
-- `backend/requestAuthorizationPlanner.ts`: unmounted route-aware protected-mode
-  planner that combines route policy lookup, HTTP credential adapter output,
-  dry-run authorization planning, browser security planning, and confirmation
-  requirements into a non-enforcing decision.
+- `backend/httpCredentialAdapter.ts`: request-shaped credential extraction
+  adapter for bearer headers. Browser-session cookies are not accepted for live
+  auth in this slice.
+- `backend/requestAuthorizationPlanner.ts`: route-aware protected-mode planner
+  that combines route policy lookup, HTTP credential adapter output, dry-run
+  authorization planning, browser security planning, and confirmation
+  requirements into enforcement decisions.
 - `backend/protectedRequestPipeline.ts`: protected request pipeline that
-  composes auth store loading, HTTP credential extraction, token/session
-  verification, route-aware authorization planning, browser policy planning,
-  and optional sanitized audit writes. It is non-enforcing and is only called by
-  tests or the explicitly configured dry-run observer.
-- `backend/protectedResponsePlanner.ts`: unmounted future response planner that
-  maps protected request pipeline decisions to sanitized HTTP-style response
-  plans such as reduced anonymous response, unauthenticated, unauthorized,
-  CSRF/origin rejection, stronger-confirmation required, unknown route, and
-  protected-mode-not-ready. It is not imported by active request handling and
-  reports `enforcementActive: false` and `networkExposureSafe: false`.
+  composes auth store loading, HTTP credential extraction, token verification,
+  route-aware authorization planning, browser policy planning, and sanitized
+  audit writes.
+- `backend/protectedResponsePlanner.ts`: response planner that maps protected
+  request pipeline decisions to sanitized HTTP-style responses such as reduced
+  anonymous response, unauthenticated, unauthorized, stronger-confirmation
+  required, unknown route, and protected-mode-not-ready.
 - `backend/reducedAnonymousStatusPlanner.ts`: unmounted future reduced
   anonymous health/status planner. It defines sanitized liveness/auth-required
   response shapes for protected mode without vaults, paths, origins, dry-run
   counters, credential identifiers, route inventory, generated index data, or
   storage summaries. It is planning scaffold only; current V1 endpoints still
   return their existing local diagnostics.
-- `backend/strongerConfirmationPlanner.ts`: unmounted future
-  stronger-confirmation planner. It identifies delete, conflict overwrite,
+- `backend/strongerConfirmationPlanner.ts`: stronger-confirmation planner. It
+  identifies delete, conflict overwrite,
   vault lifecycle, auth management, credential revocation, node-secret rotation,
   emergency reset, and remote-node lifecycle operations that will require an
-  extra confirmation step in protected mode. It does not create confirmation
-  tokens and is not imported by active request handling.
+  extra confirmation step in protected mode. Live protected credential routes
+  currently accept the explicit operator header `x-arepo-confirmation: confirm`.
 - `backend/auditRequirementPlanner.ts`: unmounted future audit requirement
   planner. It classifies auth attempts, credential/session/token lifecycle,
   vault lifecycle, source mutations, rejected protected requests, emergency
@@ -439,8 +458,11 @@ Required before non-local safety claims:
 
 - AREPO V1 is a local-node-only app.
 - The backend binds to `127.0.0.1` by default.
-- There is no authentication, no session model, no token enforcement, no users,
-  and no remote-node registration.
+- Disabled auth remains the default compatibility mode.
+- Protected mode enforces local bearer-token authorization for API/operator
+  workflows when explicitly configured.
+- There is no browser session model, hosted user system, browser login,
+  frontend token storage, or remote-node registration.
 - The backend reads and writes only configured vault roots.
 - Markdown files remain the source of truth.
 - Generated machine indexes, graph inputs, storage summaries, and cache files
@@ -493,10 +515,10 @@ they can reduce browser, LAN, proxy, token replay, and remote-node risks.
 
 ### Local-Only Single-User Mode
 
-Implemented today. The backend binds to localhost, has no authentication, and
-serves one local user. This mode may keep `auth.mode = "disabled"` in a future
-config because the network boundary is localhost-only. It must continue to warn
-that non-local exposure is unsafe.
+Implemented today. The backend binds to localhost and serves one local user.
+This mode keeps `auth.mode = "disabled"` by default because the compatibility
+boundary is localhost-only. It must continue to warn that non-local exposure is
+unsafe.
 
 ### Single Self-Hosted Node For Trusted Devices
 
@@ -582,13 +604,13 @@ hosted user-management system.
 
 ## Protected-Mode Route Authorization Map
 
-This route map is design only. AREPO does not enforce these checks yet. V1 still
-has no authentication and must not be exposed to untrusted networks.
+This route map is now the enforcement source for protected mode. V1 still must
+not be exposed to untrusted networks.
 
-Future protected mode should evaluate authorization after authentication and
-after CORS/origin handling. CORS must not replace these checks. A request from an
-allowed browser origin still needs a valid credential and the required node,
-vault, and operation permission.
+Protected mode evaluates authorization after bearer credential verification.
+CORS must not replace these checks. A request from an allowed browser origin
+still needs a valid credential and the required node, vault, and operation
+permission.
 
 Planned permission vocabulary:
 
@@ -622,31 +644,32 @@ mutations require `writeContent`, and deletes require `deleteFiles`.
 protected-mode HTTP responses. It does not reject active requests and is not
 imported by active route handlers. The planned response categories are:
 
-- `allow`: future protected handler may continue after authentication,
-  authorization, browser policy, revocation, and confirmation checks pass.
-- `reduced-anonymous`: future reduced health/status response with no vault
+- `allow`: protected handler may continue after authentication, authorization,
+  bearer revocation, and confirmation checks pass.
+- `reduced-anonymous`: reduced health/status response with no vault
   roots, filesystem paths, credential IDs, session IDs, source content, or
   detailed runtime inventory.
-- `unauthenticated`: future 401-style response for missing, malformed,
-  not-found, expired, or revoked credential material.
-- `unauthorized`: future 403-style response for authenticated credentials that
-  lack route, node, or vault permissions.
+- `unauthenticated`: 401-style response for missing, malformed, not-found,
+  expired, or revoked bearer credential material.
+- `unauthorized`: 403-style response for authenticated credentials that lack
+  route, node, or vault permissions.
 - `csrf-required` and `origin-rejected`: future browser-session rejection plans
   for missing/failed CSRF or untrusted/missing origin where origin is required.
-- `stronger-confirmation-required`: future 409/428-style response for delete,
-  conflict overwrite, vault registration/removal, auth changes, and token
-  revocation when normal permission is present but confirmation is still needed.
-- `not-found-or-unknown-route`: future fail-closed response when a route is not
-  covered by the protected route inventory.
-- `service-unavailable-or-not-ready`: future 503-style response for
-  protected-mode startup/store readiness failures.
+- `stronger-confirmation-required`: 428-style response for confirmation-gated
+  protected routes when normal permission is present but explicit operator
+  confirmation is still needed.
+- `not-found-or-unknown-route`: fail-closed response when a route is not covered
+  by the protected route inventory.
+- `service-unavailable-or-not-ready`: 503-style response for protected-mode
+  startup/store readiness failures.
 
-Every current response plan is sanitized and includes `enforcementActive:
-false`, `protectedModeOperational: false` where applicable, and
-`networkExposureSafe: false`. Plans must not include raw bearer tokens, session
-secrets, authorization header values, cookies, verifier hashes/salts, vault
-roots, filesystem paths, source document bodies, credential IDs, session IDs,
-token IDs, or audit event IDs.
+Protected-mode responses are sanitized and keep `networkExposureSafe: false`.
+Live protected-mode responses may report active enforcement where appropriate;
+dry-run and planning responses must keep their observation-only posture clear.
+Responses must not include raw bearer tokens, session secrets, authorization
+header values, cookies, verifier hashes/salts, vault roots, filesystem paths,
+source document bodies, credential IDs, session IDs, token IDs, or audit event
+IDs.
 
 | Current endpoint | Current behavior | Future protected-mode requirement | Notes |
 | --- | --- | --- | --- |
@@ -686,9 +709,10 @@ future protected backend may expose:
   details, no filesystem paths, no configured CORS origins, and no credential
   inventory.
 
-The current unauthenticated full status is acceptable only in local-only V1
-because the backend binds to localhost by default and still warns against
-non-local exposure.
+Full status without credentials is acceptable only in disabled local
+compatibility mode because the backend binds to localhost by default and still
+warns against non-local exposure. Protected mode returns reduced anonymous
+status unless a valid authorized bearer token is supplied.
 
 ### Least-Privilege Credential Defaults
 
@@ -830,8 +854,8 @@ implemented and does not make non-local exposure safe.
   future node-to-node communication.
 
 See [Browser Session Security Design](browser-session-security-design.md) for
-the future CSRF, origin, cookie-session, and header-token request policy. That
-design is not implemented and does not make non-local exposure safe.
+the future CSRF, origin, and cookie-session request policy. Browser-session
+auth is not implemented and does not make non-local exposure safe.
 
 ## Explicit Non-Goals For First Auth Implementation
 

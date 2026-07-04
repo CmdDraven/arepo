@@ -712,7 +712,7 @@ test("non-local bind remains unsafe when dry-run is mounted", async () => {
 
     assert.equal(response.status, 200);
     assert.equal(status.runtime.localOnlyMode, false);
-    assert.match(status.runtime.startupWarnings[0] ?? "", /no authentication/);
+    assert.match(status.runtime.startupWarnings[0] ?? "", /Non-local exposure is unsafe/);
     assert.equal(status.requestPolicy.dryRunMiddlewareMounted, true);
     assert.equal(status.requestPolicy.dryRunAuditConfigured, true);
     assert.equal(status.requestPolicy.enforcementActive, false);
