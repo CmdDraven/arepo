@@ -29,6 +29,9 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
 - A dedicated inactive-boundary regression suite asserts that browser-auth
   primitives remain unwired from live server behavior until a future slice
   deliberately enables the complete browser-auth path.
+- An inert browser-auth lifecycle coordinator exists for planning and unit tests
+  only. It composes pairing-code, session, CSRF token, cookie policy, and audit
+  primitives internally, but is not mounted into HTTP routes or authorization.
 - The frontend does not store bearer tokens.
 - Full authorized status reports `browserSessionAuth.status` as
   `planning-only`; reduced anonymous status does not expose session details.
@@ -565,6 +568,11 @@ The current scaffold remains inert for browser sessions:
     unit-tested, inactive infrastructure until session issuance, cookie
     delivery, CSRF validation, route middleware, and audit wiring are designed
     and tested together.
+13. Keep the browser-auth lifecycle coordinator as unit-tested, unmounted
+    infrastructure. It may validate future lifecycle semantics internally, but
+    live HTTP routes must continue returning inactive responses until browser
+    session issuance, cookie delivery, CSRF validation, audit, revocation,
+    frontend handling, and authorization are implemented together.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

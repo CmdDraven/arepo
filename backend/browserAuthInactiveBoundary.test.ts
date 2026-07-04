@@ -39,6 +39,7 @@ const browserAuthPrimitiveImportSpecifiers = [
   "./browserAuthAuditEvents.js",
   "./browserCookiePolicy.js",
   "./browserHeaderSanitizer.js",
+  "./browserAuthLifecycleCoordinator.js",
 ] as const;
 
 const browserAuthPrimitiveFactories = [
@@ -52,6 +53,7 @@ const browserAuthPrimitiveFactories = [
   "createInMemoryBrowserAuthAuditSink",
   "plannedBrowserSessionCookiePolicy",
   "sanitizeBrowserAuthHeaders",
+  "createInMemoryBrowserAuthLifecycleCoordinator",
 ] as const;
 
 const secretSamples = [
@@ -349,6 +351,14 @@ test("full protected status reports browser-auth primitives as inactive and unwi
   assert.equal(browserSessionAuth.sessionRoutes, "stubbed");
   assert.equal(browserSessionAuth.pairingRoutes, "stubbed");
   assert.equal(browserSessionAuth.csrfEndpoint, "stubbed");
+  assert.equal(browserSessionAuth.lifecycleCoordinator.status, "inactive");
+  assert.equal(browserSessionAuth.lifecycleCoordinator.mounted, false);
+  assert.equal(browserSessionAuth.lifecycleCoordinator.wiredIntoAuthorization, false);
+  assert.equal(browserSessionAuth.lifecycleCoordinator.wiredIntoRoutes, false);
+  assert.equal(browserSessionAuth.lifecycleCoordinator.issuesLiveCookies, false);
+  assert.equal(browserSessionAuth.lifecycleCoordinator.acceptsCookies, false);
+  assert.equal(browserSessionAuth.lifecycleCoordinator.enablesBrowserSessions, false);
+  assert.equal(browserSessionAuth.lifecycleCoordinator.usesSanitizedAuditEvents, true);
   assert.equal(browserSessionAuth.pairing.codeStore.status, "inactive");
   assert.equal(browserSessionAuth.pairing.codeStore.wiredIntoAuthorization, false);
   assert.equal(browserSessionAuth.pairing.codeStore.wiredIntoRoutes, false);

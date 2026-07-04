@@ -15,6 +15,15 @@ test("browser session auth planner reports planning-only inactive live state", (
   assert.equal(plan.csrfEndpoint, "stubbed");
   assert.equal(plan.frontendTokenStorage, false);
   assert.equal(plan.networkExposureSafe, false);
+  assert.equal(plan.lifecycleCoordinator.status, "inactive");
+  assert.equal(plan.lifecycleCoordinator.implementation, "in-memory-test-primitive");
+  assert.equal(plan.lifecycleCoordinator.mounted, false);
+  assert.equal(plan.lifecycleCoordinator.wiredIntoAuthorization, false);
+  assert.equal(plan.lifecycleCoordinator.wiredIntoRoutes, false);
+  assert.equal(plan.lifecycleCoordinator.issuesLiveCookies, false);
+  assert.equal(plan.lifecycleCoordinator.acceptsCookies, false);
+  assert.equal(plan.lifecycleCoordinator.enablesBrowserSessions, false);
+  assert.equal(plan.lifecycleCoordinator.usesSanitizedAuditEvents, true);
   assert.equal(plan.readiness.ready, false);
   assert.ok(plan.readiness.blockers.includes("browser-session-auth-planning-only"));
   assert.ok(plan.readiness.blockers.includes("browser-session-cookies-not-accepted"));

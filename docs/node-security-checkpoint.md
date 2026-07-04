@@ -39,6 +39,10 @@ local bearer-token API/operator use:
   pairing/session/CSRF/cookie/audit primitives remain planning/test
   infrastructure only, that live routes do not emit `Set-Cookie`, and that
   cookies or CSRF-style headers do not authenticate protected routes.
+- An inert browser-auth lifecycle coordinator exists for unit tests only. It
+  composes pairing-code, session, CSRF token, cookie policy, and audit
+  primitives internally, but is not mounted into live routes, credential
+  adapters, middleware, protected-mode enforcement, or request authorization.
 
 See [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
 the current local operator commands and manual acceptance flow.
@@ -147,6 +151,11 @@ Implemented components include:
   safe diagnostics, and redact `Cookie`, `Authorization`, `Set-Cookie`, and
   CSRF-style headers for future audit/diagnostic use, but do not issue cookies,
   accept cookies as credentials, or wire into live authorization or routes.
+- `backend/browserAuthLifecycleCoordinator.ts`: inert in-memory browser-auth
+  lifecycle coordinator. It composes pairing-code, session, CSRF token, cookie
+  policy, and audit primitives for future design validation, but is unmounted
+  and unwired from live authorization, credential adapters, route middleware,
+  and HTTP routes.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

@@ -257,6 +257,18 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.csrfEndpoint, "stubbed");
   assert.equal(status.browserSessionAuth.frontendTokenStorage, false);
   assert.equal(status.browserSessionAuth.networkExposureSafe, false);
+  assert.equal(status.browserSessionAuth.lifecycleCoordinator.status, "inactive");
+  assert.equal(
+    status.browserSessionAuth.lifecycleCoordinator.implementation,
+    "in-memory-test-primitive",
+  );
+  assert.equal(status.browserSessionAuth.lifecycleCoordinator.mounted, false);
+  assert.equal(status.browserSessionAuth.lifecycleCoordinator.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.lifecycleCoordinator.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.lifecycleCoordinator.issuesLiveCookies, false);
+  assert.equal(status.browserSessionAuth.lifecycleCoordinator.acceptsCookies, false);
+  assert.equal(status.browserSessionAuth.lifecycleCoordinator.enablesBrowserSessions, false);
+  assert.equal(status.browserSessionAuth.lifecycleCoordinator.usesSanitizedAuditEvents, true);
   assert.equal(status.browserSessionAuth.pairing.enabled, false);
   assert.equal(status.browserSessionAuth.pairing.issueCode, "inactive");
   assert.equal(status.browserSessionAuth.pairing.consumeCode, "inactive");
@@ -601,6 +613,18 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.browserSessionAuth.pairingRoutes, "stubbed");
   assert.equal(full.browserSessionAuth.csrfEndpoint, "stubbed");
   assert.equal(full.browserSessionAuth.frontendTokenStorage, false);
+  assert.equal(full.browserSessionAuth.lifecycleCoordinator.status, "inactive");
+  assert.equal(
+    full.browserSessionAuth.lifecycleCoordinator.implementation,
+    "in-memory-test-primitive",
+  );
+  assert.equal(full.browserSessionAuth.lifecycleCoordinator.mounted, false);
+  assert.equal(full.browserSessionAuth.lifecycleCoordinator.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.lifecycleCoordinator.wiredIntoRoutes, false);
+  assert.equal(full.browserSessionAuth.lifecycleCoordinator.issuesLiveCookies, false);
+  assert.equal(full.browserSessionAuth.lifecycleCoordinator.acceptsCookies, false);
+  assert.equal(full.browserSessionAuth.lifecycleCoordinator.enablesBrowserSessions, false);
+  assert.equal(full.browserSessionAuth.lifecycleCoordinator.usesSanitizedAuditEvents, true);
   assert.equal(full.browserSessionAuth.pairing.status, "planning-only");
   assert.equal(full.browserSessionAuth.pairing.issueCode, "inactive");
   assert.equal(full.browserSessionAuth.pairing.consumeCode, "inactive");

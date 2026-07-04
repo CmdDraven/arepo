@@ -64,10 +64,11 @@ pairing semantics tests only. Inert browser-auth audit event primitives now
 exist for future sanitized browser-auth lifecycle audit tests only. Inert
 browser cookie policy and header-sanitization primitives now exist for future
 cookie/session safety tests only, backed by an inactive-boundary regression
-suite that guards against accidental browser-auth activation. CSRF live
-enforcement, browser session issuance, cookie issuance/acceptance, pairing route
-activation, frontend token storage, remote-node, and federation work remain
-deferred.
+suite that guards against accidental browser-auth activation. An inert
+browser-auth lifecycle coordinator now composes these primitives in unit tests
+only and remains unmounted. CSRF live enforcement, browser session issuance,
+cookie issuance/acceptance, pairing route activation, frontend token storage,
+remote-node, and federation work remain deferred.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

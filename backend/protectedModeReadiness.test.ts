@@ -96,6 +96,18 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.sessionRoutes, "stubbed");
   assert.equal(readiness.browserSessionAuth.pairingRoutes, "stubbed");
   assert.equal(readiness.browserSessionAuth.csrfEndpoint, "stubbed");
+  assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.status, "inactive");
+  assert.equal(
+    readiness.browserSessionAuth.lifecycleCoordinator.implementation,
+    "in-memory-test-primitive",
+  );
+  assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.mounted, false);
+  assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.issuesLiveCookies, false);
+  assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.acceptsCookies, false);
+  assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.enablesBrowserSessions, false);
+  assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.usesSanitizedAuditEvents, true);
   assert.equal(readiness.browserSessionAuth.pairing.status, "planning-only");
   assert.equal(readiness.browserSessionAuth.pairing.issueCode, "inactive");
   assert.equal(readiness.browserSessionAuth.pairing.consumeCode, "inactive");

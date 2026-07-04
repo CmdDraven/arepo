@@ -225,6 +225,9 @@ credentials, or wire into live authorization.
 The backend test suite includes an explicit browser-auth inactive-boundary
 regression suite so these planning primitives cannot be accidentally wired into
 live routes without failing tests.
+The inert browser-auth lifecycle coordinator is also backend test
+infrastructure only; it composes future pairing/session/CSRF/cookie/audit
+semantics internally but is not mounted into HTTP routes or authorization.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

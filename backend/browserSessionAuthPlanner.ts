@@ -65,6 +65,17 @@ export function planBrowserSessionAuth(
     csrfEndpoint: "stubbed",
     frontendTokenStorage: false,
     networkExposureSafe: false,
+    lifecycleCoordinator: {
+      status: "inactive",
+      implementation: "in-memory-test-primitive",
+      mounted: false,
+      wiredIntoAuthorization: false,
+      wiredIntoRoutes: false,
+      issuesLiveCookies: false,
+      acceptsCookies: false,
+      enablesBrowserSessions: false,
+      usesSanitizedAuditEvents: true,
+    },
     cookiePolicy: {
       issuance: "inactive",
       httpOnly: "required",
