@@ -256,6 +256,13 @@ Use [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
 the copy-pasteable commands. This checklist is a manual acceptance summary for
 that workflow.
 
+Optional helper: after starting a disposable local protected-mode backend, run
+`./scripts/manual-protected-mode-check.sh` from the repository root. If the
+server already has an active credential, pass
+`AREPO_TOKEN="paste-one-time-token-here"`. The script is a curl-based local
+operator fixture; it does not test browser login, browser sessions, CSRF, or
+network exposure safety.
+
 Default disabled mode:
 
 - Start with default config.

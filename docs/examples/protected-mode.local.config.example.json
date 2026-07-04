@@ -1,0 +1,15 @@
+{
+  "node": {
+    "nodeId": "local",
+    "displayName": "Local Node",
+    "mode": "local",
+    "apiVersion": 1
+  },
+  "appDataDir": "/absolute/path/to/arepo-protected-mode-app-data",
+  "auth": {
+    "mode": "protected",
+    "dryRunRequestPolicy": false,
+    "dryRunAudit": false
+  },
+  "vaults": []
+}

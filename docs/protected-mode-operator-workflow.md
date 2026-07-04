@@ -84,6 +84,67 @@ Optional diagnostic auth config fields:
 `auth.requestedMode` may appear in older diagnostic configs. Operational
 protected mode is controlled by `auth.mode`.
 
+## Manual Acceptance Fixtures
+
+The repository includes local protected-mode fixtures for repeatable operator
+checks:
+
+- Example config:
+  `docs/examples/protected-mode.local.config.example.json`
+- Curl-based script:
+  `scripts/manual-protected-mode-check.sh`
+
+To use the config template, copy or adapt its contents into `.arepo/config.json`
+for a disposable local test workspace. Replace placeholder paths such as
+`/absolute/path/to/arepo-protected-mode-app-data` with a real app-data directory
+outside user vaults. The template contains no bearer tokens, credential records,
+verifier hashes, salts, or audit records.
+
+Start the backend with the normal local workflow:
+
+```bash
+npm run backend:dev:server
+```
+
+Then run the manual script against the local server:
+
+```bash
+./scripts/manual-protected-mode-check.sh
+```
+
+The script assumes protected mode is already running on
+`http://127.0.0.1:8734`. Override only for another localhost URL:
+
+```bash
+AREPO_BASE_URL="http://127.0.0.1:8734" ./scripts/manual-protected-mode-check.sh
+```
+
+If the server has already been bootstrapped, provide an existing local operator
+token. The script keeps it in memory and does not print it by default:
+
+```bash
+AREPO_TOKEN="paste-one-time-token-here" ./scripts/manual-protected-mode-check.sh
+```
+
+The script performs anonymous reduced status, bootstrap or supplied-token use,
+authorized full status, missing/malformed/revoked-token failures, listing,
+credential creation, wrong-confirmation denial, rotation, revocation, and
+response sanitization checks. It requires `curl` and `jq`.
+
+Audit logs are not discovered automatically. If you want the script to scan a
+known local audit file, pass it explicitly:
+
+```bash
+AREPO_AUDIT_EVENTS="/absolute/path/to/arepo-data/auth/audit/events.jsonl" \
+  AREPO_TOKEN="paste-one-time-token-here" \
+  ./scripts/manual-protected-mode-check.sh
+```
+
+The script does not reset credentials, bypass bootstrap one-time behavior,
+modify vault source files, store raw tokens on disk, test browser login, test
+browser sessions, test CSRF, or make protected mode safe for LAN,
+reverse-proxy, or internet exposure.
+
 ## Start Protected Mode
 
 From the repository root:

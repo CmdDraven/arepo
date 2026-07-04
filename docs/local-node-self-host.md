@@ -78,7 +78,9 @@ unless the user explicitly accepts that risk.
 
 For protected-mode local testing, set `auth.mode` to `"protected"` and follow
 [Protected Mode Operator Workflow](protected-mode-operator-workflow.md). Do not
-store raw bearer tokens in config or vault files.
+store raw bearer tokens in config or vault files. A disposable local template is
+available at `docs/examples/protected-mode.local.config.example.json`, and the
+curl-based manual fixture is `scripts/manual-protected-mode-check.sh`.
 
 ## What The Local Node Owns
 
