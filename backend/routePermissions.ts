@@ -18,6 +18,11 @@ export type RoutePolicyCategory =
   | "health"
   | "nodeDiagnostics"
   | "dryRunDiagnostics"
+  | "browserSessionAuth"
+  | "browserSessionLogout"
+  | "browserSessionRevocation"
+  | "browserSessionCsrf"
+  | "browserSessionPairing"
   | "credentialBootstrap"
   | "credentialListing"
   | "credentialCreation"
@@ -137,6 +142,77 @@ export const PROTECTED_ROUTE_POLICIES = [
     networkExposureSafe: false,
     notes:
       "Diagnostic-only canary for protected-request dry-run status; future protected mode should expose only reduced anonymous fields or require manageNode.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/node/auth/session",
+    category: "browserSessionAuth",
+    requiredPermissions: [],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Disabled browser-session issuance stub; it must not issue cookies, sessions, CSRF tokens, or pairing codes.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/node/auth/session/logout",
+    category: "browserSessionLogout",
+    requiredPermissions: [],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Disabled browser-session logout stub; it must not accept cookies as live credentials or mutate session state.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/node/auth/session/revoke-all",
+    category: "browserSessionRevocation",
+    requiredPermissions: [],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Disabled browser-session revoke-all stub; it reserves the future route without revoking live sessions.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/node/auth/csrf",
+    category: "browserSessionCsrf",
+    requiredPermissions: [],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Disabled CSRF endpoint stub; it must not issue CSRF tokens or imply browser-session auth is live.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/node/auth/pairing/start",
+    category: "browserSessionPairing",
+    requiredPermissions: [],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes: "Disabled pairing start stub; it must not create or return pairing codes.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/node/auth/pairing/complete",
+    category: "browserSessionPairing",
+    requiredPermissions: [],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Disabled pairing completion stub; it must not consume pairing codes or issue session cookies.",
   },
   {
     method: "POST",

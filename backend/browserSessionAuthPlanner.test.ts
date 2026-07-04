@@ -6,9 +6,13 @@ test("browser session auth planner reports planning-only inactive live state", (
   const plan = planBrowserSessionAuth({ authMode: "protected", localOnlyMode: true });
 
   assert.equal(plan.status, "planning-only");
+  assert.equal(plan.liveSessionAuth, false);
   assert.equal(plan.acceptsSessionCookies, false);
   assert.equal(plan.sessionIssuance, "inactive");
   assert.equal(plan.csrfEnforcement, "inactive");
+  assert.equal(plan.sessionRoutes, "stubbed");
+  assert.equal(plan.pairingRoutes, "stubbed");
+  assert.equal(plan.csrfEndpoint, "stubbed");
   assert.equal(plan.frontendTokenStorage, false);
   assert.equal(plan.networkExposureSafe, false);
   assert.equal(plan.readiness.ready, false);

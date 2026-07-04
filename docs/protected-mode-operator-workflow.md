@@ -206,6 +206,9 @@ verifier internals.
 Full status may also report `browserSessionAuth.status = planning-only`.
 Browser-session cookies are not accepted as live credentials, session issuance
 is inactive, and CSRF enforcement is inactive in this slice.
+The reserved browser-session, pairing, and CSRF routes return sanitized
+unavailable responses; they do not issue cookies, create pairing codes, create
+CSRF tokens, or provide browser login.
 
 ## List Credentials
 

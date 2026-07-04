@@ -89,9 +89,13 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.blockers.includes("auth-store-missing"), false);
   assert.equal(readiness.blockers.includes("browser-session-auth-planning-only"), false);
   assert.equal(readiness.browserSessionAuth.status, "planning-only");
+  assert.equal(readiness.browserSessionAuth.liveSessionAuth, false);
   assert.equal(readiness.browserSessionAuth.acceptsSessionCookies, false);
   assert.equal(readiness.browserSessionAuth.sessionIssuance, "inactive");
   assert.equal(readiness.browserSessionAuth.csrfEnforcement, "inactive");
+  assert.equal(readiness.browserSessionAuth.sessionRoutes, "stubbed");
+  assert.equal(readiness.browserSessionAuth.pairingRoutes, "stubbed");
+  assert.equal(readiness.browserSessionAuth.csrfEndpoint, "stubbed");
   assert.ok(
     readiness.browserSessionAuth.readiness.blockers.includes(
       "browser-session-cookies-not-accepted",

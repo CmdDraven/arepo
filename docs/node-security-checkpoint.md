@@ -31,6 +31,10 @@ local bearer-token API/operator use:
 - Browser-session auth is represented in status/readiness as planning-only:
   session cookies are not accepted, session issuance is inactive, CSRF
   enforcement is inactive, and frontend token storage is absent.
+- Disabled browser-session and pairing route stubs are mounted for future API
+  shape coverage. They return sanitized unavailable responses and do not issue
+  cookies, create sessions, create CSRF tokens, create pairing codes, or accept
+  browser cookies as live credentials.
 
 See [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
 the current local operator commands and manual acceptance flow.
@@ -104,8 +108,9 @@ Implemented components include:
   behavior.
 - `backend/browserSessionAuthPlanner.ts`: pure planning-only browser-session
   auth posture planner. It reports intended cookie policy, pairing direction,
-  session-store expectations, and browser-session blockers without accepting
-  cookies, issuing sessions, generating CSRF tokens, or exposing secrets.
+  stub route posture, session-store expectations, and browser-session blockers
+  without accepting cookies, issuing sessions, generating CSRF tokens, or
+  exposing secrets.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

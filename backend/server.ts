@@ -83,6 +83,10 @@ export async function routeRequest(
   }
 
   try {
+    if (isInactiveBrowserSessionAuthRoute(method, url.pathname)) {
+      return json(501, inactiveBrowserSessionAuthBody(), cors.headers);
+    }
+
     const protectedModeResponse = await enforceProtectedMode({
       request,
       cwd,
@@ -356,6 +360,27 @@ function json(
   headers: Record<string, string> = {},
 ): ResponsePayload {
   return { status, body, headers };
+}
+
+function isInactiveBrowserSessionAuthRoute(method: string, pathname: string): boolean {
+  return (
+    (method === "POST" && pathname === "/api/node/auth/session") ||
+    (method === "POST" && pathname === "/api/node/auth/session/logout") ||
+    (method === "POST" && pathname === "/api/node/auth/session/revoke-all") ||
+    (method === "GET" && pathname === "/api/node/auth/csrf") ||
+    (method === "POST" && pathname === "/api/node/auth/pairing/start") ||
+    (method === "POST" && pathname === "/api/node/auth/pairing/complete")
+  );
+}
+
+function inactiveBrowserSessionAuthBody(): ResponsePayload["body"] {
+  return {
+    ok: false,
+    error: {
+      code: "browser_session_auth_inactive",
+      message: "Browser-session authentication is planned but not active.",
+    },
+  };
 }
 
 function errorStatus(error: unknown): number {

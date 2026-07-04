@@ -62,8 +62,8 @@ Future session issuance must require:
 - no raw session secrets in logs, audit records, status responses, or frontend
   state.
 
-Session issuance is currently inactive. No live route should issue browser
-session cookies in this slice.
+Session issuance is currently inactive. The route surface exists only as
+disabled stubs and no live route issues browser session cookies in this slice.
 
 ## Browser Threat Model
 
@@ -220,11 +220,19 @@ The preferred first flow is:
 6. The frontend moves from reduced anonymous status to full authenticated status
    using same-origin requests.
 
-Future endpoints may include `POST /api/node/auth/pairing/start`,
-`POST /api/node/auth/pairing/complete`, `POST /api/node/auth/session`,
-`POST /api/node/auth/session/logout`, `POST /api/node/auth/session/revoke-all`,
-and `GET /api/node/auth/csrf`. They are design targets only unless explicitly
-implemented as disabled stubs later.
+The reserved disabled route surface is:
+
+- `POST /api/node/auth/session`
+- `POST /api/node/auth/session/logout`
+- `POST /api/node/auth/session/revoke-all`
+- `GET /api/node/auth/csrf`
+- `POST /api/node/auth/pairing/start`
+- `POST /api/node/auth/pairing/complete`
+
+These endpoints return sanitized unavailable responses. They do not issue
+cookies, authenticate browser sessions, create CSRF tokens, create pairing
+codes, consume pairing codes, revoke live sessions, or make browser login
+available.
 
 ## Audit Behavior
 
@@ -277,6 +285,9 @@ browserSessionAuth.acceptsSessionCookies = false
 browserSessionAuth.sessionIssuance = inactive
 browserSessionAuth.csrfEnforcement = inactive
 browserSessionAuth.frontendTokenStorage = false
+browserSessionAuth.sessionRoutes = stubbed
+browserSessionAuth.pairingRoutes = stubbed
+browserSessionAuth.csrfEndpoint = stubbed
 ```
 
 Status must not expose raw session secrets, raw CSRF tokens, raw pairing codes,
@@ -373,11 +384,12 @@ The current scaffold remains inert for browser sessions:
 
 1. Keep typed browser security and browser-session auth planners pure.
 2. Report browser-session posture as planning-only/inactive.
-3. Do not accept session cookies as live credentials.
-4. Do not add middleware that issues cookies.
-5. Do not generate browser sessions, CSRF tokens, or pairing codes.
-6. Do not enforce origin or CSRF checks as live browser-session auth yet.
-7. Do not claim LAN, reverse-proxy, or internet exposure is safe.
+3. Keep disabled route stubs sanitized and route-policy covered.
+4. Do not accept session cookies as live credentials.
+5. Do not add middleware that issues cookies.
+6. Do not generate browser sessions, CSRF tokens, or pairing codes.
+7. Do not enforce origin or CSRF checks as live browser-session auth yet.
+8. Do not claim LAN, reverse-proxy, or internet exposure is safe.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

@@ -14,6 +14,12 @@ const currentBackendRoutes = [
   "GET /api/health",
   "GET /api/node/status",
   "GET /api/node/auth/dry-run",
+  "POST /api/node/auth/session",
+  "POST /api/node/auth/session/logout",
+  "POST /api/node/auth/session/revoke-all",
+  "GET /api/node/auth/csrf",
+  "POST /api/node/auth/pairing/start",
+  "POST /api/node/auth/pairing/complete",
   "POST /api/node/credentials/bootstrap",
   "GET /api/node/credentials",
   "POST /api/node/credentials",
@@ -166,6 +172,26 @@ test("credential lifecycle routes require auth-management policy", () => {
   assertRequires(rotate, "manageAuth");
   assert.ok(rotate.strongerConfirmation.includes("authChange"));
   assert.ok(rotate.strongerConfirmation.includes("tokenRevocation"));
+});
+
+test("browser session and pairing stubs are route-policy covered but unavailable", () => {
+  for (const route of [
+    "POST /api/node/auth/session",
+    "POST /api/node/auth/session/logout",
+    "POST /api/node/auth/session/revoke-all",
+    "GET /api/node/auth/csrf",
+    "POST /api/node/auth/pairing/start",
+    "POST /api/node/auth/pairing/complete",
+  ]) {
+    const policy = policyFor(route);
+    assert.deepEqual(policy.requiredPermissions, []);
+    assert.equal(policy.dataAccess.authManagement, true);
+    assert.equal(policy.dataAccess.sourceContent, false);
+    assert.equal(policy.dataAccess.sourceMutation, false);
+    assert.equal(policy.dataAccess.generatedIndex, false);
+    assert.equal(policy.strongerConfirmation.length, 0);
+    assert.equal(policy.networkExposureSafe, false);
+  }
 });
 
 test("no route policy marks network exposure as safe", () => {

@@ -10,9 +10,13 @@ export function planBrowserSessionAuth(
 ): BrowserSessionAuthRuntimeStatus {
   return {
     status: "planning-only",
+    liveSessionAuth: false,
     acceptsSessionCookies: false,
     sessionIssuance: "inactive",
     csrfEnforcement: "inactive",
+    sessionRoutes: "stubbed",
+    pairingRoutes: "stubbed",
+    csrfEndpoint: "stubbed",
     frontendTokenStorage: false,
     networkExposureSafe: false,
     cookiePolicy: {

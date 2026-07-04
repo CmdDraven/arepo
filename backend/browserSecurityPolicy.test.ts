@@ -137,6 +137,29 @@ test("auth management and vault management require CSRF and stronger confirmatio
   }
 });
 
+test("browser session and pairing stubs classify as auth management capability routes", () => {
+  for (const route of [
+    "POST /api/node/auth/session",
+    "POST /api/node/auth/session/logout",
+    "POST /api/node/auth/session/revoke-all",
+    "GET /api/node/auth/csrf",
+    "POST /api/node/auth/pairing/start",
+    "POST /api/node/auth/pairing/complete",
+  ]) {
+    const plan = planBrowserSecurity({
+      client: "browserCookieSession",
+      routePolicy: policyFor(route),
+      origin: "http://localhost:8733",
+      allowedOrigins: ["http://localhost:8733"],
+      sessionState: "valid",
+      csrfTokenPresent: true,
+    });
+    assert.equal(plan.requestClass, "authManagement");
+    assert.equal(plan.csrfCheckRequired, true);
+    assert.equal(plan.reducedAnonymousResponseAllowed, false);
+  }
+});
+
 test("preflight OPTIONS is not authorization", () => {
   const plan = planBrowserSecurity({
     client: "anonymous",

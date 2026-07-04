@@ -284,6 +284,24 @@ function matchRoutePolicy(request: RequestShapedCredentialInput): ProtectedRoute
   if (pathname === "/api/node/auth/dry-run") {
     return policyFor(method, "/api/node/auth/dry-run");
   }
+  if (pathname === "/api/node/auth/session") {
+    return policyFor(method, "/api/node/auth/session");
+  }
+  if (pathname === "/api/node/auth/session/logout") {
+    return policyFor(method, "/api/node/auth/session/logout");
+  }
+  if (pathname === "/api/node/auth/session/revoke-all") {
+    return policyFor(method, "/api/node/auth/session/revoke-all");
+  }
+  if (pathname === "/api/node/auth/csrf") {
+    return policyFor(method, "/api/node/auth/csrf");
+  }
+  if (pathname === "/api/node/auth/pairing/start") {
+    return policyFor(method, "/api/node/auth/pairing/start");
+  }
+  if (pathname === "/api/node/auth/pairing/complete") {
+    return policyFor(method, "/api/node/auth/pairing/complete");
+  }
   if (pathname === "/api/node/credentials/bootstrap") {
     return policyFor(method, "/api/node/credentials/bootstrap");
   }

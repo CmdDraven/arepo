@@ -54,8 +54,8 @@ audit/event logging, and revocation.
 
 Current Phase 4 implementation reports auth posture and readiness, enforces
 bearer-token authorization in protected mode, and now reports browser-session
-auth as planning-only/inactive. CSRF live enforcement, frontend token storage,
-remote-node, and federation work remain deferred.
+auth as planning-only/inactive with disabled route stubs. CSRF live enforcement,
+frontend token storage, remote-node, and federation work remain deferred.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

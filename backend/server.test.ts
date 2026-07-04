@@ -248,9 +248,13 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.requestPolicy.acceptsBearerTokens, false);
   assert.equal(status.requestPolicy.networkExposureSafe, false);
   assert.equal(status.browserSessionAuth.status, "planning-only");
+  assert.equal(status.browserSessionAuth.liveSessionAuth, false);
   assert.equal(status.browserSessionAuth.acceptsSessionCookies, false);
   assert.equal(status.browserSessionAuth.sessionIssuance, "inactive");
   assert.equal(status.browserSessionAuth.csrfEnforcement, "inactive");
+  assert.equal(status.browserSessionAuth.sessionRoutes, "stubbed");
+  assert.equal(status.browserSessionAuth.pairingRoutes, "stubbed");
+  assert.equal(status.browserSessionAuth.csrfEndpoint, "stubbed");
   assert.equal(status.browserSessionAuth.frontendTokenStorage, false);
   assert.equal(status.browserSessionAuth.networkExposureSafe, false);
   assert.equal(status.protectedModeStartup.requestedAuthMode, "disabled");
@@ -489,9 +493,13 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.requestPolicy.acceptsBearerTokens, true);
   assert.equal(full.requestPolicy.acceptsSessions, false);
   assert.equal(full.browserSessionAuth.status, "planning-only");
+  assert.equal(full.browserSessionAuth.liveSessionAuth, false);
   assert.equal(full.browserSessionAuth.acceptsSessionCookies, false);
   assert.equal(full.browserSessionAuth.sessionIssuance, "inactive");
   assert.equal(full.browserSessionAuth.csrfEnforcement, "inactive");
+  assert.equal(full.browserSessionAuth.sessionRoutes, "stubbed");
+  assert.equal(full.browserSessionAuth.pairingRoutes, "stubbed");
+  assert.equal(full.browserSessionAuth.csrfEndpoint, "stubbed");
   assert.equal(full.browserSessionAuth.frontendTokenStorage, false);
   assert.ok(
     full.browserSessionAuth.readiness.blockers.includes("browser-session-cookies-not-accepted"),
@@ -552,6 +560,80 @@ test("protected dry-run canary remains sanitized when anonymous dry-run is enabl
   const anonymous = await routeRequest(request("GET", "/api/node/auth/dry-run"), cwd);
   assert.equal(anonymous.status, 200);
   assert.equal((anonymous.body as { diagnosticOnly: boolean }).diagnosticOnly, true);
+});
+
+test("browser session and pairing auth stubs return sanitized unavailable responses", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  const secret = "raw-browser-session-or-pairing-secret";
+  const routes = [
+    ["POST", "/api/node/auth/session"],
+    ["POST", "/api/node/auth/session/logout"],
+    ["POST", "/api/node/auth/session/revoke-all"],
+    ["GET", "/api/node/auth/csrf"],
+    ["POST", "/api/node/auth/pairing/start"],
+    ["POST", "/api/node/auth/pairing/complete"],
+  ] as const;
+
+  await writeConfig(cwd, appDataDir, { auth: { mode: "disabled" } });
+  for (const [method, route] of routes) {
+    const response = await routeRequest(
+      request(
+        method,
+        route,
+        { sessionSecret: secret, csrfToken: secret, pairingCode: secret },
+        {
+          authorization: `Bearer ${secret}`,
+          cookie: `arepo_session=${secret}`,
+          "x-arepo-confirmation": "wrong",
+        },
+      ),
+      cwd,
+    );
+    assert.equal(response.status, 501);
+    assert.equal(response.headers?.["set-cookie"], undefined);
+    assert.deepEqual(response.body, {
+      ok: false,
+      error: {
+        code: "browser_session_auth_inactive",
+        message: "Browser-session authentication is planned but not active.",
+      },
+    });
+    const serialized = JSON.stringify(response.body);
+    assert.equal(serialized.includes(secret), false);
+    assert.equal(serialized.includes("authorization"), false);
+    assert.equal(serialized.includes("cookie"), false);
+    assert.equal(serialized.includes("sessionSecret"), false);
+    assert.equal(serialized.includes("csrfToken"), false);
+    assert.equal(serialized.includes("pairingCode"), false);
+    assert.equal(serialized.includes("verifierHash"), false);
+    assert.equal(serialized.includes("salt"), false);
+    assert.equal(serialized.includes("stack"), false);
+  }
+
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
+  await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode", "manageAuth"] });
+  for (const [method, route] of routes) {
+    const response = await routeRequest(
+      request(
+        method,
+        route,
+        { sessionSecret: secret },
+        {
+          authorization: `Bearer ${protectedBearerToken}`,
+          cookie: `arepo_session=${secret}`,
+        },
+      ),
+      cwd,
+    );
+    assert.equal(response.status, 501);
+    assert.equal(response.headers?.["set-cookie"], undefined);
+    const serialized = JSON.stringify(response.body);
+    assert.equal(serialized.includes(protectedBearerToken), false);
+    assert.equal(serialized.includes(secret), false);
+    assert.equal(serialized.includes("verifierHash"), false);
+    assert.equal(serialized.includes("salt"), false);
+  }
 });
 
 test("protected mode treats session-cookie auth as unsupported in this slice", async () => {
