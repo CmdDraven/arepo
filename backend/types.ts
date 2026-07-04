@@ -211,6 +211,13 @@ export type ProtectedModeReadinessBlockerCode =
   | "browser-session-csrf-enforcement-inactive"
   | "browser-session-cookie-policy-planning-only"
   | "browser-session-pairing-login-planning-only"
+  | "browser-pairing-issuance-inactive"
+  | "browser-pairing-consumption-inactive"
+  | "browser-session-lifecycle-inactive"
+  | "browser-session-logout-inactive"
+  | "browser-session-revoke-all-inactive"
+  | "browser-cookie-issuance-inactive"
+  | "browser-csrf-token-issuance-inactive"
   | "audit-enforcement-inactive"
   | "audit-requirement-planning-only"
   | "revocation-checks-inactive"
@@ -318,7 +325,31 @@ export type BrowserSessionAuthBlockerCode =
   | "browser-session-issuance-inactive"
   | "browser-session-csrf-enforcement-inactive"
   | "browser-session-cookie-policy-planning-only"
-  | "browser-session-pairing-login-planning-only";
+  | "browser-session-pairing-login-planning-only"
+  | "browser-pairing-issuance-inactive"
+  | "browser-pairing-consumption-inactive"
+  | "browser-session-lifecycle-inactive"
+  | "browser-session-logout-inactive"
+  | "browser-session-revoke-all-inactive"
+  | "browser-cookie-issuance-inactive"
+  | "browser-csrf-token-issuance-inactive";
+
+export type BrowserSessionAuditEventPlan =
+  | "browser_pairing_issue_attempted"
+  | "browser_pairing_issue_succeeded"
+  | "browser_pairing_issue_denied"
+  | "browser_pairing_consume_attempted"
+  | "browser_pairing_consume_succeeded"
+  | "browser_pairing_consume_denied"
+  | "browser_session_issue_attempted"
+  | "browser_session_issue_succeeded"
+  | "browser_session_issue_denied"
+  | "browser_session_logout_succeeded"
+  | "browser_session_revoke_all_succeeded"
+  | "browser_session_denied_invalid"
+  | "browser_session_denied_expired"
+  | "browser_session_denied_revoked"
+  | "browser_csrf_denied";
 
 export type BrowserSessionAuthRuntimeStatus = {
   status: "planning-only";
@@ -332,21 +363,79 @@ export type BrowserSessionAuthRuntimeStatus = {
   frontendTokenStorage: false;
   networkExposureSafe: false;
   cookiePolicy: {
-    httpOnly: true;
-    sameSite: "lax";
-    secure: "required-on-https";
-    devHttpException: "localhost-only-planned";
-    path: "/api";
-    domainAttribute: false;
+    issuance: "inactive";
+    httpOnly: "required";
+    sameSite: "planned";
+    secure: "required-outside-local-dev";
+    devHttpException: "planned-localhost-only";
+    path: "planned";
+    domain: "omitted";
+    setsCookiesToday: false;
+    nonLocalHttp: "unsafe";
   };
   pairing: {
-    status: "planned";
+    enabled: false;
+    status: "planning-only";
+    issueCode: "inactive";
+    consumeCode: "inactive";
     preferredFlow: "local-pairing-code-from-authorized-bearer";
+    requiresExistingBearerCredential: true;
+    requiresLocalOrigin: true;
+    requiresStrongerConfirmation: true;
+    codesAreShortLived: true;
+    codesAreOneTimeUse: true;
+    storesRawCodes: false;
+    auditRecordsSanitized: true;
+    blockers: readonly BrowserSessionAuthBlockerCode[];
+  };
+  sessionLifecycle: {
+    issuance: "inactive";
+    sessionStore: "planned";
+    sessionVerifier: "planned";
+    sessionRevocation: "planned";
+    expiry: "planned";
+    logout: "inactive";
+    revokeAll: "inactive";
+    currentSessionRevocation: "planned";
+    allSessionRevocation: "planned";
+    derivedSessionInvalidation: "planned";
+    acceptsSessionCookies: false;
+    storesRawSessionSecrets: false;
+    returnsSessionSecretsInJson: false;
   };
   sessionStore: {
     verifierMetadataPlanned: true;
     storesRawSessionSecrets: false;
     revocationRequired: true;
+  };
+  csrf: {
+    endpoint: "stubbed";
+    tokenIssuance: "inactive";
+    validation: "inactive";
+    enforcement: "inactive";
+    unsafeMethodsRequireCsrfWhenSessionAuthLive: true;
+    bearerTokenRequiresBrowserCsrf: false;
+    originRefererDefenseInDepth: true;
+    storesRawTokens: false;
+    logsRawTokens: false;
+  };
+  frontend: {
+    tokenStorage: false;
+    sessionSecretReadableByJs: false;
+    loginUi: "inactive";
+  };
+  audit: {
+    status: "planned";
+    events: readonly BrowserSessionAuditEventPlan[];
+    excludesRawBearerTokens: true;
+    excludesRawSessionSecrets: true;
+    excludesRawPairingCodes: true;
+    excludesRawCsrfTokens: true;
+    excludesAuthorizationHeaders: true;
+    excludesCookies: true;
+    excludesVerifierHashes: true;
+    excludesSalts: true;
+    excludesUnsafeBrowserFingerprints: true;
   };
   readiness: {
     ready: false;

@@ -96,9 +96,28 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.sessionRoutes, "stubbed");
   assert.equal(readiness.browserSessionAuth.pairingRoutes, "stubbed");
   assert.equal(readiness.browserSessionAuth.csrfEndpoint, "stubbed");
+  assert.equal(readiness.browserSessionAuth.pairing.status, "planning-only");
+  assert.equal(readiness.browserSessionAuth.pairing.issueCode, "inactive");
+  assert.equal(readiness.browserSessionAuth.pairing.consumeCode, "inactive");
+  assert.equal(readiness.browserSessionAuth.pairing.storesRawCodes, false);
+  assert.equal(readiness.browserSessionAuth.sessionLifecycle.issuance, "inactive");
+  assert.equal(readiness.browserSessionAuth.sessionLifecycle.logout, "inactive");
+  assert.equal(readiness.browserSessionAuth.sessionLifecycle.revokeAll, "inactive");
+  assert.equal(readiness.browserSessionAuth.sessionLifecycle.acceptsSessionCookies, false);
+  assert.equal(readiness.browserSessionAuth.cookiePolicy.issuance, "inactive");
+  assert.equal(readiness.browserSessionAuth.cookiePolicy.setsCookiesToday, false);
+  assert.equal(readiness.browserSessionAuth.csrf.tokenIssuance, "inactive");
+  assert.equal(readiness.browserSessionAuth.csrf.validation, "inactive");
+  assert.equal(readiness.browserSessionAuth.frontend.tokenStorage, false);
+  assert.equal(readiness.browserSessionAuth.frontend.sessionSecretReadableByJs, false);
   assert.ok(
     readiness.browserSessionAuth.readiness.blockers.includes(
       "browser-session-cookies-not-accepted",
+    ),
+  );
+  assert.ok(
+    readiness.browserSessionAuth.readiness.blockers.includes(
+      "browser-csrf-token-issuance-inactive",
     ),
   );
   assert.equal(readiness.startup.missingStoreCount, 0);
@@ -289,9 +308,10 @@ test("manifest never includes sensitive upstream diagnostic material", () => {
   assert.equal(serialized.includes("verifierHash"), false);
   assert.equal(serialized.includes("salt"), false);
   assert.equal(serialized.includes("sourceBody"), false);
-  assert.equal(serialized.includes("sessionSecret"), false);
-  assert.equal(serialized.includes("csrfToken"), false);
-  assert.equal(serialized.includes("pairingCode"), false);
+  assert.equal(serialized.includes("sessionSecret private"), false);
+  assert.equal(serialized.includes('"rawSessionSecret"'), false);
+  assert.equal(serialized.includes('"rawCsrfToken"'), false);
+  assert.equal(serialized.includes('"rawPairingCode"'), false);
   assert.equal(readiness.startup.missingStoreCount, 1);
   assert.equal(readiness.startup.corruptStoreCount, 1);
   assert.equal(readiness.startup.unsafeStorePathCount, 1);

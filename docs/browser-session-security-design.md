@@ -234,17 +234,61 @@ cookies, authenticate browser sessions, create CSRF tokens, create pairing
 codes, consume pairing codes, revoke live sessions, or make browser login
 available.
 
+The current pairing planner is observation-only and reports:
+
+- pairing is disabled and `planning-only`.
+- pairing-code issuance is `inactive`.
+- pairing-code consumption is `inactive`.
+- the intended first flow requires an existing bearer credential.
+- the flow is local-origin constrained.
+- stronger confirmation is required before issuing a pairing code.
+- pairing codes must be short-lived and one-time use.
+- raw pairing codes are not stored.
+- pairing audit records must be sanitized.
+
+No pairing code is generated, stored, returned, logged, or accepted in the
+current implementation.
+
+## Browser Session Lifecycle Plan
+
+The session lifecycle planner is also observation-only. It reports the future
+shape without creating sessions:
+
+- session issuance is `inactive`.
+- session store and session verifier support are `planned`.
+- session revocation and expiry are `planned`.
+- logout/current-session revocation is `inactive` today and planned for future
+  live sessions.
+- revoke-all browser sessions is `inactive` today and planned for emergency
+  local operation.
+- browser session cookies are not accepted as live credentials.
+- raw session secrets are not stored.
+- raw session secrets are never returned in JSON.
+- derived-session invalidation after bearer credential revocation is planned.
+
+The first live implementation should deliver the session secret only via
+`Set-Cookie`, store verifier metadata server-side, and keep the raw session
+secret unreadable by frontend JavaScript.
+
 ## Audit Behavior
 
 Planned sanitized audit events:
 
-- pairing issued, consumed, expired, and denied
-- session issuance attempted, succeeded, and denied
-- session verified and allowed if the active audit model records allows
-- session denied for invalid, expired, revoked, logged-out, or malformed state
-- CSRF denied
-- logout/revoke current session
-- revoke-all sessions
+- `browser_pairing_issue_attempted`
+- `browser_pairing_issue_succeeded`
+- `browser_pairing_issue_denied`
+- `browser_pairing_consume_attempted`
+- `browser_pairing_consume_succeeded`
+- `browser_pairing_consume_denied`
+- `browser_session_issue_attempted`
+- `browser_session_issue_succeeded`
+- `browser_session_issue_denied`
+- `browser_session_logout_succeeded`
+- `browser_session_revoke_all_succeeded`
+- `browser_session_denied_invalid`
+- `browser_session_denied_expired`
+- `browser_session_denied_revoked`
+- `browser_csrf_denied`
 
 Audit records must not include raw session tokens, raw CSRF tokens, raw pairing
 codes, Authorization headers, cookies, verifier hashes, salts, or browser
@@ -281,6 +325,7 @@ Current full status may expose safe posture only, such as:
 
 ```text
 browserSessionAuth.status = planning-only
+browserSessionAuth.liveSessionAuth = false
 browserSessionAuth.acceptsSessionCookies = false
 browserSessionAuth.sessionIssuance = inactive
 browserSessionAuth.csrfEnforcement = inactive
@@ -288,6 +333,27 @@ browserSessionAuth.frontendTokenStorage = false
 browserSessionAuth.sessionRoutes = stubbed
 browserSessionAuth.pairingRoutes = stubbed
 browserSessionAuth.csrfEndpoint = stubbed
+browserSessionAuth.pairing.status = planning-only
+browserSessionAuth.pairing.issueCode = inactive
+browserSessionAuth.pairing.consumeCode = inactive
+browserSessionAuth.pairing.storesRawCodes = false
+browserSessionAuth.sessionLifecycle.issuance = inactive
+browserSessionAuth.sessionLifecycle.logout = inactive
+browserSessionAuth.sessionLifecycle.revokeAll = inactive
+browserSessionAuth.sessionLifecycle.storesRawSessionSecrets = false
+browserSessionAuth.sessionLifecycle.returnsSessionSecretsInJson = false
+browserSessionAuth.cookiePolicy.issuance = inactive
+browserSessionAuth.cookiePolicy.httpOnly = required
+browserSessionAuth.cookiePolicy.secure = required-outside-local-dev
+browserSessionAuth.cookiePolicy.domain = omitted
+browserSessionAuth.cookiePolicy.setsCookiesToday = false
+browserSessionAuth.csrf.tokenIssuance = inactive
+browserSessionAuth.csrf.validation = inactive
+browserSessionAuth.csrf.unsafeMethodsRequireCsrfWhenSessionAuthLive = true
+browserSessionAuth.csrf.bearerTokenRequiresBrowserCsrf = false
+browserSessionAuth.frontend.tokenStorage = false
+browserSessionAuth.frontend.sessionSecretReadableByJs = false
+browserSessionAuth.frontend.loginUi = inactive
 ```
 
 Status must not expose raw session secrets, raw CSRF tokens, raw pairing codes,

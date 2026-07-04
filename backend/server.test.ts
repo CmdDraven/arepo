@@ -257,6 +257,29 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.csrfEndpoint, "stubbed");
   assert.equal(status.browserSessionAuth.frontendTokenStorage, false);
   assert.equal(status.browserSessionAuth.networkExposureSafe, false);
+  assert.equal(status.browserSessionAuth.pairing.enabled, false);
+  assert.equal(status.browserSessionAuth.pairing.issueCode, "inactive");
+  assert.equal(status.browserSessionAuth.pairing.consumeCode, "inactive");
+  assert.equal(status.browserSessionAuth.pairing.storesRawCodes, false);
+  assert.equal(status.browserSessionAuth.sessionLifecycle.issuance, "inactive");
+  assert.equal(status.browserSessionAuth.sessionLifecycle.logout, "inactive");
+  assert.equal(status.browserSessionAuth.sessionLifecycle.revokeAll, "inactive");
+  assert.equal(status.browserSessionAuth.sessionLifecycle.acceptsSessionCookies, false);
+  assert.equal(status.browserSessionAuth.sessionLifecycle.storesRawSessionSecrets, false);
+  assert.equal(status.browserSessionAuth.sessionLifecycle.returnsSessionSecretsInJson, false);
+  assert.equal(status.browserSessionAuth.cookiePolicy.issuance, "inactive");
+  assert.equal(status.browserSessionAuth.cookiePolicy.httpOnly, "required");
+  assert.equal(status.browserSessionAuth.cookiePolicy.secure, "required-outside-local-dev");
+  assert.equal(status.browserSessionAuth.cookiePolicy.domain, "omitted");
+  assert.equal(status.browserSessionAuth.cookiePolicy.setsCookiesToday, false);
+  assert.equal(status.browserSessionAuth.csrf.tokenIssuance, "inactive");
+  assert.equal(status.browserSessionAuth.csrf.validation, "inactive");
+  assert.equal(status.browserSessionAuth.csrf.unsafeMethodsRequireCsrfWhenSessionAuthLive, true);
+  assert.equal(status.browserSessionAuth.csrf.bearerTokenRequiresBrowserCsrf, false);
+  assert.equal(status.browserSessionAuth.csrf.storesRawTokens, false);
+  assert.equal(status.browserSessionAuth.frontend.tokenStorage, false);
+  assert.equal(status.browserSessionAuth.frontend.sessionSecretReadableByJs, false);
+  assert.equal(status.browserSessionAuth.frontend.loginUi, "inactive");
   assert.equal(status.protectedModeStartup.requestedAuthMode, "disabled");
   assert.equal(status.protectedModeStartup.operationalAuthMode, "disabled");
   assert.equal(status.protectedModeStartup.protectedModeAvailable, false);
@@ -501,10 +524,40 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.browserSessionAuth.pairingRoutes, "stubbed");
   assert.equal(full.browserSessionAuth.csrfEndpoint, "stubbed");
   assert.equal(full.browserSessionAuth.frontendTokenStorage, false);
+  assert.equal(full.browserSessionAuth.pairing.status, "planning-only");
+  assert.equal(full.browserSessionAuth.pairing.issueCode, "inactive");
+  assert.equal(full.browserSessionAuth.pairing.consumeCode, "inactive");
+  assert.equal(full.browserSessionAuth.pairing.storesRawCodes, false);
+  assert.equal(full.browserSessionAuth.sessionLifecycle.issuance, "inactive");
+  assert.equal(full.browserSessionAuth.sessionLifecycle.logout, "inactive");
+  assert.equal(full.browserSessionAuth.sessionLifecycle.revokeAll, "inactive");
+  assert.equal(full.browserSessionAuth.sessionLifecycle.acceptsSessionCookies, false);
+  assert.equal(full.browserSessionAuth.sessionLifecycle.storesRawSessionSecrets, false);
+  assert.equal(full.browserSessionAuth.sessionLifecycle.returnsSessionSecretsInJson, false);
+  assert.equal(full.browserSessionAuth.cookiePolicy.issuance, "inactive");
+  assert.equal(full.browserSessionAuth.cookiePolicy.setsCookiesToday, false);
+  assert.equal(full.browserSessionAuth.csrf.tokenIssuance, "inactive");
+  assert.equal(full.browserSessionAuth.csrf.validation, "inactive");
+  assert.equal(full.browserSessionAuth.csrf.bearerTokenRequiresBrowserCsrf, false);
+  assert.equal(full.browserSessionAuth.csrf.storesRawTokens, false);
+  assert.equal(full.browserSessionAuth.frontend.tokenStorage, false);
+  assert.equal(full.browserSessionAuth.frontend.sessionSecretReadableByJs, false);
+  assert.equal(full.browserSessionAuth.frontend.loginUi, "inactive");
+  assert.ok(full.browserSessionAuth.audit.events.includes("browser_session_issue_denied"));
+  assert.equal(full.browserSessionAuth.audit.excludesRawSessionSecrets, true);
+  assert.equal(full.browserSessionAuth.audit.excludesRawPairingCodes, true);
+  assert.equal(full.browserSessionAuth.audit.excludesRawCsrfTokens, true);
   assert.ok(
     full.browserSessionAuth.readiness.blockers.includes("browser-session-cookies-not-accepted"),
   );
+  assert.ok(
+    full.browserSessionAuth.readiness.blockers.includes("browser-session-lifecycle-inactive"),
+  );
   assert.equal(full.protectedModeReadiness.browserSessionAuth.acceptsSessionCookies, false);
+  assert.equal(
+    full.protectedModeReadiness.browserSessionAuth.sessionLifecycle.issuance,
+    "inactive",
+  );
   assert.equal(full.protectedModeReadiness.readyForEnforcement, true);
   assert.equal(full.protectedModeReadiness.protectedModeOperational, true);
   assert.equal(full.protectedModeReadiness.enforcementActive, true);

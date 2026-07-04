@@ -107,10 +107,12 @@ Implemented components include:
   and route-aware request classes without rejecting requests or changing CORS
   behavior.
 - `backend/browserSessionAuthPlanner.ts`: pure planning-only browser-session
-  auth posture planner. It reports intended cookie policy, pairing direction,
-  stub route posture, session-store expectations, and browser-session blockers
-  without accepting cookies, issuing sessions, generating CSRF tokens, or
-  exposing secrets.
+  auth posture planner. It reports intended pairing-code lifecycle, session
+  issuance/logout/revoke-all posture, cookie policy, CSRF posture, frontend
+  no-secret handling, planned sanitized audit event categories, stub route
+  posture, session-store expectations, and browser-session blockers without
+  accepting cookies, issuing sessions, generating pairing codes, generating CSRF
+  tokens, or exposing secrets.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and
