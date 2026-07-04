@@ -35,6 +35,10 @@ local bearer-token API/operator use:
   shape coverage. They return sanitized unavailable responses and do not issue
   cookies, create sessions, create CSRF tokens, create pairing codes, or accept
   browser cookies as live credentials.
+- A dedicated browser-auth inactive-boundary regression suite now checks that
+  pairing/session/CSRF/cookie/audit primitives remain planning/test
+  infrastructure only, that live routes do not emit `Set-Cookie`, and that
+  cookies or CSRF-style headers do not authenticate protected routes.
 
 See [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
 the current local operator commands and manual acceptance flow.

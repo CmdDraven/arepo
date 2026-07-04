@@ -26,6 +26,9 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
 - Inert browser cookie policy and header-sanitization primitives exist for
   future cookie/session diagnostics and audit tests only. They do not issue
   cookies, accept cookies as credentials, or participate in live authorization.
+- A dedicated inactive-boundary regression suite asserts that browser-auth
+  primitives remain unwired from live server behavior until a future slice
+  deliberately enables the complete browser-auth path.
 - The frontend does not store bearer tokens.
 - Full authorized status reports `browserSessionAuth.status` as
   `planning-only`; reduced anonymous status does not expose session details.
