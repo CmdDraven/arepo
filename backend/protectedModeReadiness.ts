@@ -14,12 +14,14 @@ import type {
   ProtectedModeStartupAssessment,
   RequestPolicyRuntimeStatus,
 } from "./types.js";
+import type { CredentialLifecycleRuntimeStatus } from "./types.js";
 
 export type ProtectedModeReadinessInput = {
   auth: AuthPosture;
   startup: ProtectedModeStartupAssessment;
   requestPolicy: RequestPolicyRuntimeStatus;
   localOnlyMode: boolean;
+  credentialLifecycle?: CredentialLifecycleRuntimeStatus;
   routePolicyExpectedMinimum?: number;
 };
 
@@ -34,9 +36,14 @@ export function buildProtectedModeReadinessManifest(
     input.requestPolicy.acceptsCredentials ||
     input.requestPolicy.acceptsSessions ||
     input.requestPolicy.acceptsBearerTokens;
+  const credentialBootstrapSatisfied =
+    input.auth.mode !== "protected" ||
+    !input.credentialLifecycle ||
+    input.credentialLifecycle.activeCredentialCount > 0;
   const enforcementReady =
     input.auth.mode === "protected" &&
     input.startup.protectedModeMayStart &&
+    credentialBootstrapSatisfied &&
     routePolicyComplete &&
     input.requestPolicy.enforcementActive &&
     input.requestPolicy.credentialVerificationActive &&
@@ -60,6 +67,19 @@ export function buildProtectedModeReadinessManifest(
         "protected-mode-unavailable",
         "protected-mode-not-operational",
       ],
+    });
+  }
+
+  if (
+    input.auth.mode === "protected" &&
+    input.credentialLifecycle &&
+    input.credentialLifecycle.activeCredentialCount === 0
+  ) {
+    addDetail(details, {
+      group: "lifecycle",
+      label: "Protected mode needs a local credential bootstrap before protected APIs are usable.",
+      status: "blocked",
+      codes: ["credential-bootstrap-needed"],
     });
   }
 
@@ -275,9 +295,9 @@ export function buildProtectedModeReadinessManifest(
     checks: {
       credentialVerificationActive: input.requestPolicy.credentialVerificationActive,
       credentialAcceptanceActive,
-      credentialIssuanceActive: false,
+      credentialIssuanceActive: input.auth.mode === "protected",
       sessionIssuanceActive: false,
-      tokenIssuanceActive: false,
+      tokenIssuanceActive: input.auth.mode === "protected",
       auditEnforcementActive: input.requestPolicy.auditRequestLoggingActive,
       revocationChecksActive: input.requestPolicy.revocationChecksActive,
       csrfOriginEnforcementActive: false,
@@ -299,6 +319,7 @@ export function buildProtectedModeReadinessManifest(
       unsafeStorePathCount: input.startup.unsafeStorePaths.length,
       permissionWarningCount: input.startup.permissionWarnings.length,
     },
+    credentialLifecycle: input.credentialLifecycle,
     network: {
       localOnlyMode: input.localOnlyMode,
       nonLocalBindWithDisabledAuth: input.startup.nonLocalBindWithDisabledAuth,

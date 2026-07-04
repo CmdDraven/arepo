@@ -14,6 +14,11 @@ const currentBackendRoutes = [
   "GET /api/health",
   "GET /api/node/status",
   "GET /api/node/auth/dry-run",
+  "POST /api/node/credentials/bootstrap",
+  "GET /api/node/credentials",
+  "POST /api/node/credentials",
+  "POST /api/node/credentials/:credentialId/revoke",
+  "POST /api/node/credentials/:credentialId/rotate",
   "GET /api/vaults",
   "POST /api/vaults",
   "DELETE /api/vaults/:vaultId",
@@ -137,6 +142,30 @@ test("dry-run canary diagnostics are classified as manageNode with reduced futur
   assert.equal(policy.dataAccess.nodeManagement, true);
   assert.equal(policy.dataAccess.sourceContent, false);
   assert.equal(policy.dataAccess.generatedIndex, false);
+});
+
+test("credential lifecycle routes require auth-management policy", () => {
+  const bootstrap = policyFor("POST /api/node/credentials/bootstrap");
+  assert.deepEqual(bootstrap.requiredPermissions, []);
+  assert.equal(bootstrap.dataAccess.authManagement, true);
+  assert.ok(bootstrap.strongerConfirmation.includes("authChange"));
+
+  const list = policyFor("GET /api/node/credentials");
+  assertRequires(list, "manageAuth");
+  assert.equal(list.strongerConfirmation.length, 0);
+
+  const create = policyFor("POST /api/node/credentials");
+  assertRequires(create, "manageAuth");
+  assert.ok(create.strongerConfirmation.includes("authChange"));
+
+  const revoke = policyFor("POST /api/node/credentials/:credentialId/revoke");
+  assertRequires(revoke, "manageAuth");
+  assert.ok(revoke.strongerConfirmation.includes("tokenRevocation"));
+
+  const rotate = policyFor("POST /api/node/credentials/:credentialId/rotate");
+  assertRequires(rotate, "manageAuth");
+  assert.ok(rotate.strongerConfirmation.includes("authChange"));
+  assert.ok(rotate.strongerConfirmation.includes("tokenRevocation"));
 });
 
 test("no route policy marks network exposure as safe", () => {

@@ -1,4 +1,5 @@
 import { getNodeInfo, getVault, loadConfig, resolveAppDataDir } from "./config.js";
+import { getCredentialLifecycleStatus } from "./credentialLifecycle.js";
 import { resolveAuthPosture, resolveBackendRuntimeOptions } from "./nodeRuntime.js";
 import { buildProtectedModeReadinessManifest } from "./protectedModeReadiness.js";
 import { assessProtectedModeStartup } from "./protectedModeStartup.js";
@@ -63,6 +64,10 @@ export async function getLocalNodeRuntimeStatus(
     vaultRoots: node.vaults.map((vault) => vault.rootPath),
     runtime,
   });
+  const credentialLifecycle = await getCredentialLifecycleStatus(
+    appDataDir,
+    node.vaults.map((vault) => vault.rootPath),
+  );
   const vaultStatuses = await Promise.all(
     node.vaults.map(async (vault) => summarizeVaultRuntime(vault, cwd)),
   );
@@ -88,8 +93,10 @@ export async function getLocalNodeRuntimeStatus(
       auth,
       startup: protectedModeStartup,
       requestPolicy,
+      credentialLifecycle,
       localOnlyMode,
     }),
+    credentialLifecycle,
     vaultCount: node.vaults.length,
     vaults: vaultStatuses,
     capabilities: {

@@ -34,12 +34,14 @@ function request(
   url: string,
   body?: unknown,
   headers: Record<string, string> = {},
+  options: { remoteAddress?: string } = {},
 ): RequestLike {
   const payload = body === undefined ? [] : [Buffer.from(JSON.stringify(body), "utf8")];
   return {
     method,
     url,
     headers,
+    socket: options.remoteAddress ? { remoteAddress: options.remoteAddress } : undefined,
     async *[Symbol.asyncIterator]() {
       yield* payload;
     },
@@ -549,6 +551,358 @@ test("protected mode treats session-cookie auth as unsupported in this slice", a
   );
   assert.equal(response.status, 401);
   assert.equal(JSON.stringify(response.body).includes(secret), false);
+});
+
+test("protected credential bootstrap is localhost-only and returns raw token once", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const vault = testVault(rootPath);
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
+
+  const nonLocal = await routeRequest(
+    request(
+      "POST",
+      "/api/node/credentials/bootstrap",
+      { label: "Operator" },
+      {},
+      { remoteAddress: "10.0.0.2" },
+    ),
+    cwd,
+  );
+  assert.equal(nonLocal.status, 403);
+
+  const beforeStatus = await routeRequest(request("GET", "/api/node/status"), cwd);
+  assert.equal(beforeStatus.status, 503);
+  assert.equal(
+    (beforeStatus.body as { publicWarnings: string[] }).publicWarnings.includes(
+      "protected-mode-not-operational",
+    ),
+    true,
+  );
+
+  const bootstrap = await routeRequest(
+    request(
+      "POST",
+      "/api/node/credentials/bootstrap",
+      { label: "Operator" },
+      {},
+      { remoteAddress: "127.0.0.1" },
+    ),
+    cwd,
+  );
+  assert.equal(bootstrap.status, 201);
+  const issued = bootstrap.body as {
+    ok: true;
+    data: { bearerToken: string; tokenType: "Bearer"; credential: { credentialId: string } };
+  };
+  assert.equal(issued.ok, true);
+  assert.equal(issued.data.tokenType, "Bearer");
+  assert.match(issued.data.bearerToken, /^arepo_/);
+
+  const paths = resolveAuthStoragePaths(appDataDir);
+  const [credentialStoreRaw, verifierStoreRaw] = await Promise.all([
+    fs.readFile(paths.credentials, "utf8"),
+    fs.readFile(paths.tokenVerifiers, "utf8"),
+  ]);
+  assert.equal(credentialStoreRaw.includes(issued.data.bearerToken), false);
+  assert.equal(verifierStoreRaw.includes(issued.data.bearerToken), false);
+
+  const repeated = await routeRequest(
+    request(
+      "POST",
+      "/api/node/credentials/bootstrap",
+      { label: "Operator 2" },
+      {},
+      { remoteAddress: "127.0.0.1" },
+    ),
+    cwd,
+  );
+  assert.equal(repeated.status, 409);
+
+  const listed = await routeRequest(
+    request("GET", "/api/node/credentials", undefined, {
+      authorization: `Bearer ${issued.data.bearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(listed.status, 200);
+  const serializedList = JSON.stringify(listed.body);
+  assert.equal(serializedList.includes(issued.data.bearerToken), false);
+  assert.equal(serializedList.includes("verifierHash"), false);
+  assert.equal(serializedList.includes("saltId"), false);
+
+  const fullStatus = await routeRequest(
+    request("GET", "/api/node/status", undefined, {
+      authorization: `Bearer ${issued.data.bearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(fullStatus.status, 200);
+  const status = fullStatus.body as LocalNodeRuntimeStatus;
+  assert.equal(status.credentialLifecycle.activeCredentialCount, 1);
+  assert.equal(status.credentialLifecycle.bootstrapAvailable, false);
+  assert.equal(JSON.stringify(status).includes(issued.data.bearerToken), false);
+});
+
+test("protected credential create revoke and audit responses remain sanitized", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
+  await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode", "manageAuth"] });
+
+  const noConfirmation = await routeRequest(
+    request(
+      "POST",
+      "/api/node/credentials",
+      { label: "Created token", nodePermissions: ["manageNode"] },
+      { authorization: `Bearer ${protectedBearerToken}` },
+    ),
+    cwd,
+  );
+  assert.equal(noConfirmation.status, 428);
+
+  const created = await routeRequest(
+    request(
+      "POST",
+      "/api/node/credentials",
+      { label: "Created token", nodePermissions: ["manageNode"] },
+      {
+        authorization: `Bearer ${protectedBearerToken}`,
+        "x-arepo-confirmation": "authChange",
+      },
+    ),
+    cwd,
+  );
+  assert.equal(created.status, 201);
+  const createdBody = created.body as {
+    ok: true;
+    data: { bearerToken: string; credential: { credentialId: string } };
+  };
+  const createdToken = createdBody.data.bearerToken;
+  const credentialId = createdBody.data.credential.credentialId;
+  assert.match(createdToken, /^arepo_/);
+
+  const createdStatus = await routeRequest(
+    request("GET", "/api/node/status", undefined, { authorization: `Bearer ${createdToken}` }),
+    cwd,
+  );
+  assert.equal(createdStatus.status, 200);
+
+  const listed = await routeRequest(
+    request("GET", "/api/node/credentials", undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(listed.status, 200);
+  const serializedList = JSON.stringify(listed.body);
+  assert.equal(serializedList.includes(createdToken), false);
+  assert.equal(serializedList.includes("verifierHash"), false);
+  assert.equal(serializedList.includes("saltId"), false);
+
+  const revokeWithoutConfirmation = await routeRequest(
+    request(
+      "POST",
+      `/api/node/credentials/${encodeURIComponent(credentialId)}/revoke`,
+      {},
+      { authorization: `Bearer ${protectedBearerToken}` },
+    ),
+    cwd,
+  );
+  assert.equal(revokeWithoutConfirmation.status, 428);
+
+  const revoked = await routeRequest(
+    request(
+      "POST",
+      `/api/node/credentials/${encodeURIComponent(credentialId)}/revoke`,
+      { reason: "test revocation" },
+      {
+        authorization: `Bearer ${protectedBearerToken}`,
+        "x-arepo-confirmation": "tokenRevocation",
+      },
+    ),
+    cwd,
+  );
+  assert.equal(revoked.status, 200);
+  assert.equal((revoked.body as { data: { revoked: boolean } }).data.revoked, true);
+
+  const revokedAgain = await routeRequest(
+    request(
+      "POST",
+      `/api/node/credentials/${encodeURIComponent(credentialId)}/revoke`,
+      {},
+      {
+        authorization: `Bearer ${protectedBearerToken}`,
+        "x-arepo-confirmation": "tokenRevocation",
+      },
+    ),
+    cwd,
+  );
+  assert.equal(revokedAgain.status, 200);
+  assert.equal((revokedAgain.body as { data: { revoked: boolean } }).data.revoked, false);
+
+  const revokedTokenUse = await routeRequest(
+    request("GET", "/api/node/status", undefined, { authorization: `Bearer ${createdToken}` }),
+    cwd,
+  );
+  assert.equal(revokedTokenUse.status, 401);
+
+  const paths = resolveAuthStoragePaths(appDataDir);
+  const parsed = await readAuthAuditEvents(paths.auditEvents);
+  const serializedAudit = JSON.stringify(parsed.events);
+  assert.ok(parsed.events.some((event) => event.kind === "credential.created"));
+  assert.ok(parsed.events.some((event) => event.kind === "credential.revoked"));
+  assert.equal(serializedAudit.includes(createdToken), false);
+  assert.equal(serializedAudit.includes(protectedBearerToken), false);
+  assert.equal(serializedAudit.includes("verifierHash"), false);
+  assert.equal(serializedAudit.includes("salt"), false);
+});
+
+test("protected credential rotation revokes old token and returns replacement once", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
+  await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode", "manageAuth"] });
+
+  const bootstrapCredentialId = "server-protected-credential";
+  const rotated = await routeRequest(
+    request(
+      "POST",
+      `/api/node/credentials/${bootstrapCredentialId}/rotate`,
+      { label: "Rotated operator" },
+      {
+        authorization: `Bearer ${protectedBearerToken}`,
+        "x-arepo-confirmation": "authChange",
+      },
+    ),
+    cwd,
+  );
+  assert.equal(rotated.status, 201);
+  const body = rotated.body as {
+    data: {
+      bearerToken: string;
+      credential: { credentialId: string };
+      oldCredential: { status: string };
+    };
+  };
+  assert.match(body.data.bearerToken, /^arepo_/);
+  assert.equal(body.data.oldCredential.status, "revoked");
+
+  const oldToken = await routeRequest(
+    request("GET", "/api/node/status", undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(oldToken.status, 401);
+
+  const newToken = await routeRequest(
+    request("GET", "/api/node/status", undefined, {
+      authorization: `Bearer ${body.data.bearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(newToken.status, 200);
+
+  const listed = await routeRequest(
+    request("GET", "/api/node/credentials", undefined, {
+      authorization: `Bearer ${body.data.bearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(listed.status, 200);
+  const serializedList = JSON.stringify(listed.body);
+  assert.equal(serializedList.includes(body.data.bearerToken), false);
+  assert.equal(serializedList.includes(protectedBearerToken), false);
+});
+
+test("expired bearer credentials return sanitized 401 while active credentials keep readiness complete", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
+
+  const expiredToken = "server-expired-token-material";
+  const expiredCredential: CredentialMetadata = {
+    credentialId: "server-expired-credential",
+    actorKind: "apiToken",
+    label: "Expired token",
+    nodePermissions: ["manageNode"],
+    vaultGrants: [],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    expiresAt: "2026-01-02T00:00:00.000Z",
+    verifierIds: ["server-expired-verifier"],
+    sessionIds: [],
+    auditRefs: [],
+  };
+  const activeCredential: CredentialMetadata = {
+    credentialId: "server-active-credential",
+    actorKind: "apiToken",
+    label: "Active token",
+    nodePermissions: ["manageNode"],
+    vaultGrants: [],
+    createdAt: protectedNow,
+    expiresAt: protectedFuture,
+    verifierIds: ["server-active-verifier"],
+    sessionIds: [],
+    auditRefs: [],
+  };
+  await writeCredentialStore(appDataDir, { credentials: [expiredCredential, activeCredential] });
+  await writeTokenVerifierStore(appDataDir, {
+    tokenVerifiers: [
+      createTokenVerifierMetadata({
+        tokenMaterial: expiredToken,
+        credentialId: expiredCredential.credentialId,
+        verifierId: "server-expired-verifier",
+        createdAt: expiredCredential.createdAt,
+        expiresAt: expiredCredential.expiresAt,
+        hashParameters: {
+          scheme: TOKEN_VERIFIER_SCHEME,
+          iterations: 100_000,
+          digest: "sha256",
+          keyLength: 32,
+          saltLength: 32,
+        },
+      }),
+      createTokenVerifierMetadata({
+        tokenMaterial: protectedBearerToken,
+        credentialId: activeCredential.credentialId,
+        verifierId: "server-active-verifier",
+        createdAt: activeCredential.createdAt,
+        expiresAt: activeCredential.expiresAt,
+        hashParameters: {
+          scheme: TOKEN_VERIFIER_SCHEME,
+          iterations: 100_000,
+          digest: "sha256",
+          keyLength: 32,
+          saltLength: 32,
+        },
+      }),
+    ],
+  });
+  await writeBrowserSessionStore(appDataDir, { sessions: [] });
+  await writeRevocationStore(appDataDir, { revocations: [] });
+
+  const response = await routeRequest(
+    request("GET", "/api/node/status", undefined, { authorization: `Bearer ${expiredToken}` }),
+    cwd,
+  );
+  assert.equal(response.status, 401);
+  const serialized = JSON.stringify(response.body);
+  assert.equal(serialized.includes(expiredToken), false);
+  assert.equal(serialized.includes("verifierHash"), false);
+
+  const active = await routeRequest(
+    request("GET", "/api/node/status", undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(active.status, 200);
+  assert.equal(
+    (active.body as LocalNodeRuntimeStatus).credentialLifecycle.expiredCredentialCount,
+    1,
+  );
 });
 
 test("unsupported auth modes still fail closed clearly", async () => {

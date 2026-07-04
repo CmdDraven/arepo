@@ -216,6 +216,28 @@ test("vault registration requires manageVaults and stronger admin confirmation",
   assert.deepEqual(plan.requiredConfirmation, ["vaultRegistration"]);
 });
 
+test("credential creation requires manageAuth and explicit stronger confirmation", () => {
+  const confirmationRequired = planRouteAwareRequestAuthorization({
+    request: bearerRequest("POST", "/api/node/credentials"),
+    stores: storesForCredential(credential([], ["manageAuth"])),
+    now: new Date(now),
+  });
+  assert.equal(confirmationRequired.wouldDeny, true);
+  assert.equal(confirmationRequired.requiresStrongerConfirmation, true);
+  assert.deepEqual(confirmationRequired.requiredPermissions, ["manageAuth"]);
+  assert.deepEqual(confirmationRequired.requiredConfirmation, ["authChange"]);
+
+  const confirmed = planRouteAwareRequestAuthorization({
+    request: bearerRequest("POST", "/api/node/credentials"),
+    stores: storesForCredential(credential([], ["manageAuth"])),
+    strongerConfirmationPresent: true,
+    now: new Date(now),
+  });
+  assert.equal(confirmed.wouldAllow, true);
+  assert.equal(confirmed.requiresStrongerConfirmation, false);
+  assert.ok(confirmed.reasonCodes.includes("planned-allow"));
+});
+
 test("full node status requires manageNode", () => {
   const denied = planRouteAwareRequestAuthorization({
     request: bearerRequest("GET", "/api/node/status"),

@@ -107,6 +107,7 @@ export function planRouteAwareRequestAuthorization(
       reasonCodes: ["route-not-found"],
       wouldAllow: false,
       anonymousReduced: false,
+      requiresStrongerConfirmation: false,
     });
   }
 
@@ -129,6 +130,7 @@ export function planRouteAwareRequestAuthorization(
       reasonCodes: ["preflight-not-authorization"],
       wouldAllow: false,
       anonymousReduced: false,
+      requiresStrongerConfirmation: false,
       routePolicyId,
     });
   }
@@ -166,11 +168,14 @@ export function planRouteAwareRequestAuthorization(
     browserSecurityPlan.authenticationRequired && credentialResult.status !== "verified";
   const missingAuthorization = authorizationPlan.decision === "deny" && !anonymousReduced;
   const confirmationRequired =
-    authorizationPlan.decision === "requires-confirmation" ||
-    browserSecurityPlan.strongerConfirmationRequired;
+    (authorizationPlan.decision === "requires-confirmation" ||
+      browserSecurityPlan.strongerConfirmationRequired) &&
+    input.strongerConfirmationPresent !== true;
   const browserBlocked = browserSecurityPlan.failureReasons.length > 0;
   const wouldAllow =
-    authorizationPlan.decision === "allow" &&
+    (authorizationPlan.decision === "allow" ||
+      (authorizationPlan.decision === "requires-confirmation" &&
+        input.strongerConfirmationPresent === true)) &&
     !missingAuthentication &&
     !browserBlocked &&
     !confirmationRequired;
@@ -193,6 +198,7 @@ export function planRouteAwareRequestAuthorization(
     reasonCodes,
     wouldAllow,
     anonymousReduced,
+    requiresStrongerConfirmation: confirmationRequired,
     routePolicyId,
   });
 }
@@ -205,6 +211,7 @@ function decision(input: {
   reasonCodes: readonly RequestAuthorizationReasonCode[];
   wouldAllow: boolean;
   anonymousReduced: boolean;
+  requiresStrongerConfirmation: boolean;
   routePolicyId?: string;
 }): RequestAuthorizationDecision {
   return {
@@ -215,9 +222,7 @@ function decision(input: {
     requiresAuthorization: input.browserSecurityPlan.authorizationRequired,
     requiresOriginCheck: input.browserSecurityPlan.originCheckRequired,
     requiresCsrf: input.browserSecurityPlan.csrfCheckRequired,
-    requiresStrongerConfirmation:
-      input.authorizationPlan.decision === "requires-confirmation" ||
-      input.browserSecurityPlan.strongerConfirmationRequired,
+    requiresStrongerConfirmation: input.requiresStrongerConfirmation,
     reasonCodes: input.reasonCodes,
     routePolicyId: input.routePolicyId,
     routePattern: input.policy?.routePattern,
@@ -278,6 +283,17 @@ function matchRoutePolicy(request: RequestShapedCredentialInput): ProtectedRoute
   if (pathname === "/api/node/status") return policyFor(method, "/api/node/status");
   if (pathname === "/api/node/auth/dry-run") {
     return policyFor(method, "/api/node/auth/dry-run");
+  }
+  if (pathname === "/api/node/credentials/bootstrap") {
+    return policyFor(method, "/api/node/credentials/bootstrap");
+  }
+  if (pathname === "/api/node/credentials") return policyFor(method, "/api/node/credentials");
+  const credentialRoute = /^\/api\/node\/credentials\/([^/]+)\/(revoke|rotate)$/.exec(pathname);
+  if (credentialRoute?.[2] === "revoke") {
+    return policyFor(method, "/api/node/credentials/:credentialId/revoke");
+  }
+  if (credentialRoute?.[2] === "rotate") {
+    return policyFor(method, "/api/node/credentials/:credentialId/rotate");
   }
   if (pathname === "/api/vaults") return policyFor(method, "/api/vaults");
 

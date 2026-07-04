@@ -18,6 +18,11 @@ export type RoutePolicyCategory =
   | "health"
   | "nodeDiagnostics"
   | "dryRunDiagnostics"
+  | "credentialBootstrap"
+  | "credentialListing"
+  | "credentialCreation"
+  | "credentialRevocation"
+  | "credentialRotation"
   | "vaultListing"
   | "vaultRegistration"
   | "vaultRemoval"
@@ -132,6 +137,64 @@ export const PROTECTED_ROUTE_POLICIES = [
     networkExposureSafe: false,
     notes:
       "Diagnostic-only canary for protected-request dry-run status; future protected mode should expose only reduced anonymous fields or require manageNode.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/node/credentials/bootstrap",
+    category: "credentialBootstrap",
+    requiredPermissions: [],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: ["authChange"],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Local-only first credential bootstrap is special-cased outside normal auth and must be refused once any active credential exists.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/node/credentials",
+    category: "credentialListing",
+    requiredPermissions: ["manageAuth"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes: "Credential listing returns sanitized metadata only and never raw token material.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/node/credentials",
+    category: "credentialCreation",
+    requiredPermissions: ["manageAuth"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: ["authChange"],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Credential creation returns raw bearer material exactly once and requires confirmation.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/node/credentials/:credentialId/revoke",
+    category: "credentialRevocation",
+    requiredPermissions: ["manageAuth"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: ["tokenRevocation"],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes: "Credential revocation persists credential and verifier revocation metadata.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/node/credentials/:credentialId/rotate",
+    category: "credentialRotation",
+    requiredPermissions: ["manageAuth"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: ["authChange", "tokenRevocation"],
+    dataAccess: access({ authManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Credential rotation creates a replacement token, revokes the old credential, and returns the replacement raw token once.",
   },
   {
     method: "GET",

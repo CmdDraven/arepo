@@ -1,4 +1,8 @@
 import { loadConfig, resolveAppDataDir } from "./config.js";
+import {
+  auditCredentialLifecycleEvent,
+  getCredentialLifecycleStatus,
+} from "./credentialLifecycle.js";
 import { resolveBackendRuntimeOptions, resolveAuthPosture } from "./nodeRuntime.js";
 import { assessProtectedModeStartup } from "./protectedModeStartup.js";
 import { buildProtectedModeReadinessManifest } from "./protectedModeReadiness.js";
@@ -25,6 +29,7 @@ export async function enforceProtectedMode(input: {
   const runtime = resolveBackendRuntimeOptions();
   const appDataDir = resolveAppDataDir(config, input.cwd);
   const vaultRoots = config.vaults.map((vault) => vault.rootPath);
+  const credentialLifecycle = await getCredentialLifecycleStatus(appDataDir, vaultRoots);
   const auth = resolveAuthPosture(config.auth, runtime);
   const startup = await assessProtectedModeStartup({
     auth: config.auth,
@@ -37,11 +42,73 @@ export async function enforceProtectedMode(input: {
     auth,
     startup,
     requestPolicy,
+    credentialLifecycle,
     localOnlyMode: runtime.nonLocalWarning === undefined,
   });
   const warnings = publicWarnings(readiness.protectedModeOperational, runtime.nonLocalWarning);
   const endpoint = reducedEndpoint(input.url.pathname);
   const noCredential = noCredentialSupplied(input.request);
+  const bootstrapRoute =
+    input.request.method === "POST" && input.url.pathname === "/api/node/credentials/bootstrap";
+
+  if (bootstrapRoute) {
+    if (!isLocalRequest(input.request)) {
+      await auditCredentialLifecycleEvent(appDataDir, vaultRoots, {
+        kind: "credential.bootstrap.denied",
+        result: "rejected",
+        reasonCode: "non-local-bootstrap-denied",
+      });
+      return json(
+        403,
+        {
+          ok: false,
+          error: "Credential bootstrap is only available from the local machine.",
+          code: "local-bootstrap-required",
+          authRequired: true,
+          protectedModeOperational: readiness.protectedModeOperational,
+          enforcementActive: readiness.enforcementActive,
+          networkExposureSafe: false,
+        },
+        input.corsHeaders,
+      );
+    }
+    if (!credentialLifecycle.storeAvailable) {
+      return json(
+        503,
+        {
+          ok: false,
+          error: "Credential stores are not available for bootstrap.",
+          code: "credential-store-unavailable",
+          authRequired: true,
+          protectedModeOperational: false,
+          enforcementActive: false,
+          networkExposureSafe: false,
+        },
+        input.corsHeaders,
+      );
+    }
+    if (credentialLifecycle.activeCredentialCount > 0) {
+      await auditCredentialLifecycleEvent(appDataDir, vaultRoots, {
+        kind: "credential.bootstrap.denied",
+        result: "rejected",
+        reasonCode: "active-credential-exists",
+      });
+      return json(
+        409,
+        {
+          ok: false,
+          error: "Credential bootstrap is only available when no active credentials exist.",
+          code: "active-credential-exists",
+          authRequired: true,
+          protectedModeOperational: readiness.protectedModeOperational,
+          enforcementActive: readiness.enforcementActive,
+          networkExposureSafe: false,
+        },
+        input.corsHeaders,
+      );
+    }
+    return null;
+  }
 
   if (!readiness.readyForEnforcement) {
     if (endpoint) {
@@ -81,6 +148,7 @@ export async function enforceProtectedMode(input: {
     vaultId: vaultIdFromPath(input.url.pathname),
     allowedOrigins: runtime.allowedOrigins,
     csrfTokenPresent: csrfTokenPresent(input.request.headers),
+    strongerConfirmationPresent: strongerConfirmationPresent(input.request.headers),
     reducedAnonymousRequested: Boolean(endpoint && noCredential),
     allowedCredentialSource: "bearerHeader",
     audit: { mode: "append" },
@@ -207,6 +275,17 @@ function headerValue(headers: RequestLike["headers"], name: string): string | un
 
 function csrfTokenPresent(headers: RequestLike["headers"]): boolean {
   return Boolean(headerValue(headers, "x-arepo-csrf") || headerValue(headers, "x-csrf-token"));
+}
+
+function strongerConfirmationPresent(headers: RequestLike["headers"]): boolean {
+  return Boolean(headerValue(headers, "x-arepo-confirmation"));
+}
+
+function isLocalRequest(request: RequestLike): boolean {
+  const remoteAddress = request.socket?.remoteAddress;
+  return (
+    remoteAddress === "127.0.0.1" || remoteAddress === "::1" || remoteAddress === "::ffff:127.0.0.1"
+  );
 }
 
 function vaultIdFromPath(pathname: string): string | undefined {

@@ -3162,10 +3162,28 @@ type LocalNodeRuntimeStatus = {
       unsafeStorePathCount: number;
       permissionWarningCount: number;
     };
+    credentialLifecycle?: {
+      storeAvailable: boolean;
+      activeCredentialCount: number;
+      revokedCredentialCount: number;
+      expiredCredentialCount: number;
+      totalCredentialCount: number;
+      bootstrapAvailable: boolean;
+      error?: string;
+    };
     network: {
       localOnlyMode: boolean;
       nonLocalBindWithDisabledAuth: boolean;
     };
+  };
+  credentialLifecycle: {
+    storeAvailable: boolean;
+    activeCredentialCount: number;
+    revokedCredentialCount: number;
+    expiredCredentialCount: number;
+    totalCredentialCount: number;
+    bootstrapAvailable: boolean;
+    error?: string;
   };
   vaultCount: number;
   vaults: {
@@ -3750,8 +3768,29 @@ function LocalNodeDiagnosticsCard({
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Startup gating is diagnostic only. It does not verify credentials or enforce auth.
+                Startup gating controls whether protected mode can enforce safely.
               </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs font-semibold">Credential lifecycle</div>
+              <div className="grid grid-cols-[150px_1fr] gap-x-3 gap-y-1 text-xs">
+                <span className="text-muted-foreground">Store available</span>
+                <span>{status.credentialLifecycle.storeAvailable ? "yes" : "no"}</span>
+                <span className="text-muted-foreground">Active</span>
+                <span>{status.credentialLifecycle.activeCredentialCount}</span>
+                <span className="text-muted-foreground">Expired</span>
+                <span>{status.credentialLifecycle.expiredCredentialCount}</span>
+                <span className="text-muted-foreground">Revoked</span>
+                <span>{status.credentialLifecycle.revokedCredentialCount}</span>
+                <span className="text-muted-foreground">Bootstrap</span>
+                <span>
+                  {status.credentialLifecycle.bootstrapAvailable ? "available" : "closed"}
+                </span>
+              </div>
+              {status.credentialLifecycle.error && (
+                <p className="text-xs text-destructive">{status.credentialLifecycle.error}</p>
+              )}
             </div>
 
             <div className="space-y-1">

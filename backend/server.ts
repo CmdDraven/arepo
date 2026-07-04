@@ -1,7 +1,14 @@
 import http from "node:http";
 import { URL } from "node:url";
 import { fileURLToPath } from "node:url";
-import { addVault, loadConfig, updateVaultIndexScope } from "./config.js";
+import { addVault, loadConfig, resolveAppDataDir, updateVaultIndexScope } from "./config.js";
+import {
+  bootstrapBearerCredential,
+  createBearerCredential,
+  listCredentials,
+  revokeCredential,
+  rotateCredential,
+} from "./credentialLifecycle.js";
 import { buildIndexFilterResponse, parseIndexFilterKind } from "./indexFilters.js";
 import { buildVaultInspectResponse } from "./indexInspect.js";
 import { buildIndexSearchResponse } from "./indexSearch.js";
@@ -41,7 +48,9 @@ import {
 } from "./vaultFs.js";
 
 export type RequestLike = Pick<http.IncomingMessage, "method" | "url" | "headers"> &
-  AsyncIterable<Buffer>;
+  AsyncIterable<Buffer> & {
+    socket?: Pick<http.IncomingMessage["socket"], "remoteAddress">;
+  };
 
 export type ResponsePayload = {
   status: number;
@@ -95,6 +104,68 @@ export async function routeRequest(
     if (method === "GET" && url.pathname === "/api/node/auth/dry-run") {
       const config = await loadConfig(cwd, { validateVaultRoots: false });
       return json(200, getProtectedRequestDryRunCanaryStatus(config.auth), cors.headers);
+    }
+
+    if (segments[0] === "api" && segments[1] === "node" && segments[2] === "credentials") {
+      const config = await loadConfig(cwd, { validateVaultRoots: false });
+      if (config.auth.mode !== "protected") {
+        return json(
+          404,
+          { ok: false, error: "Credential lifecycle is only available in protected mode." },
+          cors.headers,
+        );
+      }
+      const appDataDir = resolveAppDataDir(config, cwd);
+      const vaultRoots = config.vaults.map((vault) => vault.rootPath);
+
+      if (method === "POST" && segments[3] === "bootstrap") {
+        const body = asRecord(await readJson(request));
+        const data = await bootstrapBearerCredential({
+          appDataDir,
+          vaultRoots,
+          vaults: config.vaults,
+          body,
+        });
+        return json(201, { ok: true, data }, cors.headers);
+      }
+
+      if (method === "GET" && segments[3] === undefined) {
+        const data = await listCredentials({ appDataDir, vaultRoots });
+        return json(200, { ok: true, data }, cors.headers);
+      }
+
+      if (method === "POST" && segments[3] === undefined) {
+        const body = asRecord(await readJson(request));
+        const data = await createBearerCredential({
+          appDataDir,
+          vaultRoots,
+          vaults: config.vaults,
+          body,
+        });
+        return json(201, { ok: true, data }, cors.headers);
+      }
+
+      if (method === "POST" && segments[3] && segments[4] === "revoke") {
+        const body = asRecord(await readJson(request));
+        const data = await revokeCredential({
+          appDataDir,
+          vaultRoots,
+          credentialId: decodeURIComponent(segments[3]),
+          reason: typeof body.reason === "string" ? body.reason : undefined,
+        });
+        return json(200, { ok: true, data }, cors.headers);
+      }
+
+      if (method === "POST" && segments[3] && segments[4] === "rotate") {
+        const body = asRecord(await readJson(request));
+        const data = await rotateCredential({
+          appDataDir,
+          vaultRoots,
+          credentialId: decodeURIComponent(segments[3]),
+          body,
+        });
+        return json(201, { ok: true, data }, cors.headers);
+      }
     }
 
     if (method === "GET" && url.pathname === "/api/vaults") {
@@ -288,6 +359,8 @@ function json(
 }
 
 function errorStatus(error: unknown): number {
+  const status = (error as { status?: unknown })?.status;
+  if (typeof status === "number" && status >= 400 && status <= 599) return status;
   const code = (error as NodeJS.ErrnoException)?.code;
   if (code === "ENOENT") return 404;
   if (code === "EEXIST") return 409;
@@ -309,7 +382,8 @@ function corsHeaders(request: RequestLike): {
   const headers = {
     vary: "Origin",
     "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "access-control-allow-headers": "content-type",
+    "access-control-allow-headers":
+      "authorization,content-type,x-arepo-confirmation,x-arepo-csrf,x-csrf-token",
     "access-control-max-age": "600",
   };
   if (!origin) return { allowed: true, headers };

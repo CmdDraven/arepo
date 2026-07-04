@@ -202,6 +202,7 @@ export type ProtectedModeReadinessBlockerCode =
   | "route-policy-inventory-incomplete"
   | "credential-verification-inactive"
   | "credential-acceptance-inactive"
+  | "credential-bootstrap-needed"
   | "credential-session-issuance-inactive"
   | "credential-session-lifecycle-planning-only"
   | "audit-enforcement-inactive"
@@ -287,10 +288,21 @@ export type ProtectedModeReadinessManifest = {
     unsafeStorePathCount: number;
     permissionWarningCount: number;
   };
+  credentialLifecycle?: CredentialLifecycleRuntimeStatus;
   network: {
     localOnlyMode: boolean;
     nonLocalBindWithDisabledAuth: boolean;
   };
+};
+
+export type CredentialLifecycleRuntimeStatus = {
+  storeAvailable: boolean;
+  activeCredentialCount: number;
+  revokedCredentialCount: number;
+  expiredCredentialCount: number;
+  totalCredentialCount: number;
+  bootstrapAvailable: boolean;
+  error?: string;
 };
 
 export type VaultInfo = {
@@ -328,6 +340,7 @@ export type LocalNodeRuntimeStatus = {
   requestPolicy: RequestPolicyRuntimeStatus;
   protectedModeStartup: ProtectedModeStartupAssessment;
   protectedModeReadiness: ProtectedModeReadinessManifest;
+  credentialLifecycle: CredentialLifecycleRuntimeStatus;
   vaultCount: number;
   vaults: LocalNodeVaultRuntimeSummary[];
   capabilities: {

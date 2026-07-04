@@ -63,6 +63,10 @@ export type AuthAuditEventKind =
   | "remoteNode.registration.rejected"
   | "cors.origin.rejected"
   | "auth.config.changed"
+  | "credential.bootstrap.attempted"
+  | "credential.bootstrap.succeeded"
+  | "credential.bootstrap.denied"
+  | "credential.rotated"
   | "enrichmentPolicy.changed"
   | "emergency.localOnlyReset";
 
