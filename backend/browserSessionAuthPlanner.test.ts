@@ -102,6 +102,15 @@ test("browser session auth planner describes inactive cookie and csrf posture", 
   assert.equal(plan.csrf.originRefererDefenseInDepth, true);
   assert.equal(plan.csrf.storesRawTokens, false);
   assert.equal(plan.csrf.logsRawTokens, false);
+  assert.equal(plan.csrf.tokenStore.status, "inactive");
+  assert.equal(plan.csrf.tokenStore.implementation, "in-memory-test-primitive");
+  assert.equal(plan.csrf.tokenStore.wiredIntoAuthorization, false);
+  assert.equal(plan.csrf.tokenStore.wiredIntoRoutes, false);
+  assert.equal(plan.csrf.tokenVerifier.status, "inactive");
+  assert.equal(plan.csrf.tokenVerifier.implementation, "hash-and-constant-time-compare-primitive");
+  assert.equal(plan.csrf.tokenVerifier.wiredIntoAuthorization, false);
+  assert.equal(plan.csrf.tokenVerifier.wiredIntoRoutes, false);
+  assert.equal(plan.csrf.tokenVerifier.storesRawTokens, false);
   assert.equal(serialized.includes("csrfToken"), false);
   assert.equal(serialized.includes("Set-Cookie"), false);
   assert.equal(serialized.includes("arepo_session"), false);

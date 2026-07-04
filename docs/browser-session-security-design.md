@@ -20,6 +20,9 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
 - Inert in-memory browser session store and verifier primitives exist for
   storage and verification semantics tests only. They are not wired into request
   authorization.
+- Inert in-memory CSRF token store and verifier primitives exist for future
+  token semantics tests only. CSRF tokens are not issued from routes and are not
+  validated in live request authorization.
 - The frontend does not store bearer tokens.
 - Full authorized status reports `browserSessionAuth.status` as
   `planning-only`; reduced anonymous status does not expose session details.
@@ -170,6 +173,15 @@ Bearer-token API requests may remain header-authenticated and should not require
 browser CSRF unless they explicitly use browser-session cookies. Origin and
 Referer checks are defense in depth for browser sessions, not a replacement for
 authentication, authorization, and CSRF validation.
+
+Current implementation note: AREPO now includes an inert in-memory
+`browserCsrfTokenStore` primitive and a `browserCsrfTokenVerifier` primitive for
+future CSRF semantics. They can create test records tied to a future browser
+session id, store only token hashes, verify token id plus raw token secret,
+reject missing/wrong/expired/revoked/consumed tokens, revoke tokens for one
+session, prune expired tokens, and return safe diagnostics. These primitives do
+not persist to disk, do not issue CSRF tokens through any HTTP route, and are
+not wired into live request authorization or route middleware.
 
 ## Session Store And Revocation
 
@@ -369,6 +381,13 @@ browserSessionAuth.csrf.tokenIssuance = inactive
 browserSessionAuth.csrf.validation = inactive
 browserSessionAuth.csrf.unsafeMethodsRequireCsrfWhenSessionAuthLive = true
 browserSessionAuth.csrf.bearerTokenRequiresBrowserCsrf = false
+browserSessionAuth.csrf.tokenStore.status = inactive
+browserSessionAuth.csrf.tokenStore.implementation = in-memory-test-primitive
+browserSessionAuth.csrf.tokenStore.wiredIntoAuthorization = false
+browserSessionAuth.csrf.tokenStore.wiredIntoRoutes = false
+browserSessionAuth.csrf.tokenVerifier.status = inactive
+browserSessionAuth.csrf.tokenVerifier.wiredIntoAuthorization = false
+browserSessionAuth.csrf.tokenVerifier.wiredIntoRoutes = false
 browserSessionAuth.frontend.tokenStorage = false
 browserSessionAuth.frontend.sessionSecretReadableByJs = false
 browserSessionAuth.frontend.loginUi = inactive
@@ -477,6 +496,9 @@ The current scaffold remains inert for browser sessions:
 9. Keep the in-memory session store and verifier primitives as unit-tested,
    inactive infrastructure until issuance, cookie, CSRF, revocation, audit, and
    authorization integration are designed and tested together.
+10. Keep the in-memory CSRF token store and verifier primitives as unit-tested,
+    inactive infrastructure until browser session issuance and CSRF route
+    delivery/validation become live together.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

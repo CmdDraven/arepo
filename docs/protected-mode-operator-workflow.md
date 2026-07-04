@@ -211,6 +211,9 @@ fields are planning posture only.
 The in-memory browser session store and verifier primitives are inactive
 backend test infrastructure; they do not make cookies or browser sessions usable
 as credentials.
+The in-memory CSRF token store and verifier primitives are also inactive backend
+test infrastructure; CSRF tokens are not issued from routes or validated in live
+request authorization.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

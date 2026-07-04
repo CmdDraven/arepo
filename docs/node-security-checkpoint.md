@@ -118,6 +118,12 @@ Implemented components include:
   future storage semantics for hashed verifier material, expiry, revocation,
   subject-wide revocation, pruning, and safe diagnostics, but are not wired into
   HTTP authorization, cookie acceptance, session issuance, pairing, or CSRF.
+- `backend/browserCsrfTokenStore.ts` and `backend/browserCsrfTokenVerifier.ts`:
+  inert in-memory CSRF token storage and verifier primitives. They define future
+  CSRF semantics for hashed token material, expiry, revocation, one-time
+  consumption, session-wide revocation, pruning, and safe diagnostics, but are
+  not wired into HTTP authorization, route middleware, CSRF route issuance, or
+  browser session authentication.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

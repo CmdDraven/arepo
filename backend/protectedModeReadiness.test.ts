@@ -120,6 +120,20 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.cookiePolicy.setsCookiesToday, false);
   assert.equal(readiness.browserSessionAuth.csrf.tokenIssuance, "inactive");
   assert.equal(readiness.browserSessionAuth.csrf.validation, "inactive");
+  assert.equal(readiness.browserSessionAuth.csrf.tokenStore.status, "inactive");
+  assert.equal(
+    readiness.browserSessionAuth.csrf.tokenStore.implementation,
+    "in-memory-test-primitive",
+  );
+  assert.equal(readiness.browserSessionAuth.csrf.tokenStore.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.csrf.tokenStore.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.csrf.tokenVerifier.status, "inactive");
+  assert.equal(
+    readiness.browserSessionAuth.csrf.tokenVerifier.implementation,
+    "hash-and-constant-time-compare-primitive",
+  );
+  assert.equal(readiness.browserSessionAuth.csrf.tokenVerifier.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.csrf.tokenVerifier.wiredIntoRoutes, false);
   assert.equal(readiness.browserSessionAuth.frontend.tokenStorage, false);
   assert.equal(readiness.browserSessionAuth.frontend.sessionSecretReadableByJs, false);
   assert.ok(

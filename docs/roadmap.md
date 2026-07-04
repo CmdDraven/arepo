@@ -57,9 +57,10 @@ bearer-token authorization in protected mode, and now reports browser-session
 auth as planning-only/inactive with disabled route stubs plus pairing, session
 lifecycle, cookie policy, CSRF, frontend no-secret, and audit lifecycle planner
 posture. Inert in-memory browser-session store/verifier primitives now exist for
-future storage semantics tests only. CSRF live enforcement, browser session
-issuance, frontend token storage, remote-node, and federation work remain
-deferred.
+future storage semantics tests only, and inert in-memory CSRF token
+store/verifier primitives now exist for future CSRF semantics tests only. CSRF
+live enforcement, browser session issuance, frontend token storage, remote-node,
+and federation work remain deferred.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

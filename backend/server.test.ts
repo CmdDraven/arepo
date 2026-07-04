@@ -286,6 +286,20 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.csrf.unsafeMethodsRequireCsrfWhenSessionAuthLive, true);
   assert.equal(status.browserSessionAuth.csrf.bearerTokenRequiresBrowserCsrf, false);
   assert.equal(status.browserSessionAuth.csrf.storesRawTokens, false);
+  assert.equal(status.browserSessionAuth.csrf.tokenStore.status, "inactive");
+  assert.equal(
+    status.browserSessionAuth.csrf.tokenStore.implementation,
+    "in-memory-test-primitive",
+  );
+  assert.equal(status.browserSessionAuth.csrf.tokenStore.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.csrf.tokenStore.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.csrf.tokenVerifier.status, "inactive");
+  assert.equal(
+    status.browserSessionAuth.csrf.tokenVerifier.implementation,
+    "hash-and-constant-time-compare-primitive",
+  );
+  assert.equal(status.browserSessionAuth.csrf.tokenVerifier.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.csrf.tokenVerifier.wiredIntoRoutes, false);
   assert.equal(status.browserSessionAuth.frontend.tokenStorage, false);
   assert.equal(status.browserSessionAuth.frontend.sessionSecretReadableByJs, false);
   assert.equal(status.browserSessionAuth.frontend.loginUi, "inactive");
@@ -558,6 +572,17 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.browserSessionAuth.csrf.validation, "inactive");
   assert.equal(full.browserSessionAuth.csrf.bearerTokenRequiresBrowserCsrf, false);
   assert.equal(full.browserSessionAuth.csrf.storesRawTokens, false);
+  assert.equal(full.browserSessionAuth.csrf.tokenStore.status, "inactive");
+  assert.equal(full.browserSessionAuth.csrf.tokenStore.implementation, "in-memory-test-primitive");
+  assert.equal(full.browserSessionAuth.csrf.tokenStore.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.csrf.tokenStore.wiredIntoRoutes, false);
+  assert.equal(full.browserSessionAuth.csrf.tokenVerifier.status, "inactive");
+  assert.equal(
+    full.browserSessionAuth.csrf.tokenVerifier.implementation,
+    "hash-and-constant-time-compare-primitive",
+  );
+  assert.equal(full.browserSessionAuth.csrf.tokenVerifier.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.csrf.tokenVerifier.wiredIntoRoutes, false);
   assert.equal(full.browserSessionAuth.frontend.tokenStorage, false);
   assert.equal(full.browserSessionAuth.frontend.sessionSecretReadableByJs, false);
   assert.equal(full.browserSessionAuth.frontend.loginUi, "inactive");

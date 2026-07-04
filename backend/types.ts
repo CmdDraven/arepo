@@ -427,6 +427,19 @@ export type BrowserSessionAuthRuntimeStatus = {
     originRefererDefenseInDepth: true;
     storesRawTokens: false;
     logsRawTokens: false;
+    tokenStore: {
+      status: "inactive";
+      implementation: "in-memory-test-primitive";
+      wiredIntoAuthorization: false;
+      wiredIntoRoutes: false;
+    };
+    tokenVerifier: {
+      status: "inactive";
+      implementation: "hash-and-constant-time-compare-primitive";
+      wiredIntoAuthorization: false;
+      wiredIntoRoutes: false;
+      storesRawTokens: false;
+    };
   };
   frontend: {
     tokenStorage: false;
