@@ -1,5 +1,6 @@
 import { getNodeInfo, getVault, loadConfig, resolveAppDataDir } from "./config.js";
 import { getCredentialLifecycleStatus } from "./credentialLifecycle.js";
+import { planBrowserSessionAuth } from "./browserSessionAuthPlanner.js";
 import { resolveAuthPosture, resolveBackendRuntimeOptions } from "./nodeRuntime.js";
 import { buildProtectedModeReadinessManifest } from "./protectedModeReadiness.js";
 import { assessProtectedModeStartup } from "./protectedModeStartup.js";
@@ -58,6 +59,10 @@ export async function getLocalNodeRuntimeStatus(
   const localOnlyMode = node.mode === "local" && runtime.nonLocalWarning === undefined;
   const auth = resolveAuthPosture(config.auth, runtime);
   const requestPolicy = getRequestPolicyRuntimeStatus(config.auth);
+  const browserSessionAuth = planBrowserSessionAuth({
+    authMode: config.auth.mode,
+    localOnlyMode,
+  });
   const protectedModeStartup = await assessProtectedModeStartup({
     auth: config.auth,
     appDataDir,
@@ -94,9 +99,11 @@ export async function getLocalNodeRuntimeStatus(
       startup: protectedModeStartup,
       requestPolicy,
       credentialLifecycle,
+      browserSessionAuth,
       localOnlyMode,
     }),
     credentialLifecycle,
+    browserSessionAuth,
     vaultCount: node.vaults.length,
     vaults: vaultStatuses,
     capabilities: {

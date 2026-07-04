@@ -203,6 +203,10 @@ revoked, and expired credential counts plus bootstrap availability. It must not
 include raw tokens, verifier hashes, salts, authorization headers, cookies, or
 verifier internals.
 
+Full status may also report `browserSessionAuth.status = planning-only`.
+Browser-session cookies are not accepted as live credentials, session issuance
+is inactive, and CSRF enforcement is inactive in this slice.
+
 ## List Credentials
 
 ```bash

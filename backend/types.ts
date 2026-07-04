@@ -205,6 +205,12 @@ export type ProtectedModeReadinessBlockerCode =
   | "credential-bootstrap-needed"
   | "credential-session-issuance-inactive"
   | "credential-session-lifecycle-planning-only"
+  | "browser-session-auth-planning-only"
+  | "browser-session-cookies-not-accepted"
+  | "browser-session-issuance-inactive"
+  | "browser-session-csrf-enforcement-inactive"
+  | "browser-session-cookie-policy-planning-only"
+  | "browser-session-pairing-login-planning-only"
   | "audit-enforcement-inactive"
   | "audit-requirement-planning-only"
   | "revocation-checks-inactive"
@@ -289,6 +295,7 @@ export type ProtectedModeReadinessManifest = {
     permissionWarningCount: number;
   };
   credentialLifecycle?: CredentialLifecycleRuntimeStatus;
+  browserSessionAuth: BrowserSessionAuthRuntimeStatus;
   network: {
     localOnlyMode: boolean;
     nonLocalBindWithDisabledAuth: boolean;
@@ -303,6 +310,44 @@ export type CredentialLifecycleRuntimeStatus = {
   totalCredentialCount: number;
   bootstrapAvailable: boolean;
   error?: string;
+};
+
+export type BrowserSessionAuthBlockerCode =
+  | "browser-session-auth-planning-only"
+  | "browser-session-cookies-not-accepted"
+  | "browser-session-issuance-inactive"
+  | "browser-session-csrf-enforcement-inactive"
+  | "browser-session-cookie-policy-planning-only"
+  | "browser-session-pairing-login-planning-only";
+
+export type BrowserSessionAuthRuntimeStatus = {
+  status: "planning-only";
+  acceptsSessionCookies: false;
+  sessionIssuance: "inactive";
+  csrfEnforcement: "inactive";
+  frontendTokenStorage: false;
+  networkExposureSafe: false;
+  cookiePolicy: {
+    httpOnly: true;
+    sameSite: "lax";
+    secure: "required-on-https";
+    devHttpException: "localhost-only-planned";
+    path: "/api";
+    domainAttribute: false;
+  };
+  pairing: {
+    status: "planned";
+    preferredFlow: "local-pairing-code-from-authorized-bearer";
+  };
+  sessionStore: {
+    verifierMetadataPlanned: true;
+    storesRawSessionSecrets: false;
+    revocationRequired: true;
+  };
+  readiness: {
+    ready: false;
+    blockers: readonly BrowserSessionAuthBlockerCode[];
+  };
 };
 
 export type VaultInfo = {
@@ -341,6 +386,7 @@ export type LocalNodeRuntimeStatus = {
   protectedModeStartup: ProtectedModeStartupAssessment;
   protectedModeReadiness: ProtectedModeReadinessManifest;
   credentialLifecycle: CredentialLifecycleRuntimeStatus;
+  browserSessionAuth: BrowserSessionAuthRuntimeStatus;
   vaultCount: number;
   vaults: LocalNodeVaultRuntimeSummary[];
   capabilities: {

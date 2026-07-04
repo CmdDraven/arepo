@@ -247,6 +247,12 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.requestPolicy.acceptsSessions, false);
   assert.equal(status.requestPolicy.acceptsBearerTokens, false);
   assert.equal(status.requestPolicy.networkExposureSafe, false);
+  assert.equal(status.browserSessionAuth.status, "planning-only");
+  assert.equal(status.browserSessionAuth.acceptsSessionCookies, false);
+  assert.equal(status.browserSessionAuth.sessionIssuance, "inactive");
+  assert.equal(status.browserSessionAuth.csrfEnforcement, "inactive");
+  assert.equal(status.browserSessionAuth.frontendTokenStorage, false);
+  assert.equal(status.browserSessionAuth.networkExposureSafe, false);
   assert.equal(status.protectedModeStartup.requestedAuthMode, "disabled");
   assert.equal(status.protectedModeStartup.operationalAuthMode, "disabled");
   assert.equal(status.protectedModeStartup.protectedModeAvailable, false);
@@ -466,6 +472,7 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(reduced.authRequired, true);
   assert.equal("runtime" in reduced, false);
   assert.equal("protectedModeReadiness" in reduced, false);
+  assert.equal("browserSessionAuth" in reduced, false);
 
   const authorized = await routeRequest(
     request("GET", "/api/node/status", undefined, {
@@ -481,6 +488,15 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.requestPolicy.enforcementActive, true);
   assert.equal(full.requestPolicy.acceptsBearerTokens, true);
   assert.equal(full.requestPolicy.acceptsSessions, false);
+  assert.equal(full.browserSessionAuth.status, "planning-only");
+  assert.equal(full.browserSessionAuth.acceptsSessionCookies, false);
+  assert.equal(full.browserSessionAuth.sessionIssuance, "inactive");
+  assert.equal(full.browserSessionAuth.csrfEnforcement, "inactive");
+  assert.equal(full.browserSessionAuth.frontendTokenStorage, false);
+  assert.ok(
+    full.browserSessionAuth.readiness.blockers.includes("browser-session-cookies-not-accepted"),
+  );
+  assert.equal(full.protectedModeReadiness.browserSessionAuth.acceptsSessionCookies, false);
   assert.equal(full.protectedModeReadiness.readyForEnforcement, true);
   assert.equal(full.protectedModeReadiness.protectedModeOperational, true);
   assert.equal(full.protectedModeReadiness.enforcementActive, true);
@@ -550,7 +566,11 @@ test("protected mode treats session-cookie auth as unsupported in this slice", a
     cwd,
   );
   assert.equal(response.status, 401);
-  assert.equal(JSON.stringify(response.body).includes(secret), false);
+  const serialized = JSON.stringify(response.body);
+  assert.equal(serialized.includes(secret), false);
+  assert.equal(serialized.includes("arepo_session"), false);
+  assert.equal(serialized.includes("verifierHash"), false);
+  assert.equal(serialized.includes("salt"), false);
 });
 
 test("protected credential bootstrap is localhost-only and returns raw token once", async () => {

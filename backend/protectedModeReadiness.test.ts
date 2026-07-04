@@ -87,6 +87,16 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.ok(readiness.blockers.includes("stronger-confirmation-planning-only"));
   assert.ok(readiness.blockers.includes("explicit-enforcement-flag-disabled"));
   assert.equal(readiness.blockers.includes("auth-store-missing"), false);
+  assert.equal(readiness.blockers.includes("browser-session-auth-planning-only"), false);
+  assert.equal(readiness.browserSessionAuth.status, "planning-only");
+  assert.equal(readiness.browserSessionAuth.acceptsSessionCookies, false);
+  assert.equal(readiness.browserSessionAuth.sessionIssuance, "inactive");
+  assert.equal(readiness.browserSessionAuth.csrfEnforcement, "inactive");
+  assert.ok(
+    readiness.browserSessionAuth.readiness.blockers.includes(
+      "browser-session-cookies-not-accepted",
+    ),
+  );
   assert.equal(readiness.startup.missingStoreCount, 0);
   assert.equal(readiness.routePolicy.complete, true);
 });
@@ -276,6 +286,8 @@ test("manifest never includes sensitive upstream diagnostic material", () => {
   assert.equal(serialized.includes("salt"), false);
   assert.equal(serialized.includes("sourceBody"), false);
   assert.equal(serialized.includes("sessionSecret"), false);
+  assert.equal(serialized.includes("csrfToken"), false);
+  assert.equal(serialized.includes("pairingCode"), false);
   assert.equal(readiness.startup.missingStoreCount, 1);
   assert.equal(readiness.startup.corruptStoreCount, 1);
   assert.equal(readiness.startup.unsafeStorePathCount, 1);

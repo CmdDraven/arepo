@@ -1,5 +1,6 @@
 import { planAuditRequirement } from "./auditRequirementPlanner.js";
 import { planBrowserRequestGuard } from "./browserRequestGuardPlanner.js";
+import { planBrowserSessionAuth } from "./browserSessionAuthPlanner.js";
 import { planCredentialSessionLifecycle } from "./credentialSessionLifecyclePlanner.js";
 import { planProtectedRequestPipeline } from "./protectedRequestPipeline.js";
 import { planProtectedResponse } from "./protectedResponsePlanner.js";
@@ -8,13 +9,14 @@ import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
 import { planStrongerConfirmation } from "./strongerConfirmationPlanner.js";
 import type {
   AuthPosture,
+  BrowserSessionAuthRuntimeStatus,
+  CredentialLifecycleRuntimeStatus,
   ProtectedModeReadinessBlockerCode,
   ProtectedModeReadinessBlockerDetail,
   ProtectedModeReadinessManifest,
   ProtectedModeStartupAssessment,
   RequestPolicyRuntimeStatus,
 } from "./types.js";
-import type { CredentialLifecycleRuntimeStatus } from "./types.js";
 
 export type ProtectedModeReadinessInput = {
   auth: AuthPosture;
@@ -22,6 +24,7 @@ export type ProtectedModeReadinessInput = {
   requestPolicy: RequestPolicyRuntimeStatus;
   localOnlyMode: boolean;
   credentialLifecycle?: CredentialLifecycleRuntimeStatus;
+  browserSessionAuth?: BrowserSessionAuthRuntimeStatus;
   routePolicyExpectedMinimum?: number;
 };
 
@@ -40,6 +43,9 @@ export function buildProtectedModeReadinessManifest(
     input.auth.mode !== "protected" ||
     !input.credentialLifecycle ||
     input.credentialLifecycle.activeCredentialCount > 0;
+  const browserSessionAuth =
+    input.browserSessionAuth ??
+    planBrowserSessionAuth({ authMode: input.auth.mode, localOnlyMode: input.localOnlyMode });
   const enforcementReady =
     input.auth.mode === "protected" &&
     input.startup.protectedModeMayStart &&
@@ -320,6 +326,7 @@ export function buildProtectedModeReadinessManifest(
       permissionWarningCount: input.startup.permissionWarnings.length,
     },
     credentialLifecycle: input.credentialLifecycle,
+    browserSessionAuth,
     network: {
       localOnlyMode: input.localOnlyMode,
       nonLocalBindWithDisabledAuth: input.startup.nonLocalBindWithDisabledAuth,

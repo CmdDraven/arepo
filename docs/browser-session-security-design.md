@@ -14,13 +14,56 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
 - Disabled auth remains the default compatibility mode.
 - `auth.mode = "protected"` enforces local bearer-token authorization for
   backend API/operator requests.
-- There is no browser session model.
+- Bearer token is the only live protected-mode credential path.
+- Browser-session cookies are intentionally not accepted as live credentials.
+- CSRF enforcement is not live because browser sessions are not live.
+- The frontend does not store bearer tokens.
+- Full authorized status reports `browserSessionAuth.status` as
+  `planning-only`; reduced anonymous status does not expose session details.
 - CORS is a browser-origin filter, not authentication.
 - The existing allowed CORS origins only control which browser origins may read
   responses; they do not identify a trusted user, device, or node.
 - Non-local binding remains unsafe. CORS allowlists, preflight handling, and
   frontend origin checks do not make LAN, reverse-proxy, or internet exposure
   safe.
+
+## Future Browser Session Goal
+
+The intended browser path is:
+
+1. A local operator bootstraps or creates a bearer credential.
+2. The operator starts a deliberate local pairing/login flow.
+3. The backend validates the bearer credential or a short-lived pairing proof.
+4. The backend issues an HttpOnly browser session cookie.
+5. The frontend never receives, reads, stores, or logs the raw session secret.
+6. The frontend uses normal same-origin requests with browser credentials
+   included.
+7. Unsafe browser-session requests include a CSRF proof.
+8. Logout or revocation invalidates the session server-side.
+9. Expired, revoked, malformed, or unverifiable sessions fail closed.
+
+AREPO should implement the first browser login path as a local-only pairing
+code derived from an already authorized bearer request. That avoids asking users
+to paste a long bearer token into the browser UI and keeps the bearer token out
+of frontend storage. The pairing code should be short-lived, one-time use,
+audited, and exchangeable only from an allowed local browser origin.
+
+## Session Issuance Model
+
+Future session issuance must require:
+
+- `auth.mode = "protected"`.
+- browser-session readiness complete enough to enforce safely.
+- a valid authorized bearer credential or a one-time pairing proof.
+- local host/origin checks; dev exceptions must remain localhost-only.
+- sanitized audit events for attempted, succeeded, and denied issuance.
+- no raw session secret in JSON responses.
+- session cookie delivery via `Set-Cookie` only.
+- no raw session secrets in logs, audit records, status responses, or frontend
+  state.
+
+Session issuance is currently inactive. No live route should issue browser
+session cookies in this slice.
 
 ## Browser Threat Model
 
@@ -77,9 +120,13 @@ A future cookie session model should include:
 
 - `HttpOnly` cookies so normal page JavaScript cannot read the session secret.
 - `SameSite=Lax` or `SameSite=Strict`; use `Strict` unless UX requires `Lax`.
-- `Secure` cookies on HTTPS. Localhost development may need explicit handling
-  because secure-cookie behavior differs between `http://localhost` and HTTPS
-  deployments.
+- `Secure` cookies on HTTPS. Secure cookies require HTTPS in real browser
+  contexts. Local HTTP development may need an explicit dev-only policy, but it
+  must be localhost-only and must not silently apply to non-local bind
+  addresses.
+- `Path` constrained as tightly as practical, likely `/api`.
+- no `Domain` attribute unless a later deployment model explicitly justifies it.
+- bounded `Max-Age` or `Expires`.
 - Short expiry and server-side session records.
 - Renewal rules that extend only valid, non-revoked sessions.
 - Logout that revokes the server-side session and clears the browser cookie.
@@ -115,6 +162,126 @@ CSRF validation should consider:
 - session binding
 - token expiry or rotation on session renewal
 - rejection and audit reason codes
+
+Bearer-token API requests may remain header-authenticated and should not require
+browser CSRF unless they explicitly use browser-session cookies. Origin and
+Referer checks are defense in depth for browser sessions, not a replacement for
+authentication, authorization, and CSRF validation.
+
+## Session Store And Revocation
+
+The session store should contain verifier metadata, not raw session tokens.
+Planned safe metadata includes:
+
+- session id
+- associated credential id or principal id
+- verifier id and verifier metadata
+- createdAt
+- expiresAt
+- renewedAt if renewal is implemented
+- lastUsedAt if safe to update without excessive churn
+- revokedAt or loggedOutAt
+- SameSite policy
+- CSRF binding id, not raw CSRF token
+- optional client label or user-agent summary only if sanitized and useful
+
+Revocation must be persistent. Logout should revoke the current session.
+Revoke-all sessions should be planned for local emergency use. Bearer credential
+revocation should either revoke derived browser sessions or make verification
+fail by checking the associated credential and revocation store; the exact model
+must be explicit before sessions become live.
+
+## Authorization Integration
+
+Browser sessions should enter the same route authorization path as bearer
+credentials:
+
+- request credential extraction supports bearer headers and browser-session
+  cookies, but live enforcement currently allows bearer headers only.
+- session verification returns a principal with node and vault permissions.
+- `backend/routePermissions.ts` remains the route policy source.
+- routes missing explicit policy fail closed.
+- stronger confirmation still applies to sensitive routes.
+- browser sessions need a future re-confirmation UX for sensitive operations;
+  `x-arepo-confirmation: confirm` is an operator/API signal, not final browser
+  UX.
+
+## Pairing And Login Flow
+
+The preferred first flow is:
+
+1. An already authorized local bearer request asks the backend to create a
+   short-lived pairing code.
+2. The backend stores only verifier metadata for the pairing code.
+3. The operator enters or transfers the short code into the browser UI.
+4. The browser exchanges the code from an allowed local origin.
+5. The backend consumes the code once, issues the HttpOnly session cookie, and
+   returns no session secret in JSON.
+6. The frontend moves from reduced anonymous status to full authenticated status
+   using same-origin requests.
+
+Future endpoints may include `POST /api/node/auth/pairing/start`,
+`POST /api/node/auth/pairing/complete`, `POST /api/node/auth/session`,
+`POST /api/node/auth/session/logout`, `POST /api/node/auth/session/revoke-all`,
+and `GET /api/node/auth/csrf`. They are design targets only unless explicitly
+implemented as disabled stubs later.
+
+## Audit Behavior
+
+Planned sanitized audit events:
+
+- pairing issued, consumed, expired, and denied
+- session issuance attempted, succeeded, and denied
+- session verified and allowed if the active audit model records allows
+- session denied for invalid, expired, revoked, logged-out, or malformed state
+- CSRF denied
+- logout/revoke current session
+- revoke-all sessions
+
+Audit records must not include raw session tokens, raw CSRF tokens, raw pairing
+codes, Authorization headers, cookies, verifier hashes, salts, or browser
+fingerprinting data beyond explicitly safe sanitized labels.
+
+## Frontend No-Secret Handling
+
+Frontend constraints:
+
+- no bearer token in `localStorage`, `sessionStorage`, IndexedDB, cookies, or
+  durable app state.
+- no raw session secret available to JavaScript.
+- reduced anonymous status must be distinguishable from authenticated full
+  status.
+- login/pairing UI is future work.
+- logout should call a backend revocation endpoint once implemented.
+- unsafe mutations should include CSRF proof once browser sessions are live.
+
+## Readiness And Status
+
+Browser-session readiness blockers:
+
+- session verifier/store availability
+- session revocation store availability
+- secure cookie policy for the current bind/origin posture
+- CSRF verifier and token-binding policy
+- pairing/login issuance policy
+- sanitized failure responses
+- audit behavior if protected readiness requires it
+- route authorization integration
+- reduced anonymous status behavior preserved
+
+Current full status may expose safe posture only, such as:
+
+```text
+browserSessionAuth.status = planning-only
+browserSessionAuth.acceptsSessionCookies = false
+browserSessionAuth.sessionIssuance = inactive
+browserSessionAuth.csrfEnforcement = inactive
+browserSessionAuth.frontendTokenStorage = false
+```
+
+Status must not expose raw session secrets, raw CSRF tokens, raw pairing codes,
+session hashes, salts, cookies, or Authorization headers. Reduced anonymous
+status must not expose browser-session readiness detail.
 
 ## Header Token Design
 
@@ -202,16 +369,15 @@ auth checks, but it must not grant access to the actual operation.
 
 ## Minimal First Implementation Recommendation
 
-The next implementation slice should remain inert:
+The current scaffold remains inert for browser sessions:
 
-1. Add typed browser security policy metadata and pure helper tests for request
-   classification, cookie-vs-header-token posture, CSRF requirement planning,
-   and reduced anonymous status decisions.
-2. Do not add middleware.
-3. Do not add cookies or sessions.
-4. Do not generate tokens.
-5. Do not enforce origin or CSRF checks yet.
-6. Do not claim LAN, reverse-proxy, or internet exposure is safe.
+1. Keep typed browser security and browser-session auth planners pure.
+2. Report browser-session posture as planning-only/inactive.
+3. Do not accept session cookies as live credentials.
+4. Do not add middleware that issues cookies.
+5. Do not generate browser sessions, CSRF tokens, or pairing codes.
+6. Do not enforce origin or CSRF checks as live browser-session auth yet.
+7. Do not claim LAN, reverse-proxy, or internet exposure is safe.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

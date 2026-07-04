@@ -28,6 +28,9 @@ local bearer-token API/operator use:
 - Browser login, browser sessions, live CSRF-protected browser auth, frontend
   token storage, remote node registration, federation, and LAN/reverse-proxy
   safety remain out of scope.
+- Browser-session auth is represented in status/readiness as planning-only:
+  session cookies are not accepted, session issuance is inactive, CSRF
+  enforcement is inactive, and frontend token storage is absent.
 
 See [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
 the current local operator commands and manual acceptance flow.
@@ -99,6 +102,10 @@ Implemented components include:
   methods, origin posture, CSRF requirement state, reduced anonymous status,
   and route-aware request classes without rejecting requests or changing CORS
   behavior.
+- `backend/browserSessionAuthPlanner.ts`: pure planning-only browser-session
+  auth posture planner. It reports intended cookie policy, pairing direction,
+  session-store expectations, and browser-session blockers without accepting
+  cookies, issuing sessions, generating CSRF tokens, or exposing secrets.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and
@@ -135,40 +142,28 @@ Implemented components include:
 - `backend/protectedModeReadiness.ts`: centralized sanitized enforcement
   readiness manifest. It combines auth posture, startup gating, route policy
   coverage, request-policy status, dry-run state, pipeline/planner availability,
-  and network posture into stable blocker codes explaining why protected mode is
-  not ready to enforce. It reports `readyForEnforcement: false`,
-  `enforcementActive: false`, `protectedModeOperational: false`, and
-  `networkExposureSafe: false`.
+  browser-session planning posture, and network posture into stable status.
+  For bearer-token protected mode it may report active enforcement when ready;
+  for browser-session auth it reports planning-only blockers.
 
-None of these modules enforce authentication, authorization, CSRF, origin
-checks, or revocation in active request handling. They do not generate
-credentials, bearer tokens, cookies, active sessions, pairing codes, or node
-registrations. Credential-store persistence helpers are not imported by active
-request handling. The optional dry-run observer may call verifier, adapter,
-planner, and pipeline helpers only when `auth.dryRunRequestPolicy` is explicitly
-true, and its result is not trusted by route handlers. If `auth.dryRunAudit` is
-also true, the observer may append sanitized JSONL audit events for observation
-only; audit write failures are diagnostic and do not reject requests. The
-dry-run observer may compute a sanitized future response plan, but planned
-responses are diagnostics only and are never sent to clients in this slice. The
-dry-run canary endpoint reports sanitized observation health and planned
-response summaries only and must be reduced or protected before future
-protected-mode or non-local deployments. It does not attach an authenticated
-actor, does not reject real HTTP requests, and does not make LAN, reverse-proxy,
-or internet exposure safe. The startup assessment and readiness manifest are
-diagnostic only and do not reject active API requests.
+Bearer-token protected mode is live when `auth.mode = "protected"` and
+readiness is complete. Browser-session auth is not live: active request handling
+does not accept browser-session cookies, issue cookies, generate CSRF tokens,
+or create pairing codes. The optional dry-run observer remains observation-only
+when explicitly enabled. The dry-run canary endpoint reports sanitized
+observation health and planned response summaries only. None of these planning
+surfaces make LAN, reverse-proxy, or internet exposure safe.
 
-Current runtime behavior remains V1 local-node/no-auth behavior unless existing
-local configuration changes the bind address or vault list. The backend binds
-to localhost by default, uses configured vault roots only, treats CORS as a
+Current runtime behavior remains disabled local compatibility mode unless
+`auth.mode = "protected"` is explicitly configured. The backend binds to
+localhost by default, uses configured vault roots only, treats CORS as a
 browser-origin filter rather than authentication, and keeps non-local binding
-unsafe with a no-auth warning.
+unsafe.
 
-Protected-mode enforcement is still blocked on credential issuance, request
-credential parsing in active handlers, session lifecycle, CSRF/origin
-enforcement, route authorization middleware, audit wiring, revocation checks,
-startup safety checks, and regression tests that cover protected, dry-run, and
-disabled-auth modes.
+Future browser-session enforcement remains blocked on live session issuance,
+secure cookie policy for the current bind/origin posture, pairing/login flow,
+CSRF validation, logout/revocation routes, browser re-confirmation UX, and
+frontend no-secret state handling.
 
 ## Dry-run Vocabulary
 
