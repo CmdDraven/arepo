@@ -13,11 +13,19 @@ export type VaultPermission = {
   deleteFiles: boolean;
 };
 
+export type VaultIndexScope = {
+  markdown: {
+    minDepth: number;
+    maxDepth: number | null;
+  };
+};
+
 export type VaultInfo = {
   id: string;
   displayName: string;
   rootPath: string;
   permissions: VaultPermission;
+  vaultIndexScope?: VaultIndexScope;
 };
 
 export type GeneratedDataAction = "keep" | "discard";
@@ -116,6 +124,7 @@ export type VaultStore = {
   remove: (path: string) => Promise<boolean>;
   reindex: () => Promise<boolean>;
   reindexVault: (vaultId: string) => Promise<boolean>;
+  updateVaultIndexScope: (vaultId: string, scope: VaultIndexScope) => Promise<boolean>;
   hasExternalChange: (path: string) => Promise<boolean>;
   readFileFromDisk: (path: string) => Promise<FileResponse | null>;
   reloadFile: (path: string) => Promise<boolean>;
@@ -455,6 +464,33 @@ export function useVault(): VaultStore {
     [activeVault?.id, loadVault],
   );
 
+  const updateVaultIndexScope = useCallback(
+    async (vaultId: string, scope: VaultIndexScope) => {
+      setMutationError(null);
+      try {
+        const response = await api<OperationResult<{ vault: VaultInfo; index: IndexResponse }>>(
+          `/api/vaults/${encodeURIComponent(vaultId)}/index-scope`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ vaultIndexScope: scope }),
+          },
+        );
+        if (!response.ok || !response.data) throw new Error("Index scope update failed");
+        await loadNode();
+        if (activeVault?.id === vaultId) {
+          setIndex(response.data.index.index);
+          setIssues(response.data.index.issues);
+          await loadVault(vaultId);
+        }
+        return true;
+      } catch (err) {
+        setMutationError(errorMessage(err));
+        return false;
+      }
+    },
+    [activeVault?.id, loadNode, loadVault],
+  );
+
   const hasExternalChange = useCallback(
     async (path: string) => {
       if (!activeVault) return false;
@@ -606,6 +642,7 @@ export function useVault(): VaultStore {
     remove,
     reindex,
     reindexVault,
+    updateVaultIndexScope,
     hasExternalChange,
     readFileFromDisk,
     reloadFile,

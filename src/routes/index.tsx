@@ -60,6 +60,7 @@ import {
   useVault,
   type GeneratedDataAction,
   type RemoveVaultResponse,
+  type VaultIndexScope,
   type VaultInfo,
   type VaultPermission,
 } from "@/lib/vault/store";
@@ -137,6 +138,7 @@ function VaultApp() {
     refreshNode,
     testHealth,
     reindexVault,
+    updateVaultIndexScope,
     hasExternalChange,
     readFileFromDisk,
     activeVault,
@@ -198,7 +200,6 @@ function VaultApp() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const suppressTuckedTabClickRef = useRef(false);
-  const autoOpenedVaultRef = useRef<string | null>(null);
   const selfWriteSuppressionRef = useRef<{ path: string; content: string; until: number } | null>(
     null,
   );
@@ -382,21 +383,12 @@ function VaultApp() {
     if (activePath && files[activePath] !== undefined) {
       setBuffer(files[activePath]);
       setSavedSnapshot(files[activePath]);
-    } else if (
-      activeVault &&
-      paths.length &&
-      autoOpenedVaultRef.current !== activeVault.id &&
-      activePath === null
-    ) {
-      autoOpenedVaultRef.current = activeVault.id;
-      setCenterWorkspaceView("document");
-      setActivePath(paths[0]);
     } else {
       setActivePath(null);
       setBuffer("");
       setSavedSnapshot("");
     }
-  }, [activePath, activeVault, files, paths]);
+  }, [activePath, files]);
 
   const dirty = buffer !== savedSnapshot;
   const dirtyPaths = useMemo(
@@ -943,6 +935,7 @@ function VaultApp() {
 
   const totalIssues = issues.length;
   const errorCount = issues.filter((i) => i.severity === "error").length;
+  const activeVaultIndexScope = activeVault?.vaultIndexScope ?? defaultVaultIndexScope();
 
   const graphData = useMemo(() => buildGraph(index, issues), [index, issues]);
   const suppressedActiveConflict =
@@ -1312,6 +1305,13 @@ function VaultApp() {
   const inspectorPane = (
     <IndexInspectPanel
       selectedCount={selectedNotePaths.length}
+      activeVault={activeVault}
+      indexedNoteCount={Object.keys(index.notes).length}
+      indexScope={activeVaultIndexScope}
+      indexStatus={vaultStatus?.indexStatus}
+      lastIndexedAt={vaultStatus?.lastIndexedAt}
+      brokenLinkCount={index.brokenLinks.length}
+      orphanCount={index.orphanNotes.length}
       inspectData={inspectData}
       inspectLoading={inspectLoading}
       inspectError={inspectError}
@@ -1324,6 +1324,8 @@ function VaultApp() {
       metadataFileMeta={metadataFileMeta}
       onPick={inspectPath}
       onAnchor={openAnchor}
+      onReindex={() => void reindex()}
+      onOpenSettings={openSettings}
     />
   );
 
@@ -1523,6 +1525,7 @@ function VaultApp() {
             onAddVault={addVault}
             onRemoveVault={removeVault}
             onReindexVault={reindexVault}
+            onUpdateVaultIndexScope={updateVaultIndexScope}
             onRefreshVaults={refreshNode}
             onTestHealth={testHealth}
           />
@@ -1548,6 +1551,7 @@ function VaultApp() {
             onAddVault={addVault}
             onRemoveVault={removeVault}
             onReindexVault={reindexVault}
+            onUpdateVaultIndexScope={updateVaultIndexScope}
             onRefreshVaults={refreshNode}
             onTestHealth={testHealth}
           />
@@ -1893,6 +1897,13 @@ function StateMessage({
 
 function IndexInspectPanel({
   selectedCount,
+  activeVault,
+  indexedNoteCount,
+  indexScope,
+  indexStatus,
+  lastIndexedAt,
+  brokenLinkCount,
+  orphanCount,
   inspectData,
   inspectLoading,
   inspectError,
@@ -1905,11 +1916,29 @@ function IndexInspectPanel({
   metadataFileMeta,
   onPick,
   onAnchor,
+  onReindex,
+  onOpenSettings,
 }: IndexInspectPanelProps) {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const sectionCollapsed = (key: string) => Boolean(collapsedSections[key]);
   const toggleSection = (key: string) =>
     setCollapsedSections((current) => ({ ...current, [key]: !current[key] }));
+
+  if (!metadataPath && selectedCount === 0) {
+    return (
+      <VaultInspector
+        vault={activeVault}
+        indexedNoteCount={indexedNoteCount}
+        indexScope={indexScope}
+        indexStatus={indexStatus}
+        lastIndexedAt={lastIndexedAt}
+        brokenLinkCount={brokenLinkCount}
+        orphanCount={orphanCount}
+        onReindex={onReindex}
+        onOpenSettings={onOpenSettings}
+      />
+    );
+  }
 
   return (
     <div className="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain">
@@ -1994,6 +2023,81 @@ function IndexInspectPanel({
           />
         ) : (
           <Empty>Select one file, or shift-select graph nodes to view combined metadata.</Empty>
+        )}
+      </Section>
+    </div>
+  );
+}
+
+function VaultInspector({
+  vault,
+  indexedNoteCount,
+  indexScope,
+  indexStatus,
+  lastIndexedAt,
+  brokenLinkCount,
+  orphanCount,
+  onReindex,
+  onOpenSettings,
+}: {
+  vault: VaultInfo | null;
+  indexedNoteCount: number;
+  indexScope: VaultIndexScope;
+  indexStatus?: string;
+  lastIndexedAt?: number;
+  brokenLinkCount: number;
+  orphanCount: number;
+  onReindex: () => void;
+  onOpenSettings: () => void;
+}) {
+  return (
+    <div className="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain">
+      <Section icon={<Database className="size-3.5" />} title="Vault Inspector">
+        {vault ? (
+          <div className="space-y-3 text-xs">
+            <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">name</dt>
+              <dd className="truncate">{vault.displayName}</dd>
+              <dt className="text-muted-foreground">path</dt>
+              <dd className="font-mono truncate" title={vault.rootPath}>
+                {vault.rootPath}
+              </dd>
+              <dt className="text-muted-foreground">indexed notes</dt>
+              <dd>{indexedNoteCount}</dd>
+              <dt className="text-muted-foreground">Index Scope</dt>
+              <dd>{indexScopeSummary(indexScope)}</dd>
+              <dt className="text-muted-foreground">index status</dt>
+              <dd>{indexStatus ?? "checking"}</dd>
+              <dt className="text-muted-foreground">last indexed</dt>
+              <dd>{lastIndexedAt ? formatTime(lastIndexedAt) : "not recorded"}</dd>
+              <dt className="text-muted-foreground">broken links</dt>
+              <dd>{brokenLinkCount}</dd>
+              <dt className="text-muted-foreground">orphans</dt>
+              <dd>{orphanCount}</dd>
+            </dl>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 text-xs"
+                onClick={onReindex}
+              >
+                <RefreshCw className="size-3.5" />
+                Reindex Vault
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 text-xs"
+                onClick={onOpenSettings}
+              >
+                <Settings className="size-3.5" />
+                Vault Settings
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Empty>No vault selected. Add or select a vault in Vault Settings.</Empty>
         )}
       </Section>
     </div>
@@ -2218,11 +2322,14 @@ function InspectDetails({
           >
             <div className="font-mono text-destructive truncate">{link.raw}</div>
             <div className="text-[10px] text-muted-foreground break-words">
-              Missing target: {link.target}
+              {link.status === "excluded-by-index-scope" ? "Excluded target" : "Missing target"}:{" "}
+              {link.target}
               {link.anchor ? `#${link.anchor}` : ""}
             </div>
             <div className="text-[10px] text-destructive/80">
-              No resolved file exists for this link.
+              {link.status === "excluded-by-index-scope"
+                ? "Target exists but is outside this vault's Index Scope."
+                : "No resolved file exists for this link."}
             </div>
           </div>
         ))}
@@ -3211,6 +3318,13 @@ type CombinedInspectMetadata = {
 
 type IndexInspectPanelProps = {
   selectedCount: number;
+  activeVault: VaultInfo | null;
+  indexedNoteCount: number;
+  indexScope: VaultIndexScope;
+  indexStatus?: string;
+  lastIndexedAt?: number;
+  brokenLinkCount: number;
+  orphanCount: number;
   inspectData: VaultInspectResponse | null;
   inspectLoading: boolean;
   inspectError: string | null;
@@ -3223,6 +3337,8 @@ type IndexInspectPanelProps = {
   metadataFileMeta?: { size: number };
   onPick: (path: string) => void;
   onAnchor: (path: string, anchor: string) => void;
+  onReindex: () => void;
+  onOpenSettings: () => void;
 };
 
 const INDEX_FILTER_OPTIONS: { value: IndexFilterKind; label: string; empty: string }[] = [
@@ -3249,6 +3365,7 @@ function VaultSettingsPanel({
   onAddVault,
   onRemoveVault,
   onReindexVault,
+  onUpdateVaultIndexScope,
   onRefreshVaults,
   onTestHealth,
 }: {
@@ -3269,6 +3386,7 @@ function VaultSettingsPanel({
     generatedDataAction: GeneratedDataAction,
   ) => Promise<RemoveVaultResponse | null>;
   onReindexVault: (vaultId: string) => Promise<boolean>;
+  onUpdateVaultIndexScope: (vaultId: string, scope: VaultIndexScope) => Promise<boolean>;
   onRefreshVaults: () => Promise<boolean>;
   onTestHealth: () => Promise<boolean>;
 }) {
@@ -3410,6 +3528,17 @@ function VaultSettingsPanel({
               busyVaultId={busyVaultId}
               onSelectVault={onSelectVault}
               onReindexVault={reindexOne}
+              onUpdateVaultIndexScope={async (vaultId, scope) => {
+                setBusyVaultId(vaultId);
+                const ok = await onUpdateVaultIndexScope(vaultId, scope);
+                if (ok) {
+                  await onRefreshVaults();
+                  await refreshSummaries();
+                  await refreshNodeStatus();
+                }
+                setBusyVaultId(null);
+                return ok;
+              }}
               onRemoveVault={removeOne}
               onRefresh={async () => {
                 await onRefreshVaults();
@@ -3888,6 +4017,7 @@ function ConfiguredVaultsCard({
   busyVaultId,
   onSelectVault,
   onReindexVault,
+  onUpdateVaultIndexScope,
   onRemoveVault,
   onRefresh,
 }: {
@@ -3897,6 +4027,7 @@ function ConfiguredVaultsCard({
   busyVaultId: string | null;
   onSelectVault: (vaultId: string) => void;
   onReindexVault: (vaultId: string) => Promise<void>;
+  onUpdateVaultIndexScope: (vaultId: string, scope: VaultIndexScope) => Promise<boolean>;
   onRemoveVault: (
     vaultId: string,
     generatedDataAction: GeneratedDataAction,
@@ -4025,6 +4156,11 @@ function ConfiguredVaultsCard({
                     <StorageSummaryList summary={summary} />
                   </div>
                 </div>
+                <IndexScopeEditor
+                  vault={vault}
+                  disabled={busyVaultId === vault.id}
+                  onApply={(scope) => onUpdateVaultIndexScope(vault.id, scope)}
+                />
                 {vault.permissions.deleteFiles && (
                   <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive flex gap-2">
                     <ShieldAlert className="size-4 shrink-0" />
@@ -4116,6 +4252,132 @@ function ConfiguredVaultsCard({
   );
 }
 
+function IndexScopeEditor({
+  vault,
+  disabled,
+  onApply,
+}: {
+  vault: VaultInfo;
+  disabled: boolean;
+  onApply: (scope: VaultIndexScope) => Promise<boolean>;
+}) {
+  const scope = vault.vaultIndexScope ?? defaultVaultIndexScope();
+  const [minDepth, setMinDepth] = useState(String(scope.markdown.minDepth));
+  const [maxDepth, setMaxDepth] = useState(
+    scope.markdown.maxDepth === null ? "" : String(scope.markdown.maxDepth),
+  );
+  const [unlimitedMax, setUnlimitedMax] = useState(scope.markdown.maxDepth === null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setMinDepth(String(scope.markdown.minDepth));
+    setMaxDepth(scope.markdown.maxDepth === null ? "" : String(scope.markdown.maxDepth));
+    setUnlimitedMax(scope.markdown.maxDepth === null);
+    setLocalError(null);
+  }, [scope.markdown.maxDepth, scope.markdown.minDepth, vault.id]);
+
+  const nextScope = parseIndexScopeInput(minDepth, maxDepth, unlimitedMax);
+  const changed = Boolean(nextScope && !indexScopeEquals(scope, nextScope));
+
+  const apply = async () => {
+    if (!nextScope) {
+      setLocalError(
+        "Depth values must be whole numbers, and max depth must be at least min depth.",
+      );
+      return;
+    }
+    const confirmed = window.confirm(
+      "Changing index scope will rebuild this vault's index. Source files will not be modified.",
+    );
+    if (!confirmed) return;
+    setLocalError(null);
+    setSaving(true);
+    const ok = await onApply(nextScope);
+    setSaving(false);
+    if (!ok) return;
+    setLocalError(null);
+  };
+
+  return (
+    <div className="rounded border bg-muted/20 p-2 text-xs space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="font-medium">Index Scope</div>
+        <Badge variant="outline" className="font-normal">
+          {indexScopeSummary(scope)}
+        </Badge>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+        <label className="space-y-1">
+          <span className="text-muted-foreground">Min depth</span>
+          <Input
+            type="number"
+            min={0}
+            step={1}
+            value={minDepth}
+            onChange={(event) => setMinDepth(event.target.value)}
+            className="h-8"
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-muted-foreground">Max depth</span>
+          <Input
+            type="number"
+            min={0}
+            step={1}
+            value={maxDepth}
+            onChange={(event) => setMaxDepth(event.target.value)}
+            disabled={unlimitedMax}
+            className="h-8"
+          />
+        </label>
+        <label className="flex items-end gap-2 pb-2">
+          <input
+            type="checkbox"
+            checked={unlimitedMax}
+            onChange={(event) => setUnlimitedMax(event.target.checked)}
+          />
+          <span>Unlimited</span>
+        </label>
+      </div>
+      {localError && (
+        <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-destructive">
+          {localError}
+        </div>
+      )}
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs"
+          disabled={disabled || saving || !changed}
+          onClick={() => void apply()}
+        >
+          {saving ? "Applying..." : "Apply scope"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function parseIndexScopeInput(
+  minDepth: string,
+  maxDepth: string,
+  unlimitedMax: boolean,
+): VaultIndexScope | null {
+  const min = Number(minDepth);
+  if (!Number.isInteger(min) || min < 0) return null;
+  if (unlimitedMax) return { markdown: { minDepth: min, maxDepth: null } };
+  const max = Number(maxDepth);
+  if (!Number.isInteger(max) || max < min) return null;
+  return { markdown: { minDepth: min, maxDepth: max } };
+}
+
+function indexScopeEquals(a: VaultIndexScope, b: VaultIndexScope): boolean {
+  return a.markdown.minDepth === b.markdown.minDepth && a.markdown.maxDepth === b.markdown.maxDepth;
+}
+
 function StorageSummaryList({ summary }: { summary: VaultSummary | undefined }) {
   if (!summary) {
     return <div className="text-muted-foreground">Storage: checking</div>;
@@ -4177,6 +4439,29 @@ function formatBytes(bytes: number): string {
 
 function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleString();
+}
+
+function defaultVaultIndexScope(): VaultIndexScope {
+  return {
+    markdown: {
+      minDepth: 0,
+      maxDepth: null,
+    },
+  };
+}
+
+function indexScopeSummary(scope: VaultIndexScope): string {
+  const { minDepth, maxDepth } = scope.markdown;
+  if (minDepth === 0 && maxDepth === null) return "All Markdown files";
+  if (minDepth === 0 && maxDepth === 0) return "Root only";
+  if (minDepth === 0 && maxDepth !== null) {
+    return `Root through ${maxDepth} folder${maxDepth === 1 ? "" : "s"} deep`;
+  }
+  if (maxDepth === minDepth) {
+    return `Only files exactly ${minDepth} folder${minDepth === 1 ? "" : "s"} deep`;
+  }
+  if (maxDepth === null) return `Files ${minDepth} or more folders deep`;
+  return `Custom depth range: ${minDepth} through ${maxDepth}`;
 }
 
 function PermissionList({ permissions }: { permissions: VaultPermission }) {

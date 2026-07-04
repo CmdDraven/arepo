@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { routeRequest, type RequestLike } from "./server.js";
+import { loadConfig } from "./config.js";
 import { machineIndexPath } from "./indexCache.js";
 import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
@@ -415,6 +416,51 @@ test("vault registration and file APIs stay inside configured root", async () =>
     cwd,
   );
   assert.equal(traversal.status, 400);
+});
+
+test("vault index scope update persists config and rebuilds the machine index", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+  await fs.mkdir(path.join(rootPath, "Notes", "Nestest"), { recursive: true });
+  await fs.writeFile(path.join(rootPath, "README.md"), "# Readme\n", "utf8");
+  await fs.writeFile(path.join(rootPath, "Notes", "note.md"), "# Note\n", "utf8");
+  await fs.writeFile(path.join(rootPath, "Notes", "Nestest", "note.md"), "# Nested\n", "utf8");
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+
+  const scoped = await routeRequest(
+    request("PATCH", `/api/vaults/${vault.id}/index-scope`, {
+      vaultIndexScope: { markdown: { minDepth: 0, maxDepth: 1 } },
+    }),
+    cwd,
+  );
+  assert.equal(scoped.status, 200);
+  const body = scoped.body as {
+    data: { vault: VaultInfo; index: VaultIndexResponse };
+  };
+  assert.deepEqual(body.data.vault.vaultIndexScope, {
+    markdown: { minDepth: 0, maxDepth: 1 },
+  });
+  assert.deepEqual(Object.keys(body.data.index.index.notes).sort(), ["Notes/note.md", "README.md"]);
+
+  const config = await loadConfig(cwd);
+  assert.deepEqual(config.vaults[0]?.vaultIndexScope, {
+    markdown: { minDepth: 0, maxDepth: 1 },
+  });
+
+  const invalid = await routeRequest(
+    request("PATCH", `/api/vaults/${vault.id}/index-scope`, {
+      vaultIndexScope: { markdown: { minDepth: 2, maxDepth: 1 } },
+    }),
+    cwd,
+  );
+  assert.equal(invalid.status, 400);
+  const afterInvalid = await loadConfig(cwd);
+  assert.deepEqual(afterInvalid.vaults[0]?.vaultIndexScope, {
+    markdown: { minDepth: 0, maxDepth: 1 },
+  });
 });
 
 test("vault storage endpoint reports content and cache sizes", async () => {

@@ -81,6 +81,7 @@ const categoryRequestClasses: Record<RoutePolicyCategory, BrowserSecurityRequest
   rename: "sourceMutation",
   fileDelete: "delete",
   reindex: "sourceMutation",
+  indexScopeUpdate: "vaultManagement",
   indexRead: "safeReadMetadata",
   indexFilters: "safeReadMetadata",
   indexSearch: "safeReadMetadata",

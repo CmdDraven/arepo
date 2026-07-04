@@ -13,6 +13,9 @@ function emptyIndex(): VaultIndexResponse {
       bySlug: {},
       duplicateSlugs: {},
       byId: {},
+      excludedBySlug: {},
+      duplicateExcludedSlugs: {},
+      excludedPaths: [],
       outgoingLinks: {},
       backlinks: {},
       brokenLinks: [],
@@ -77,6 +80,9 @@ function mappingIndex(): VaultIndexResponse {
         "same-id": "Alpha.md",
         "gamma-id": "Folder/Gamma.md",
       },
+      excludedBySlug: {},
+      duplicateExcludedSlugs: {},
+      excludedPaths: [],
       outgoingLinks: {
         "Alpha.md": [
           {
@@ -86,7 +92,7 @@ function mappingIndex(): VaultIndexResponse {
             status: "resolved",
             broken: false,
           },
-          { target: "Missing", raw: "Missing", status: "broken", broken: true },
+          { target: "Missing", raw: "Missing", status: "missing", broken: true },
         ],
         "Folder/Beta.md": [
           {
@@ -103,14 +109,14 @@ function mappingIndex(): VaultIndexResponse {
         "Alpha.md": [{ fromPath: "Folder/Beta.md" }],
         "Folder/Beta.md": [{ fromPath: "Alpha.md" }],
       },
-      brokenLinks: [{ fromPath: "Alpha.md", target: "Missing", raw: "Missing" }],
+      brokenLinks: [{ fromPath: "Alpha.md", target: "Missing", raw: "Missing", status: "missing" }],
       orphanNotes: ["Folder/Gamma.md"],
     },
     issues: [
       {
         kind: "broken-wikilink",
         path: "Alpha.md",
-        message: "Broken link [[Missing]]",
+        message: "Missing link [[Missing]]",
         severity: "error",
       },
       {

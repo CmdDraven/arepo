@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { buildIndex, validate } from "../src/lib/vault/indexer.js";
+import { defaultVaultIndexScope, markdownPathInScope } from "./indexScope.js";
 import { normalizeVaultPath, resolveInsideVault, toVaultPath } from "./path.js";
 import type { VaultFile, VaultIndexResponse, VaultInfo } from "./types.js";
 
@@ -147,14 +148,19 @@ export async function deleteVaultFile(
 
 export async function buildVaultIndex(vault: VaultInfo): Promise<VaultIndexResponse> {
   requirePermission(vault.permissions.readIndex, "Vault index is not readable");
-  const files = await listMarkdownFiles(vault);
+  const scope = vault.vaultIndexScope ?? defaultVaultIndexScope();
+  const allFiles = await listMarkdownFiles(vault);
+  const files = allFiles.filter((file) => markdownPathInScope(file.path, scope));
+  const excludedPaths = allFiles
+    .filter((file) => !markdownPathInScope(file.path, scope))
+    .map((file) => file.path);
   const map: Record<string, string> = {};
   await Promise.all(
     files.map(async (file) => {
       map[file.path] = await fs.readFile(await resolveExistingVaultPath(vault, file.path), "utf8");
     }),
   );
-  const index = buildIndex(map);
+  const index = buildIndex(map, { excludedPaths });
   return { index, issues: validate(index) };
 }
 

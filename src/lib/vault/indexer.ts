@@ -19,7 +19,8 @@ export type WikiLink = {
 
 export type WikiLinkResolution =
   | { status: "resolved"; targetPath: string }
-  | { status: "broken" }
+  | { status: "missing" }
+  | { status: "excluded-by-index-scope"; targetPath: string }
   | { status: "ambiguous"; targetPaths: string[] }
   | { status: "invalid"; reason: string };
 
@@ -40,6 +41,9 @@ export type VaultIndex = {
   bySlug: Record<string, string>; // slug -> path
   duplicateSlugs: Record<string, string[]>;
   byId: Record<string, string>; // frontmatter id -> path
+  excludedBySlug: Record<string, string>;
+  duplicateExcludedSlugs: Record<string, string[]>;
+  excludedPaths: string[];
   outgoingLinks: Record<
     string,
     {
@@ -54,7 +58,17 @@ export type VaultIndex = {
     }[]
   >;
   backlinks: Record<string, { fromPath: string; anchor?: string; alias?: string }[]>;
-  brokenLinks: { fromPath: string; target: string; anchor?: string; raw: string }[];
+  brokenLinks: {
+    fromPath: string;
+    target: string;
+    anchor?: string;
+    raw: string;
+    status: Extract<
+      WikiLinkResolution["status"],
+      "missing" | "excluded-by-index-scope" | "invalid"
+    >;
+    targetPath?: string;
+  }[];
   orphanNotes: string[];
 };
 
@@ -88,7 +102,8 @@ export function pathStem(path: string): string {
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/gm;
 const EXPLICIT_ANCHOR_RE = /\{#([a-z0-9-_]+)\}\s*$/i;
 const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
-const FENCED_CODE_RE = /(^|\n)(```|~~~)[^\n]*\n[\s\S]*?\n\2[ \t]*(?=\n|$)/g;
+const FENCED_CODE_RE =
+  /(^|\n)(?:`{3,}[^\n]*\n[\s\S]*?\n`{3,}[ \t]*(?=\n|$)|~{3,}[^\n]*\n[\s\S]*?\n~{3,}[ \t]*(?=\n|$))/g;
 const INLINE_CODE_RE = /`[^`\n]*`/g;
 const CODE_TOKEN_PREFIX = "AREPO_CODE_TOKEN_";
 
@@ -188,11 +203,21 @@ export function restoreMarkdownCode(masked: string, code: string[]): string {
   });
 }
 
-export function buildIndex(files: Record<string, string>): VaultIndex {
+export function buildIndex(
+  files: Record<string, string>,
+  options: { excludedPaths?: string[] } = {},
+): VaultIndex {
   const notes: Record<string, NoteIndex> = {};
   const bySlug: Record<string, string> = {};
   const slugPaths: Record<string, string[]> = {};
   const byId: Record<string, string> = {};
+  const excludedPaths = (options.excludedPaths ?? [])
+    .filter((path) => path.toLowerCase().endsWith(".md"))
+    .sort((a, b) => a.localeCompare(b));
+  const excludedSlugPaths: Record<string, string[]> = {};
+  for (const path of excludedPaths) {
+    (excludedSlugPaths[pathStem(path)] ||= []).push(path);
+  }
   for (const [path, content] of Object.entries(files)) {
     if (!path.toLowerCase().endsWith(".md")) continue;
     const note = indexNote(path, content);
@@ -208,12 +233,21 @@ export function buildIndex(files: Record<string, string>): VaultIndex {
     if (paths.length === 1 && paths[0]) bySlug[slug] = paths[0];
     else duplicateSlugs[slug] = paths;
   }
+  const excludedBySlug: Record<string, string> = {};
+  const duplicateExcludedSlugs: Record<string, string[]> = {};
+  for (const [slug, paths] of Object.entries(excludedSlugPaths)) {
+    if (paths.length === 1 && paths[0]) excludedBySlug[slug] = paths[0];
+    else duplicateExcludedSlugs[slug] = paths;
+  }
   const backlinks: VaultIndex["backlinks"] = {};
   const outgoingLinks: VaultIndex["outgoingLinks"] = {};
   const brokenLinks: VaultIndex["brokenLinks"] = [];
   for (const note of Object.values(notes)) {
     for (const wl of note.wikilinks) {
-      const resolution = resolveWikiLink({ notes, bySlug, duplicateSlugs, byId }, wl);
+      const resolution = resolveWikiLink(
+        { notes, bySlug, duplicateSlugs, byId, excludedPaths, excludedBySlug },
+        wl,
+      );
       const targetPath = resolution.status === "resolved" ? resolution.targetPath : undefined;
       (outgoingLinks[note.path] ||= []).push({
         target: wl.target,
@@ -226,12 +260,19 @@ export function buildIndex(files: Record<string, string>): VaultIndex {
         targetPaths: resolution.status === "ambiguous" ? resolution.targetPaths : undefined,
       });
       if (!targetPath) {
-        if (resolution.status === "broken" || resolution.status === "invalid") {
+        if (
+          resolution.status === "missing" ||
+          resolution.status === "excluded-by-index-scope" ||
+          resolution.status === "invalid"
+        ) {
           brokenLinks.push({
             fromPath: note.path,
             target: wl.target,
             anchor: wl.anchor,
             raw: wl.raw,
+            status: resolution.status,
+            targetPath:
+              resolution.status === "excluded-by-index-scope" ? resolution.targetPath : undefined,
           });
         }
         continue;
@@ -254,6 +295,9 @@ export function buildIndex(files: Record<string, string>): VaultIndex {
     bySlug,
     duplicateSlugs,
     byId,
+    excludedBySlug,
+    duplicateExcludedSlugs,
+    excludedPaths,
     outgoingLinks,
     backlinks,
     brokenLinks,
@@ -262,17 +306,24 @@ export function buildIndex(files: Record<string, string>): VaultIndex {
 }
 
 export function resolveWikiLink(
-  index: Pick<VaultIndex, "notes" | "bySlug" | "duplicateSlugs" | "byId">,
+  index: Pick<
+    VaultIndex,
+    "notes" | "bySlug" | "duplicateSlugs" | "byId" | "excludedPaths" | "excludedBySlug"
+  >,
   link: WikiLink,
 ): WikiLinkResolution {
   const target = link.target.trim();
-  if (!target) return { status: "broken" };
+  if (!target) return { status: "missing" };
   if (isUnsafeWikiPath(target)) {
     return { status: "invalid", reason: "Wikilink target must be vault-root-relative" };
   }
   if (target.includes("/")) {
     const path = target.toLowerCase().endsWith(".md") ? target : `${target}.md`;
-    return index.notes[path] ? { status: "resolved", targetPath: path } : { status: "broken" };
+    if (index.notes[path]) return { status: "resolved", targetPath: path };
+    if (index.excludedPaths.includes(path)) {
+      return { status: "excluded-by-index-scope", targetPath: path };
+    }
+    return { status: "missing" };
   }
   const byId = index.byId[target];
   if (byId) return { status: "resolved", targetPath: byId };
@@ -280,7 +331,11 @@ export function resolveWikiLink(
   if (bySlug) return { status: "resolved", targetPath: bySlug };
   const ambiguous = index.duplicateSlugs[target];
   if (ambiguous?.length) return { status: "ambiguous", targetPaths: ambiguous };
-  return { status: "broken" };
+  const excludedBySlug = index.excludedBySlug[target];
+  if (excludedBySlug) {
+    return { status: "excluded-by-index-scope", targetPath: excludedBySlug };
+  }
+  return { status: "missing" };
 }
 
 function isUnsafeWikiPath(target: string): boolean {
@@ -344,7 +399,9 @@ export function validate(index: VaultIndex): ValidationIssue[] {
           message:
             resolution.status === "invalid"
               ? `Unsafe link [[${wl.raw}]]`
-              : `Broken link [[${wl.raw}]]`,
+              : resolution.status === "excluded-by-index-scope"
+                ? `Target exists but is outside this vault's Index Scope: [[${wl.raw}]]`
+                : `Missing link [[${wl.raw}]]`,
           severity: "error",
         });
         continue;

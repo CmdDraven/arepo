@@ -11,7 +11,7 @@ export const ROUTE_PERMISSION_VOCABULARY = [
 
 export type RoutePermission = (typeof ROUTE_PERMISSION_VOCABULARY)[number];
 
-export type RoutePolicyMethod = "OPTIONS" | "GET" | "POST" | "PUT" | "DELETE";
+export type RoutePolicyMethod = "OPTIONS" | "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export type RoutePolicyCategory =
   | "corsPreflight"
@@ -31,6 +31,7 @@ export type RoutePolicyCategory =
   | "rename"
   | "fileDelete"
   | "reindex"
+  | "indexScopeUpdate"
   | "indexRead"
   | "indexFilters"
   | "indexSearch"
@@ -290,6 +291,18 @@ export const PROTECTED_ROUTE_POLICIES = [
     networkExposureSafe: false,
     notes:
       "Reindex reads source Markdown to rebuild generated metadata without writing source content.",
+  },
+  {
+    method: "PATCH",
+    routePattern: "/api/vaults/:vaultId/index-scope",
+    category: "indexScopeUpdate",
+    requiredPermissions: ["manageVaults", "readIndex", "readContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true, sourceContent: true, nodeManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Changing vaultIndexScope updates vault registration metadata and rebuilds generated index data without writing source Markdown.",
   },
   {
     method: "GET",

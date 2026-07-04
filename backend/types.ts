@@ -9,6 +9,13 @@ export type VaultPermission = {
   deleteFiles: boolean;
 };
 
+export type VaultIndexScope = {
+  markdown: {
+    minDepth: number;
+    maxDepth: number | null;
+  };
+};
+
 export type AuthMode = "disabled";
 export type AuthRequestedMode = AuthMode | "protected";
 
@@ -291,6 +298,7 @@ export type VaultInfo = {
   displayName: string;
   rootPath: string;
   permissions: VaultPermission;
+  vaultIndexScope?: VaultIndexScope;
 };
 
 export type NodeInfo = {

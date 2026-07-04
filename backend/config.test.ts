@@ -89,6 +89,97 @@ test("config validation rejects unsafe permission shapes", async () => {
   await assert.rejects(() => loadConfig(cwd), /must allow readContent/);
 });
 
+test("vaultIndexScope defaults to unlimited Markdown depth when omitted", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  await writeConfig(cwd, {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+    vaults: [
+      {
+        id: "scoped",
+        displayName: "Scoped",
+        rootPath,
+        permissions: {
+          readIndex: true,
+          readContent: true,
+          writeContent: true,
+          deleteFiles: false,
+        },
+      },
+    ],
+  });
+
+  const config = await loadConfig(cwd);
+  assert.deepEqual(config.vaults[0]?.vaultIndexScope, {
+    markdown: {
+      minDepth: 0,
+      maxDepth: null,
+    },
+  });
+});
+
+test("config validation rejects invalid vaultIndexScope values", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const baseVault = {
+    id: "bad-scope",
+    displayName: "Bad Scope",
+    rootPath,
+    permissions: {
+      readIndex: true,
+      readContent: true,
+      writeContent: true,
+      deleteFiles: false,
+    },
+  };
+  const baseConfig = {
+    node: {
+      nodeId: "local",
+      displayName: "Local Node",
+      mode: "local",
+      apiVersion: 1,
+    },
+  };
+
+  await writeConfig(cwd, {
+    ...baseConfig,
+    vaults: [
+      {
+        ...baseVault,
+        vaultIndexScope: { markdown: { minDepth: -1, maxDepth: null } },
+      },
+    ],
+  });
+  await assert.rejects(() => loadConfig(cwd), /minDepth must be an integer >= 0/);
+
+  await writeConfig(cwd, {
+    ...baseConfig,
+    vaults: [
+      {
+        ...baseVault,
+        vaultIndexScope: { markdown: { minDepth: 2, maxDepth: 1 } },
+      },
+    ],
+  });
+  await assert.rejects(() => loadConfig(cwd), /maxDepth must be null or an integer >= minDepth/);
+
+  await writeConfig(cwd, {
+    ...baseConfig,
+    vaults: [
+      {
+        ...baseVault,
+        vaultIndexScope: { markdown: { maxDepth: null } },
+      },
+    ],
+  });
+  await assert.rejects(() => loadConfig(cwd), /minDepth must be an integer >= 0/);
+});
+
 test("config validation rejects unsafe local node identity", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
   await writeConfig(cwd, {

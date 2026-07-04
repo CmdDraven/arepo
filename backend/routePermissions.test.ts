@@ -27,6 +27,7 @@ const currentBackendRoutes = [
   "POST /api/vaults/:vaultId/rename",
   "DELETE /api/vaults/:vaultId/file?path=...",
   "POST /api/vaults/:vaultId/reindex",
+  "PATCH /api/vaults/:vaultId/index-scope",
   "GET /api/vaults/:vaultId/index",
   "GET /api/vaults/:vaultId/index/filters?filter=...",
   "GET /api/vaults/:vaultId/index/search?q=...",

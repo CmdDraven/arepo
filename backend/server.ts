@@ -1,7 +1,7 @@
 import http from "node:http";
 import { URL } from "node:url";
 import { fileURLToPath } from "node:url";
-import { addVault, loadConfig } from "./config.js";
+import { addVault, loadConfig, updateVaultIndexScope } from "./config.js";
 import { buildIndexFilterResponse, parseIndexFilterKind } from "./indexFilters.js";
 import { buildVaultInspectResponse } from "./indexInspect.js";
 import { buildIndexSearchResponse } from "./indexSearch.js";
@@ -188,6 +188,14 @@ export async function routeRequest(
         const data = await rebuildMachineIndex(vault, cwd);
         await recordVaultIndexed(vault, cwd);
         return json(200, { ok: true, data }, cors.headers);
+      }
+
+      if (method === "PATCH" && action === "index-scope") {
+        const body = asRecord(await readJson(request));
+        const updatedVault = await updateVaultIndexScope(vaultId, body.vaultIndexScope, cwd);
+        const data = await rebuildMachineIndex(updatedVault, cwd);
+        await recordVaultIndexed(updatedVault, cwd);
+        return json(200, { ok: true, data: { vault: updatedVault, index: data } }, cors.headers);
       }
 
       if (method === "GET" && action === "index" && segments[4] === "filters") {

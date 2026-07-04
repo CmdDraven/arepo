@@ -140,7 +140,9 @@ test("repository test-vault indexes core fixture expectations", async () => {
 
   const { index, issues } = await buildVaultIndex(vault);
 
+  assert.ok(index.notes["README.md"]);
   assert.ok(index.notes["Notes/note.md"]);
+  assert.ok(index.notes["Notes/Nestest/note.md"]);
   assert.ok(index.notes["Reference/reference-note.md"]);
   assert.equal(index.notes["Notes/note.md"]?.frontmatter.id, "note");
   assert.equal(index.notes["Reference/reference-note.md"]?.frontmatter.id, "reference-note");
@@ -161,6 +163,14 @@ test("repository test-vault indexes core fixture expectations", async () => {
         link.status === "resolved",
     ),
   );
+  assert.ok(
+    noteLinks.some(
+      (link) =>
+        link.target === "Notes/Nestest/note" &&
+        link.targetPath === "Notes/Nestest/note.md" &&
+        link.status === "resolved",
+    ),
+  );
 
   const referenceLinks = index.outgoingLinks["Reference/reference-note.md"] ?? [];
   assert.ok(
@@ -173,6 +183,10 @@ test("repository test-vault indexes core fixture expectations", async () => {
   const brokenTargets = index.brokenLinks.map((link) => link.target).sort();
   assert.ok(brokenTargets.includes("Reference/missing-reference"));
   assert.ok(brokenTargets.includes("missing-note"));
+  assert.equal(
+    index.outgoingLinks["Notes/note.md"]?.find((link) => link.target === "missing-note")?.status,
+    "missing",
+  );
   assert.equal(
     issues.filter(
       (issue) =>
@@ -212,6 +226,119 @@ test("repository test-vault indexes core fixture expectations", async () => {
   assert.ok(graph.nodes.some((node) => node.id === "missing:missing-note"));
   assert.ok(graph.edges.some((edge) => edge.type === "wikilink"));
   assert.ok(graph.edges.some((edge) => edge.type === "broken"));
+});
+
+test("repository test-vault default scope indexes all Markdown depths", async () => {
+  const rootPath = path.resolve(process.cwd(), "test-vault");
+  const vault: VaultInfo = {
+    id: "repo-default-scope",
+    displayName: "Repository Default Scope",
+    rootPath,
+    permissions: {
+      readIndex: true,
+      readContent: true,
+      writeContent: true,
+      deleteFiles: false,
+    },
+  };
+
+  const { index, issues } = await buildVaultIndex(vault);
+
+  assert.deepEqual(Object.keys(index.notes).sort(), [
+    "Notes/Nestest/note.md",
+    "Notes/note.md",
+    "README.md",
+    "Reference/reference-note.md",
+  ]);
+});
+
+test("repository test-vault maxDepth 1 excludes depth 2 Markdown notes", async () => {
+  const rootPath = path.resolve(process.cwd(), "test-vault");
+  const vault: VaultInfo = {
+    id: "repo-max-depth-one",
+    displayName: "Repository Max Depth One",
+    rootPath,
+    permissions: {
+      readIndex: true,
+      readContent: true,
+      writeContent: true,
+      deleteFiles: false,
+    },
+    vaultIndexScope: {
+      markdown: {
+        minDepth: 0,
+        maxDepth: 1,
+      },
+    },
+  };
+
+  const { index, issues } = await buildVaultIndex(vault);
+
+  assert.deepEqual(Object.keys(index.notes).sort(), [
+    "Notes/note.md",
+    "README.md",
+    "Reference/reference-note.md",
+  ]);
+  assert.equal(index.notes["Notes/Nestest/note.md"], undefined);
+  const nestedLink = index.outgoingLinks["Notes/note.md"]?.find(
+    (link) => link.target === "Notes/Nestest/note",
+  );
+  assert.equal(nestedLink?.status, "excluded-by-index-scope");
+  assert.equal(nestedLink?.broken, true);
+  assert.equal(
+    index.brokenLinks.find((link) => link.target === "Notes/Nestest/note")?.status,
+    "excluded-by-index-scope",
+  );
+  assert.equal(
+    index.outgoingLinks["Notes/note.md"]?.find((link) => link.target === "missing-note")?.status,
+    "missing",
+  );
+  assert.ok(
+    issues.some(
+      (issue) =>
+        issue.kind === "broken-wikilink" &&
+        issue.message.includes("outside this vault's Index Scope"),
+    ),
+  );
+  const allOutgoingTargets = Object.values(index.outgoingLinks)
+    .flat()
+    .map((link) => link.target);
+  assert.equal(
+    allOutgoingTargets.some((target) => target.includes("fake")),
+    false,
+  );
+  assert.equal(
+    allOutgoingTargets.some((target) => target.includes("inline")),
+    false,
+  );
+});
+
+test("repository test-vault exact depth 2 scope only indexes nested Markdown notes", async () => {
+  const rootPath = path.resolve(process.cwd(), "test-vault");
+  const vault: VaultInfo = {
+    id: "repo-depth-two",
+    displayName: "Repository Depth Two",
+    rootPath,
+    permissions: {
+      readIndex: true,
+      readContent: true,
+      writeContent: true,
+      deleteFiles: false,
+    },
+    vaultIndexScope: {
+      markdown: {
+        minDepth: 2,
+        maxDepth: 2,
+      },
+    },
+  };
+
+  const { index } = await buildVaultIndex(vault);
+
+  assert.deepEqual(Object.keys(index.notes), ["Notes/Nestest/note.md"]);
+  assert.equal(index.notes["README.md"], undefined);
+  assert.equal(index.notes["Notes/note.md"], undefined);
+  assert.equal(index.notes["Reference/reference-note.md"], undefined);
 });
 
 test("id links resolve before unique filename stems", async () => {

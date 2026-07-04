@@ -4,11 +4,17 @@ import path from "node:path";
 import crypto from "node:crypto";
 import os from "node:os";
 import {
+  defaultVaultIndexScope,
+  normalizeVaultIndexScope,
+  validateVaultIndexScope,
+} from "./indexScope.js";
+import {
   DEFAULT_AUTH_CONFIG,
   DEFAULT_PERMISSIONS,
   PROTECTED_MODE_UNAVAILABLE_REASON,
   type NodeInfo,
   type AuthConfig,
+  type VaultIndexScope,
   type VaultConfigFile,
   type VaultInfo,
 } from "./types.js";
@@ -68,6 +74,9 @@ export async function loadConfig(
               ...DEFAULT_PERMISSIONS,
               ...vault.permissions,
             },
+            vaultIndexScope: normalizeVaultIndexScope(
+              (vault as { vaultIndexScope?: unknown }).vaultIndexScope,
+            ),
           }))
         : [],
     };
@@ -111,6 +120,24 @@ export async function getVault(vaultId: string, cwd = process.cwd()): Promise<Va
   const config = await loadConfig(cwd);
   const vault = config.vaults.find((item) => item.id === vaultId);
   if (!vault) throw new Error(`Unknown vault: ${vaultId}`);
+  return vault;
+}
+
+export async function updateVaultIndexScope(
+  vaultId: string,
+  scopeInput: unknown,
+  cwd = process.cwd(),
+): Promise<VaultInfo> {
+  const config = await loadConfig(cwd);
+  const vault = config.vaults.find((item) => item.id === vaultId);
+  if (!vault) throw new Error(`Unknown vault: ${vaultId}`);
+  const nextScope = normalizeVaultIndexScope(scopeInput);
+  validateVaultIndexScope(
+    nextScope,
+    `Invalid AREPO config at ${configPath(cwd)}: vault ${vault.id}`,
+  );
+  vault.vaultIndexScope = nextScope as VaultIndexScope;
+  await saveConfig(config, cwd);
   return vault;
 }
 
@@ -245,6 +272,11 @@ async function validateConfig(
         `Invalid AREPO config at ${file}: vault ${vault.id} cannot deleteFiles without writeContent`,
       );
     }
+
+    validateVaultIndexScope(
+      vault.vaultIndexScope ?? defaultVaultIndexScope(),
+      `Invalid AREPO config at ${file}: vault ${vault.id}`,
+    );
   }
 }
 
@@ -359,6 +391,7 @@ export async function addVault(
     displayName: displayName || path.basename(rootPath),
     rootPath,
     permissions: { ...DEFAULT_PERMISSIONS, ...permissions },
+    vaultIndexScope: defaultVaultIndexScope(),
   };
   config.vaults.push(vault);
   await saveConfig(config, cwd);

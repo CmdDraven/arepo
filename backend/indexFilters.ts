@@ -41,7 +41,10 @@ function buildResults(data: VaultIndexResponse, filter: IndexFilterKind): IndexF
           filter,
           path: link.fromPath,
           title: note?.title ?? link.fromPath,
-          reason: `Broken wikilink [[${link.raw}]]`,
+          reason:
+            link.status === "excluded-by-index-scope"
+              ? `Target exists but is outside this vault's Index Scope: [[${link.raw}]]`
+              : `Broken wikilink [[${link.raw}]]`,
           target: link.target,
           anchor: link.anchor,
         };
