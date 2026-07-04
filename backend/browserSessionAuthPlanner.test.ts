@@ -15,6 +15,28 @@ test("browser session auth planner reports planning-only inactive live state", (
   assert.equal(plan.csrfEndpoint, "stubbed");
   assert.equal(plan.frontendTokenStorage, false);
   assert.equal(plan.networkExposureSafe, false);
+  assert.equal(plan.activationPreflight.status, "inactive");
+  assert.equal(plan.activationPreflight.activationRequested, false);
+  assert.equal(plan.activationPreflight.readyForFutureActivation, false);
+  assert.equal(plan.activationPreflight.liveRouteMountingAllowed, false);
+  assert.equal(plan.activationPreflight.browserAuthEnabled, false);
+  assert.equal(plan.activationPreflight.mounted, false);
+  assert.equal(plan.activationPreflight.wiredIntoAuthorization, false);
+  assert.equal(plan.activationPreflight.wiredIntoRoutes, false);
+  assert.equal(plan.activationPreflight.issuesCookies, false);
+  assert.equal(plan.activationPreflight.acceptsCookies, false);
+  assert.equal(plan.activationPreflight.acceptsCsrfTokens, false);
+  assert.equal(plan.activationPreflight.lifecycleCoordinatorMounted, false);
+  assert.ok(
+    plan.activationPreflight.blockerCodes.includes("browser-auth-activation-not-requested"),
+  );
+  assert.ok(plan.activationPreflight.blockerCodes.includes("browser-auth-route-mounting-blocked"));
+  assert.ok(
+    plan.activationPreflight.warningCodes.includes("browser-auth-cors-is-not-authentication"),
+  );
+  assert.ok(
+    plan.activationPreflight.requiredConfirmations.includes("confirm-browser-auth-activation"),
+  );
   assert.equal(plan.lifecycleCoordinator.status, "inactive");
   assert.equal(plan.lifecycleCoordinator.implementation, "in-memory-test-primitive");
   assert.equal(plan.lifecycleCoordinator.mounted, false);

@@ -228,6 +228,9 @@ live routes without failing tests.
 The inert browser-auth lifecycle coordinator is also backend test
 infrastructure only; it composes future pairing/session/CSRF/cookie/audit
 semantics internally but is not mounted into HTTP routes or authorization.
+The activation preflight planner is planning/status infrastructure only; it
+reports current blockers and required confirmations but does not activate
+browser auth.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

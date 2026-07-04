@@ -362,6 +362,25 @@ export type BrowserSessionAuthRuntimeStatus = {
   csrfEndpoint: "stubbed";
   frontendTokenStorage: false;
   networkExposureSafe: false;
+  activationPreflight: {
+    status: "inactive" | "blocked" | "planning-only";
+    activationRequested: boolean;
+    readyForFutureActivation: boolean;
+    liveRouteMountingAllowed: false;
+    browserAuthEnabled: false;
+    mounted: false;
+    wiredIntoAuthorization: false;
+    wiredIntoRoutes: false;
+    issuesCookies: false;
+    acceptsCookies: false;
+    acceptsCsrfTokens: false;
+    lifecycleCoordinatorMounted: boolean;
+    blockerCodes: readonly string[];
+    warningCodes: readonly string[];
+    requiredConfirmations: readonly string[];
+    safeNotes: readonly string[];
+    networkExposureSafe: false;
+  };
   lifecycleCoordinator: {
     status: "inactive";
     implementation: "in-memory-test-primitive";

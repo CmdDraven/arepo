@@ -96,6 +96,22 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.sessionRoutes, "stubbed");
   assert.equal(readiness.browserSessionAuth.pairingRoutes, "stubbed");
   assert.equal(readiness.browserSessionAuth.csrfEndpoint, "stubbed");
+  assert.equal(readiness.browserSessionAuth.activationPreflight.status, "inactive");
+  assert.equal(readiness.browserSessionAuth.activationPreflight.activationRequested, false);
+  assert.equal(readiness.browserSessionAuth.activationPreflight.readyForFutureActivation, false);
+  assert.equal(readiness.browserSessionAuth.activationPreflight.liveRouteMountingAllowed, false);
+  assert.equal(readiness.browserSessionAuth.activationPreflight.browserAuthEnabled, false);
+  assert.equal(readiness.browserSessionAuth.activationPreflight.mounted, false);
+  assert.equal(readiness.browserSessionAuth.activationPreflight.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.activationPreflight.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.activationPreflight.issuesCookies, false);
+  assert.equal(readiness.browserSessionAuth.activationPreflight.acceptsCookies, false);
+  assert.equal(readiness.browserSessionAuth.activationPreflight.acceptsCsrfTokens, false);
+  assert.ok(
+    readiness.browserSessionAuth.activationPreflight.blockerCodes.includes(
+      "browser-auth-route-mounting-blocked",
+    ),
+  );
   assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     readiness.browserSessionAuth.lifecycleCoordinator.implementation,

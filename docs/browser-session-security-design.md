@@ -32,6 +32,10 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
 - An inert browser-auth lifecycle coordinator exists for planning and unit tests
   only. It composes pairing-code, session, CSRF token, cookie policy, and audit
   primitives internally, but is not mounted into HTTP routes or authorization.
+- A pure browser-auth activation preflight planner exists as planning/status
+  infrastructure only. It lists the gates that must be satisfied before future
+  browser auth route mounting can be considered; current blockers are
+  intentional and protective.
 - The frontend does not store bearer tokens.
 - Full authorized status reports `browserSessionAuth.status` as
   `planning-only`; reduced anonymous status does not expose session details.
@@ -573,6 +577,10 @@ The current scaffold remains inert for browser sessions:
     live HTTP routes must continue returning inactive responses until browser
     session issuance, cookie delivery, CSRF validation, audit, revocation,
     frontend handling, and authorization are implemented together.
+14. Keep the activation preflight planner pure and unmounted. It may report
+    blockers, warnings, and required confirmations, but it must not mount routes,
+    issue cookies, accept cookies, validate CSRF tokens, or change live bearer
+    authorization behavior.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

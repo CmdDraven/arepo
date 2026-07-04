@@ -257,6 +257,22 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.csrfEndpoint, "stubbed");
   assert.equal(status.browserSessionAuth.frontendTokenStorage, false);
   assert.equal(status.browserSessionAuth.networkExposureSafe, false);
+  assert.equal(status.browserSessionAuth.activationPreflight.status, "inactive");
+  assert.equal(status.browserSessionAuth.activationPreflight.activationRequested, false);
+  assert.equal(status.browserSessionAuth.activationPreflight.readyForFutureActivation, false);
+  assert.equal(status.browserSessionAuth.activationPreflight.liveRouteMountingAllowed, false);
+  assert.equal(status.browserSessionAuth.activationPreflight.browserAuthEnabled, false);
+  assert.equal(status.browserSessionAuth.activationPreflight.mounted, false);
+  assert.equal(status.browserSessionAuth.activationPreflight.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.activationPreflight.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.activationPreflight.issuesCookies, false);
+  assert.equal(status.browserSessionAuth.activationPreflight.acceptsCookies, false);
+  assert.equal(status.browserSessionAuth.activationPreflight.acceptsCsrfTokens, false);
+  assert.ok(
+    status.browserSessionAuth.activationPreflight.blockerCodes.includes(
+      "browser-auth-route-mounting-blocked",
+    ),
+  );
   assert.equal(status.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     status.browserSessionAuth.lifecycleCoordinator.implementation,
@@ -613,6 +629,22 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.browserSessionAuth.pairingRoutes, "stubbed");
   assert.equal(full.browserSessionAuth.csrfEndpoint, "stubbed");
   assert.equal(full.browserSessionAuth.frontendTokenStorage, false);
+  assert.equal(full.browserSessionAuth.activationPreflight.status, "inactive");
+  assert.equal(full.browserSessionAuth.activationPreflight.activationRequested, false);
+  assert.equal(full.browserSessionAuth.activationPreflight.readyForFutureActivation, false);
+  assert.equal(full.browserSessionAuth.activationPreflight.liveRouteMountingAllowed, false);
+  assert.equal(full.browserSessionAuth.activationPreflight.browserAuthEnabled, false);
+  assert.equal(full.browserSessionAuth.activationPreflight.mounted, false);
+  assert.equal(full.browserSessionAuth.activationPreflight.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.activationPreflight.wiredIntoRoutes, false);
+  assert.equal(full.browserSessionAuth.activationPreflight.issuesCookies, false);
+  assert.equal(full.browserSessionAuth.activationPreflight.acceptsCookies, false);
+  assert.equal(full.browserSessionAuth.activationPreflight.acceptsCsrfTokens, false);
+  assert.ok(
+    full.browserSessionAuth.activationPreflight.blockerCodes.includes(
+      "browser-auth-route-mounting-blocked",
+    ),
+  );
   assert.equal(full.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     full.browserSessionAuth.lifecycleCoordinator.implementation,

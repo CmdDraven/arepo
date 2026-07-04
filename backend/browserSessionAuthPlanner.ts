@@ -4,6 +4,7 @@ import type {
   BrowserSessionAuthBlockerCode,
   BrowserSessionAuthRuntimeStatus,
 } from "./types.js";
+import { planBrowserAuthActivationPreflight } from "./browserAuthActivationPreflight.js";
 
 export type BrowserSessionAuthPlannerInput = {
   authMode: AuthMode;
@@ -65,6 +66,10 @@ export function planBrowserSessionAuth(
     csrfEndpoint: "stubbed",
     frontendTokenStorage: false,
     networkExposureSafe: false,
+    activationPreflight: planBrowserAuthActivationPreflight({
+      authMode: input.authMode,
+      localOnlyMode: input.localOnlyMode,
+    }),
     lifecycleCoordinator: {
       status: "inactive",
       implementation: "in-memory-test-primitive",
