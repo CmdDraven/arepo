@@ -100,6 +100,20 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.pairing.issueCode, "inactive");
   assert.equal(readiness.browserSessionAuth.pairing.consumeCode, "inactive");
   assert.equal(readiness.browserSessionAuth.pairing.storesRawCodes, false);
+  assert.equal(readiness.browserSessionAuth.pairing.codeStore.status, "inactive");
+  assert.equal(
+    readiness.browserSessionAuth.pairing.codeStore.implementation,
+    "in-memory-test-primitive",
+  );
+  assert.equal(readiness.browserSessionAuth.pairing.codeStore.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.pairing.codeStore.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.pairing.codeVerifier.status, "inactive");
+  assert.equal(
+    readiness.browserSessionAuth.pairing.codeVerifier.implementation,
+    "hash-and-constant-time-compare-primitive",
+  );
+  assert.equal(readiness.browserSessionAuth.pairing.codeVerifier.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.pairing.codeVerifier.wiredIntoRoutes, false);
   assert.equal(readiness.browserSessionAuth.sessionLifecycle.issuance, "inactive");
   assert.equal(readiness.browserSessionAuth.sessionLifecycle.logout, "inactive");
   assert.equal(readiness.browserSessionAuth.sessionLifecycle.revokeAll, "inactive");

@@ -124,6 +124,14 @@ Implemented components include:
   consumption, session-wide revocation, pruning, and safe diagnostics, but are
   not wired into HTTP authorization, route middleware, CSRF route issuance, or
   browser session authentication.
+- `backend/browserPairingCodeStore.ts` and
+  `backend/browserPairingCodeVerifier.ts`: inert in-memory browser pairing-code
+  storage and verifier primitives. They define future pairing semantics for
+  hashed pairing-code material, expiry, revocation, one-time consumption,
+  failed-attempt tracking, max-attempt lockout, subject-wide revocation, pruning,
+  and safe diagnostics, but are not wired into HTTP authorization, route
+  middleware, pairing route issuance/consumption, or browser session
+  authentication.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

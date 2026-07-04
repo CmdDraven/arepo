@@ -47,11 +47,23 @@ test("browser session auth planner describes inactive pairing lifecycle", () => 
   assert.equal(plan.pairing.codesAreOneTimeUse, true);
   assert.equal(plan.pairing.storesRawCodes, false);
   assert.equal(plan.pairing.auditRecordsSanitized, true);
+  assert.equal(plan.pairing.codeStore.status, "inactive");
+  assert.equal(plan.pairing.codeStore.implementation, "in-memory-test-primitive");
+  assert.equal(plan.pairing.codeStore.wiredIntoAuthorization, false);
+  assert.equal(plan.pairing.codeStore.wiredIntoRoutes, false);
+  assert.equal(plan.pairing.codeVerifier.status, "inactive");
+  assert.equal(
+    plan.pairing.codeVerifier.implementation,
+    "hash-and-constant-time-compare-primitive",
+  );
+  assert.equal(plan.pairing.codeVerifier.wiredIntoAuthorization, false);
+  assert.equal(plan.pairing.codeVerifier.wiredIntoRoutes, false);
+  assert.equal(plan.pairing.codeVerifier.storesRawCodes, false);
   assert.ok(plan.pairing.blockers.includes("browser-pairing-issuance-inactive"));
   assert.ok(plan.pairing.blockers.includes("browser-pairing-consumption-inactive"));
-  assert.equal(serialized.includes("pairingCode"), false);
-  assert.equal(serialized.includes("rawCode"), false);
-  assert.equal(serialized.includes("Authorization"), false);
+  assert.equal(serialized.includes("rawPairingCode"), false);
+  assert.equal(serialized.includes("pairingCodeSecret"), false);
+  assert.equal(serialized.includes("authorizationHeader"), false);
 });
 
 test("browser session auth planner describes inactive session issuance and revocation lifecycle", () => {

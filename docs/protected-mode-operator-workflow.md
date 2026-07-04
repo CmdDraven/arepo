@@ -214,6 +214,8 @@ as credentials.
 The in-memory CSRF token store and verifier primitives are also inactive backend
 test infrastructure; CSRF tokens are not issued from routes or validated in live
 request authorization.
+The in-memory pairing-code store and verifier primitives are inactive backend
+test infrastructure; pairing codes are not issued or consumed by routes.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

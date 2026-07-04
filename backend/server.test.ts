@@ -261,6 +261,20 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.pairing.issueCode, "inactive");
   assert.equal(status.browserSessionAuth.pairing.consumeCode, "inactive");
   assert.equal(status.browserSessionAuth.pairing.storesRawCodes, false);
+  assert.equal(status.browserSessionAuth.pairing.codeStore.status, "inactive");
+  assert.equal(
+    status.browserSessionAuth.pairing.codeStore.implementation,
+    "in-memory-test-primitive",
+  );
+  assert.equal(status.browserSessionAuth.pairing.codeStore.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.pairing.codeStore.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.pairing.codeVerifier.status, "inactive");
+  assert.equal(
+    status.browserSessionAuth.pairing.codeVerifier.implementation,
+    "hash-and-constant-time-compare-primitive",
+  );
+  assert.equal(status.browserSessionAuth.pairing.codeVerifier.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.pairing.codeVerifier.wiredIntoRoutes, false);
   assert.equal(status.browserSessionAuth.sessionLifecycle.issuance, "inactive");
   assert.equal(status.browserSessionAuth.sessionLifecycle.logout, "inactive");
   assert.equal(status.browserSessionAuth.sessionLifecycle.revokeAll, "inactive");
@@ -551,6 +565,20 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.browserSessionAuth.pairing.issueCode, "inactive");
   assert.equal(full.browserSessionAuth.pairing.consumeCode, "inactive");
   assert.equal(full.browserSessionAuth.pairing.storesRawCodes, false);
+  assert.equal(full.browserSessionAuth.pairing.codeStore.status, "inactive");
+  assert.equal(
+    full.browserSessionAuth.pairing.codeStore.implementation,
+    "in-memory-test-primitive",
+  );
+  assert.equal(full.browserSessionAuth.pairing.codeStore.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.pairing.codeStore.wiredIntoRoutes, false);
+  assert.equal(full.browserSessionAuth.pairing.codeVerifier.status, "inactive");
+  assert.equal(
+    full.browserSessionAuth.pairing.codeVerifier.implementation,
+    "hash-and-constant-time-compare-primitive",
+  );
+  assert.equal(full.browserSessionAuth.pairing.codeVerifier.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.pairing.codeVerifier.wiredIntoRoutes, false);
   assert.equal(full.browserSessionAuth.sessionLifecycle.issuance, "inactive");
   assert.equal(full.browserSessionAuth.sessionLifecycle.logout, "inactive");
   assert.equal(full.browserSessionAuth.sessionLifecycle.revokeAll, "inactive");

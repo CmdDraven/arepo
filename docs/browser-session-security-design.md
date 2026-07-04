@@ -270,8 +270,17 @@ The current pairing planner is observation-only and reports:
 - raw pairing codes are not stored.
 - pairing audit records must be sanitized.
 
-No pairing code is generated, stored, returned, logged, or accepted in the
-current implementation.
+Current implementation note: AREPO now includes an inert in-memory
+`browserPairingCodeStore` primitive and a `browserPairingCodeVerifier` primitive
+for future pairing semantics. They can create test records, return a generated
+raw pairing code only to the direct caller of the primitive, store only pairing
+code hashes, verify code id plus raw code secret, reject
+missing/wrong/expired/revoked/consumed/locked codes, consume a valid code once,
+revoke one code, revoke codes for a subject, track failed attempts, lock after a
+configured maximum failed-attempt count, prune expired or consumed codes, and
+return safe diagnostics. These primitives do not persist to disk, do not issue
+or consume pairing codes through HTTP routes, and are not wired into live request
+authorization or route middleware.
 
 ## Browser Session Lifecycle Plan
 
@@ -362,6 +371,13 @@ browserSessionAuth.pairing.status = planning-only
 browserSessionAuth.pairing.issueCode = inactive
 browserSessionAuth.pairing.consumeCode = inactive
 browserSessionAuth.pairing.storesRawCodes = false
+browserSessionAuth.pairing.codeStore.status = inactive
+browserSessionAuth.pairing.codeStore.implementation = in-memory-test-primitive
+browserSessionAuth.pairing.codeStore.wiredIntoAuthorization = false
+browserSessionAuth.pairing.codeStore.wiredIntoRoutes = false
+browserSessionAuth.pairing.codeVerifier.status = inactive
+browserSessionAuth.pairing.codeVerifier.wiredIntoAuthorization = false
+browserSessionAuth.pairing.codeVerifier.wiredIntoRoutes = false
 browserSessionAuth.sessionLifecycle.issuance = inactive
 browserSessionAuth.sessionLifecycle.logout = inactive
 browserSessionAuth.sessionLifecycle.revokeAll = inactive
@@ -499,6 +515,10 @@ The current scaffold remains inert for browser sessions:
 10. Keep the in-memory CSRF token store and verifier primitives as unit-tested,
     inactive infrastructure until browser session issuance and CSRF route
     delivery/validation become live together.
+11. Keep the in-memory pairing-code store and verifier primitives as
+    unit-tested, inactive infrastructure until pairing start/complete routes,
+    bearer authorization, audit, browser session issuance, cookie delivery, and
+    CSRF integration are designed and tested together.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

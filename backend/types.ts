@@ -386,6 +386,19 @@ export type BrowserSessionAuthRuntimeStatus = {
     codesAreOneTimeUse: true;
     storesRawCodes: false;
     auditRecordsSanitized: true;
+    codeStore: {
+      status: "inactive";
+      implementation: "in-memory-test-primitive";
+      wiredIntoAuthorization: false;
+      wiredIntoRoutes: false;
+    };
+    codeVerifier: {
+      status: "inactive";
+      implementation: "hash-and-constant-time-compare-primitive";
+      wiredIntoAuthorization: false;
+      wiredIntoRoutes: false;
+      storesRawCodes: false;
+    };
     blockers: readonly BrowserSessionAuthBlockerCode[];
   };
   sessionLifecycle: {
