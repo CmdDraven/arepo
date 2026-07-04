@@ -372,6 +372,24 @@ export type BrowserSessionAuthRuntimeStatus = {
     domain: "omitted";
     setsCookiesToday: false;
     nonLocalHttp: "unsafe";
+    policyPrimitives: {
+      status: "inactive";
+      implementation: "policy-test-primitive";
+      wiredIntoAuthorization: false;
+      wiredIntoRoutes: false;
+      issuesCookies: false;
+      acceptsCookies: false;
+    };
+    headerSanitizer: {
+      status: "inactive";
+      implementation: "header-redaction-test-primitive";
+      wiredIntoAuthorization: false;
+      wiredIntoRoutes: false;
+      redactsCookieHeaders: true;
+      redactsAuthorizationHeaders: true;
+      redactsSetCookieHeaders: true;
+      redactsCsrfHeaders: true;
+    };
   };
   pairing: {
     enabled: false;

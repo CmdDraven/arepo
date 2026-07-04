@@ -132,6 +132,41 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.sessionVerifier.wiredIntoAuthorization, false);
   assert.equal(readiness.browserSessionAuth.cookiePolicy.issuance, "inactive");
   assert.equal(readiness.browserSessionAuth.cookiePolicy.setsCookiesToday, false);
+  assert.equal(readiness.browserSessionAuth.cookiePolicy.policyPrimitives.status, "inactive");
+  assert.equal(
+    readiness.browserSessionAuth.cookiePolicy.policyPrimitives.implementation,
+    "policy-test-primitive",
+  );
+  assert.equal(
+    readiness.browserSessionAuth.cookiePolicy.policyPrimitives.wiredIntoAuthorization,
+    false,
+  );
+  assert.equal(readiness.browserSessionAuth.cookiePolicy.policyPrimitives.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.cookiePolicy.policyPrimitives.issuesCookies, false);
+  assert.equal(readiness.browserSessionAuth.cookiePolicy.policyPrimitives.acceptsCookies, false);
+  assert.equal(readiness.browserSessionAuth.cookiePolicy.headerSanitizer.status, "inactive");
+  assert.equal(
+    readiness.browserSessionAuth.cookiePolicy.headerSanitizer.implementation,
+    "header-redaction-test-primitive",
+  );
+  assert.equal(
+    readiness.browserSessionAuth.cookiePolicy.headerSanitizer.wiredIntoAuthorization,
+    false,
+  );
+  assert.equal(readiness.browserSessionAuth.cookiePolicy.headerSanitizer.wiredIntoRoutes, false);
+  assert.equal(
+    readiness.browserSessionAuth.cookiePolicy.headerSanitizer.redactsCookieHeaders,
+    true,
+  );
+  assert.equal(
+    readiness.browserSessionAuth.cookiePolicy.headerSanitizer.redactsAuthorizationHeaders,
+    true,
+  );
+  assert.equal(
+    readiness.browserSessionAuth.cookiePolicy.headerSanitizer.redactsSetCookieHeaders,
+    true,
+  );
+  assert.equal(readiness.browserSessionAuth.cookiePolicy.headerSanitizer.redactsCsrfHeaders, true);
   assert.equal(readiness.browserSessionAuth.csrf.tokenIssuance, "inactive");
   assert.equal(readiness.browserSessionAuth.csrf.validation, "inactive");
   assert.equal(readiness.browserSessionAuth.csrf.tokenStore.status, "inactive");

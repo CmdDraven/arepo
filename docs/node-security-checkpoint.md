@@ -137,6 +137,12 @@ Implemented components include:
   session, cookie, CSRF, revocation, expiry, and rejected-auth events, use
   allowlisted safe details, reject secret-shaped metadata, and remain unwired
   from live authorization and route execution.
+- `backend/browserCookiePolicy.ts` and `backend/browserHeaderSanitizer.ts`:
+  inert browser-auth cookie policy and header-sanitization primitives. They
+  define planned cookie names, validate future-safe cookie attributes, produce
+  safe diagnostics, and redact `Cookie`, `Authorization`, `Set-Cookie`, and
+  CSRF-style headers for future audit/diagnostic use, but do not issue cookies,
+  accept cookies as credentials, or wire into live authorization or routes.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

@@ -295,6 +295,38 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.cookiePolicy.secure, "required-outside-local-dev");
   assert.equal(status.browserSessionAuth.cookiePolicy.domain, "omitted");
   assert.equal(status.browserSessionAuth.cookiePolicy.setsCookiesToday, false);
+  assert.equal(status.browserSessionAuth.cookiePolicy.policyPrimitives.status, "inactive");
+  assert.equal(
+    status.browserSessionAuth.cookiePolicy.policyPrimitives.implementation,
+    "policy-test-primitive",
+  );
+  assert.equal(
+    status.browserSessionAuth.cookiePolicy.policyPrimitives.wiredIntoAuthorization,
+    false,
+  );
+  assert.equal(status.browserSessionAuth.cookiePolicy.policyPrimitives.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.cookiePolicy.policyPrimitives.issuesCookies, false);
+  assert.equal(status.browserSessionAuth.cookiePolicy.policyPrimitives.acceptsCookies, false);
+  assert.equal(status.browserSessionAuth.cookiePolicy.headerSanitizer.status, "inactive");
+  assert.equal(
+    status.browserSessionAuth.cookiePolicy.headerSanitizer.implementation,
+    "header-redaction-test-primitive",
+  );
+  assert.equal(
+    status.browserSessionAuth.cookiePolicy.headerSanitizer.wiredIntoAuthorization,
+    false,
+  );
+  assert.equal(status.browserSessionAuth.cookiePolicy.headerSanitizer.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.cookiePolicy.headerSanitizer.redactsCookieHeaders, true);
+  assert.equal(
+    status.browserSessionAuth.cookiePolicy.headerSanitizer.redactsAuthorizationHeaders,
+    true,
+  );
+  assert.equal(
+    status.browserSessionAuth.cookiePolicy.headerSanitizer.redactsSetCookieHeaders,
+    true,
+  );
+  assert.equal(status.browserSessionAuth.cookiePolicy.headerSanitizer.redactsCsrfHeaders, true);
   assert.equal(status.browserSessionAuth.csrf.tokenIssuance, "inactive");
   assert.equal(status.browserSessionAuth.csrf.validation, "inactive");
   assert.equal(status.browserSessionAuth.csrf.unsafeMethodsRequireCsrfWhenSessionAuthLive, true);
@@ -604,6 +636,29 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.browserSessionAuth.sessionVerifier.wiredIntoAuthorization, false);
   assert.equal(full.browserSessionAuth.cookiePolicy.issuance, "inactive");
   assert.equal(full.browserSessionAuth.cookiePolicy.setsCookiesToday, false);
+  assert.equal(full.browserSessionAuth.cookiePolicy.policyPrimitives.status, "inactive");
+  assert.equal(
+    full.browserSessionAuth.cookiePolicy.policyPrimitives.implementation,
+    "policy-test-primitive",
+  );
+  assert.equal(full.browserSessionAuth.cookiePolicy.policyPrimitives.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.cookiePolicy.policyPrimitives.wiredIntoRoutes, false);
+  assert.equal(full.browserSessionAuth.cookiePolicy.policyPrimitives.issuesCookies, false);
+  assert.equal(full.browserSessionAuth.cookiePolicy.policyPrimitives.acceptsCookies, false);
+  assert.equal(full.browserSessionAuth.cookiePolicy.headerSanitizer.status, "inactive");
+  assert.equal(
+    full.browserSessionAuth.cookiePolicy.headerSanitizer.implementation,
+    "header-redaction-test-primitive",
+  );
+  assert.equal(full.browserSessionAuth.cookiePolicy.headerSanitizer.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.cookiePolicy.headerSanitizer.wiredIntoRoutes, false);
+  assert.equal(full.browserSessionAuth.cookiePolicy.headerSanitizer.redactsCookieHeaders, true);
+  assert.equal(
+    full.browserSessionAuth.cookiePolicy.headerSanitizer.redactsAuthorizationHeaders,
+    true,
+  );
+  assert.equal(full.browserSessionAuth.cookiePolicy.headerSanitizer.redactsSetCookieHeaders, true);
+  assert.equal(full.browserSessionAuth.cookiePolicy.headerSanitizer.redactsCsrfHeaders, true);
   assert.equal(full.browserSessionAuth.csrf.tokenIssuance, "inactive");
   assert.equal(full.browserSessionAuth.csrf.validation, "inactive");
   assert.equal(full.browserSessionAuth.csrf.bearerTokenRequiresBrowserCsrf, false);

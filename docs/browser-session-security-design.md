@@ -23,6 +23,9 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
 - Inert in-memory CSRF token store and verifier primitives exist for future
   token semantics tests only. CSRF tokens are not issued from routes and are not
   validated in live request authorization.
+- Inert browser cookie policy and header-sanitization primitives exist for
+  future cookie/session diagnostics and audit tests only. They do not issue
+  cookies, accept cookies as credentials, or participate in live authorization.
 - The frontend does not store bearer tokens.
 - Full authorized status reports `browserSessionAuth.status` as
   `planning-only`; reduced anonymous status does not expose session details.
@@ -143,6 +146,16 @@ A future cookie session model should include:
 
 Cookie sessions need CSRF protection because the browser can attach cookies to
 requests the user did not intend.
+
+Current implementation note: AREPO now includes an inert `browserCookiePolicy`
+primitive and an inert `browserHeaderSanitizer` primitive. The cookie policy
+primitive defines planned session and CSRF cookie names, validates future-safe
+attributes such as `HttpOnly`, `Secure`, `SameSite`, host-only domain posture,
+path, and bounded max age, and returns safe diagnostics only. The header
+sanitizer redacts `Cookie`, `Authorization`, `Set-Cookie`, and CSRF-style
+headers for future diagnostics/audit use. These primitives do not emit
+`Set-Cookie`, do not store cookie values, do not parse cookies as credentials,
+and are not wired into live request authorization or route middleware.
 
 ## CSRF Design
 
@@ -405,6 +418,20 @@ browserSessionAuth.cookiePolicy.httpOnly = required
 browserSessionAuth.cookiePolicy.secure = required-outside-local-dev
 browserSessionAuth.cookiePolicy.domain = omitted
 browserSessionAuth.cookiePolicy.setsCookiesToday = false
+browserSessionAuth.cookiePolicy.policyPrimitives.status = inactive
+browserSessionAuth.cookiePolicy.policyPrimitives.implementation = policy-test-primitive
+browserSessionAuth.cookiePolicy.policyPrimitives.wiredIntoAuthorization = false
+browserSessionAuth.cookiePolicy.policyPrimitives.wiredIntoRoutes = false
+browserSessionAuth.cookiePolicy.policyPrimitives.issuesCookies = false
+browserSessionAuth.cookiePolicy.policyPrimitives.acceptsCookies = false
+browserSessionAuth.cookiePolicy.headerSanitizer.status = inactive
+browserSessionAuth.cookiePolicy.headerSanitizer.implementation = header-redaction-test-primitive
+browserSessionAuth.cookiePolicy.headerSanitizer.wiredIntoAuthorization = false
+browserSessionAuth.cookiePolicy.headerSanitizer.wiredIntoRoutes = false
+browserSessionAuth.cookiePolicy.headerSanitizer.redactsCookieHeaders = true
+browserSessionAuth.cookiePolicy.headerSanitizer.redactsAuthorizationHeaders = true
+browserSessionAuth.cookiePolicy.headerSanitizer.redactsSetCookieHeaders = true
+browserSessionAuth.cookiePolicy.headerSanitizer.redactsCsrfHeaders = true
 browserSessionAuth.csrf.tokenIssuance = inactive
 browserSessionAuth.csrf.validation = inactive
 browserSessionAuth.csrf.unsafeMethodsRequireCsrfWhenSessionAuthLive = true
@@ -531,6 +558,10 @@ The current scaffold remains inert for browser sessions:
     unit-tested, inactive infrastructure until pairing start/complete routes,
     bearer authorization, audit, browser session issuance, cookie delivery, and
     CSRF integration are designed and tested together.
+12. Keep the browser cookie policy and header-sanitization primitives as
+    unit-tested, inactive infrastructure until session issuance, cookie
+    delivery, CSRF validation, route middleware, and audit wiring are designed
+    and tested together.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are
