@@ -16,7 +16,7 @@ export type VaultIndexScope = {
   };
 };
 
-export type AuthMode = "disabled";
+export type AuthMode = "disabled" | "protected";
 export type AuthRequestedMode = AuthMode | "protected";
 
 export type AuthConfig = {
@@ -30,9 +30,9 @@ export type AuthConfig = {
 export type AuthPosture = {
   mode: AuthMode;
   requestedMode: AuthRequestedMode;
-  enabled: false;
-  enforcement: "none";
-  protectedModeAvailable: false;
+  enabled: boolean;
+  enforcement: "none" | "protected";
+  protectedModeAvailable: boolean;
   protectedModeRequested: boolean;
   warning: string;
   error?: string;
@@ -45,7 +45,7 @@ export type RequestPolicyRuntimeStatus = {
   authorizationPlannerPresent: boolean;
   dryRunMiddlewareConfigured: boolean;
   dryRunMiddlewareMounted: boolean;
-  dryRunObservationOnly: true;
+  dryRunObservationOnly: boolean;
   dryRunRunCount: number;
   dryRunAuditConfigured: boolean;
   dryRunAuditAttemptedCount: number;
@@ -53,15 +53,15 @@ export type RequestPolicyRuntimeStatus = {
   lastDryRunAuditStatus?: ProtectedRequestDryRunAuditStatus;
   lastDryRunResult?: ProtectedRequestDryRunSummary;
   dryRun: ProtectedRequestDryRunTerminologyStatus;
-  enforcementActive: false;
-  enforced: false;
-  credentialVerificationActive: false;
-  auditRequestLoggingActive: false;
-  revocationChecksActive: false;
-  csrfOriginEnforcementActive: false;
-  acceptsCredentials: false;
-  acceptsSessions: false;
-  acceptsBearerTokens: false;
+  enforcementActive: boolean;
+  enforced: boolean;
+  credentialVerificationActive: boolean;
+  auditRequestLoggingActive: boolean;
+  revocationChecksActive: boolean;
+  csrfOriginEnforcementActive: boolean;
+  acceptsCredentials: boolean;
+  acceptsSessions: boolean;
+  acceptsBearerTokens: boolean;
   networkExposureSafe: false;
 };
 
@@ -174,18 +174,18 @@ export type ProtectedModeStoreDiagnostic = {
 export type ProtectedModeStartupAssessment = {
   requestedAuthMode: AuthRequestedMode;
   operationalAuthMode: AuthMode;
-  protectedModeAvailable: false;
-  protectedModeMayStart: false;
+  protectedModeAvailable: boolean;
+  protectedModeMayStart: boolean;
   missingRequiredStores: readonly ProtectedModeStoreDiagnostic[];
   corruptStores: readonly ProtectedModeStoreDiagnostic[];
   unsafeStorePaths: readonly string[];
   permissionWarnings: readonly string[];
   nonLocalBindWithDisabledAuth: boolean;
-  enforcementActive: false;
-  credentialVerificationActive: false;
-  auditWiringActive: false;
-  revocationChecksActive: false;
-  csrfOriginEnforcementActive: false;
+  enforcementActive: boolean;
+  credentialVerificationActive: boolean;
+  auditWiringActive: boolean;
+  revocationChecksActive: boolean;
+  csrfOriginEnforcementActive: boolean;
   networkExposureSafe: false;
 };
 
@@ -243,14 +243,14 @@ export type ProtectedModeReadinessBlockerDetail = {
 };
 
 export type ProtectedModeReadinessManifest = {
-  readyForEnforcement: false;
-  enforcementActive: false;
-  protectedModeOperational: false;
+  readyForEnforcement: boolean;
+  enforcementActive: boolean;
+  protectedModeOperational: boolean;
   networkExposureSafe: false;
   requestedAuthMode: AuthRequestedMode;
   operationalAuthMode: AuthMode;
-  protectedModeAvailable: false;
-  protectedModeMayStart: false;
+  protectedModeAvailable: boolean;
+  protectedModeMayStart: boolean;
   blockerCount: number;
   blockers: readonly ProtectedModeReadinessBlockerCode[];
   blockerDetails: readonly ProtectedModeReadinessBlockerDetail[];
@@ -262,17 +262,17 @@ export type ProtectedModeReadinessManifest = {
   };
   dryRun: ProtectedRequestDryRunTerminologyStatus;
   checks: {
-    credentialVerificationActive: false;
-    credentialAcceptanceActive: false;
-    credentialIssuanceActive: false;
-    sessionIssuanceActive: false;
-    tokenIssuanceActive: false;
-    auditEnforcementActive: false;
-    revocationChecksActive: false;
-    csrfOriginEnforcementActive: false;
-    reducedAnonymousStatusEnforced: false;
-    strongerConfirmationEnforced: false;
-    explicitEnforcementFlagEnabled: false;
+    credentialVerificationActive: boolean;
+    credentialAcceptanceActive: boolean;
+    credentialIssuanceActive: boolean;
+    sessionIssuanceActive: boolean;
+    tokenIssuanceActive: boolean;
+    auditEnforcementActive: boolean;
+    revocationChecksActive: boolean;
+    csrfOriginEnforcementActive: boolean;
+    reducedAnonymousStatusEnforced: boolean;
+    strongerConfirmationEnforced: boolean;
+    explicitEnforcementFlagEnabled: boolean;
     protectedRequestPipelineAvailable: boolean;
     protectedResponsePlannerAvailable: boolean;
     reducedAnonymousStatusPlannerAvailable: boolean;

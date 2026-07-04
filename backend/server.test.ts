@@ -5,6 +5,16 @@ import os from "node:os";
 import path from "node:path";
 import { routeRequest, type RequestLike } from "./server.js";
 import { loadConfig } from "./config.js";
+import { readAuthAuditEvents } from "./authAudit.js";
+import {
+  resolveAuthStoragePaths,
+  writeBrowserSessionStore,
+  writeCredentialStore,
+  writeRevocationStore,
+  writeTokenVerifierStore,
+  type CredentialMetadata,
+} from "./credentialStore.js";
+import { createTokenVerifierMetadata, TOKEN_VERIFIER_SCHEME } from "./credentialVerifier.js";
 import { machineIndexPath } from "./indexCache.js";
 import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
@@ -17,6 +27,7 @@ import type {
   VaultInspectResponse,
   VaultInfo,
 } from "./types.js";
+import type { RoutePermission } from "./routePermissions.js";
 
 function request(
   method: string,
@@ -35,7 +46,14 @@ function request(
   };
 }
 
-async function writeConfig(cwd: string, appDataDir: string): Promise<void> {
+async function writeConfig(
+  cwd: string,
+  appDataDir: string,
+  options: {
+    auth?: Record<string, unknown>;
+    vaults?: VaultInfo[];
+  } = {},
+): Promise<void> {
   await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
   await fs.writeFile(
     path.join(cwd, ".arepo", "config.json"),
@@ -47,10 +65,77 @@ async function writeConfig(cwd: string, appDataDir: string): Promise<void> {
         apiVersion: 1,
       },
       appDataDir,
-      vaults: [],
+      auth: options.auth,
+      vaults: options.vaults ?? [],
     }),
     "utf8",
   );
+}
+
+const protectedBearerToken = "server-protected-bearer-token-material";
+const protectedNow = "2026-07-04T00:00:00.000Z";
+const protectedFuture = "2027-07-04T00:00:00.000Z";
+
+function testVault(rootPath: string, id = "protected-vault"): VaultInfo {
+  return {
+    id,
+    displayName: "Protected Vault",
+    rootPath,
+    permissions: {
+      readIndex: true,
+      readContent: true,
+      writeContent: true,
+      deleteFiles: false,
+    },
+    vaultIndexScope: { markdown: { minDepth: 0, maxDepth: null } },
+  };
+}
+
+async function writeProtectedAuthStores(
+  appDataDir: string,
+  input: {
+    vaultId?: string;
+    vaultPermissions?: readonly RoutePermission[];
+    nodePermissions?: readonly RoutePermission[];
+  },
+): Promise<void> {
+  const credentialId = "server-protected-credential";
+  const verifierId = "server-protected-verifier";
+  const credential: CredentialMetadata = {
+    credentialId,
+    actorKind: "apiToken",
+    label: "Server protected test token",
+    nodePermissions: input.nodePermissions ?? [],
+    vaultGrants: input.vaultId
+      ? [{ vaultId: input.vaultId, permissions: input.vaultPermissions ?? [] }]
+      : [],
+    createdAt: protectedNow,
+    expiresAt: protectedFuture,
+    verifierIds: [verifierId],
+    sessionIds: [],
+    auditRefs: [],
+  };
+  await writeCredentialStore(appDataDir, { credentials: [credential] });
+  await writeTokenVerifierStore(appDataDir, {
+    tokenVerifiers: [
+      createTokenVerifierMetadata({
+        tokenMaterial: protectedBearerToken,
+        credentialId,
+        verifierId,
+        createdAt: protectedNow,
+        expiresAt: protectedFuture,
+        hashParameters: {
+          scheme: TOKEN_VERIFIER_SCHEME,
+          iterations: 100_000,
+          digest: "sha256",
+          keyLength: 32,
+          saltLength: 32,
+        },
+      }),
+    ],
+  });
+  await writeBrowserSessionStore(appDataDir, { sessions: [] });
+  await writeRevocationStore(appDataDir, { revocations: [] });
 }
 
 function relativeIsInside(parent: string, child: string): boolean {
@@ -262,83 +347,208 @@ test("node status endpoint reports non-local bind warning", async () => {
   }
 });
 
-test("node status endpoint reports requested protected mode as unavailable", async () => {
+test("node status endpoint returns reduced diagnostics when protected mode is not ready", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
-  await fs.writeFile(
-    path.join(cwd, ".arepo", "config.json"),
-    JSON.stringify({
-      node: {
-        nodeId: "local",
-        displayName: "Local Node",
-        mode: "local",
-        apiVersion: 1,
-      },
-      auth: {
-        mode: "protected",
-      },
-      vaults: [],
-    }),
-    "utf8",
-  );
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
 
   const response = await routeRequest(request("GET", "/api/node/status"), cwd);
-  assert.equal(response.status, 200);
-  const status = response.body as LocalNodeRuntimeStatus;
-  assert.equal(status.auth.mode, "disabled");
-  assert.equal(status.auth.requestedMode, "protected");
-  assert.equal(status.auth.enabled, false);
-  assert.equal(status.auth.enforcement, "none");
-  assert.equal(status.auth.protectedModeAvailable, false);
-  assert.equal(status.auth.protectedModeRequested, true);
-  assert.match(status.auth.warning, /not implemented/);
-  assert.match(status.auth.error ?? "", /not implemented/);
-  assert.equal(status.requestPolicy.enforcementActive, false);
-  assert.equal(status.requestPolicy.credentialVerificationActive, false);
-  assert.equal(status.requestPolicy.dryRunMiddlewareConfigured, false);
-  assert.equal(status.requestPolicy.dryRunMiddlewareMounted, false);
-  assert.equal(status.requestPolicy.dryRunAuditConfigured, false);
-  assert.equal(status.requestPolicy.networkExposureSafe, false);
-  assert.equal(status.protectedModeStartup.requestedAuthMode, "protected");
-  assert.equal(status.protectedModeStartup.operationalAuthMode, "disabled");
-  assert.equal(status.protectedModeStartup.protectedModeAvailable, false);
-  assert.equal(status.protectedModeStartup.protectedModeMayStart, false);
-  assert.deepEqual(
-    status.protectedModeStartup.missingRequiredStores.map((item) => item.store).sort(),
-    ["credentials", "revocations", "sessions", "tokenVerifiers"],
-  );
-  assert.equal(status.protectedModeStartup.enforcementActive, false);
-  assert.equal(status.protectedModeStartup.credentialVerificationActive, false);
-  assert.equal(status.protectedModeStartup.auditWiringActive, false);
-  assert.equal(status.protectedModeStartup.revocationChecksActive, false);
-  assert.equal(status.protectedModeStartup.csrfOriginEnforcementActive, false);
-  assert.equal(status.protectedModeStartup.networkExposureSafe, false);
+  assert.equal(response.status, 503);
+  const status = response.body as {
+    ok: true;
+    responseKind: string;
+    endpoint: string;
+    authRequired: boolean;
+    protectedModeOperational: boolean;
+    publicWarnings: string[];
+  };
+  assert.equal(status.ok, true);
+  assert.equal(status.responseKind, "reduced-anonymous-status");
+  assert.equal(status.endpoint, "nodeStatus");
+  assert.equal(status.authRequired, true);
+  assert.equal(status.protectedModeOperational, false);
+  assert.ok(status.publicWarnings.includes("protected-mode-not-operational"));
+  assert.equal("runtime" in status, false);
+  assert.equal("vaults" in status, false);
 });
 
-test("protected-mode startup assessment does not reject active API requests", async () => {
+test("protected-mode startup assessment denies protected routes when readiness is incomplete", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
-  await fs.writeFile(
-    path.join(cwd, ".arepo", "config.json"),
-    JSON.stringify({
-      node: {
-        nodeId: "local",
-        displayName: "Local Node",
-        mode: "local",
-        apiVersion: 1,
-      },
-      auth: {
-        mode: "protected",
-      },
-      vaults: [],
-    }),
-    "utf8",
-  );
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
 
   const response = await routeRequest(request("GET", "/api/vaults"), cwd);
+  assert.equal(response.status, 503);
+  const body = response.body as { ok: false; code: string; reasonCodes: string[] };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "protected-mode-not-ready");
+  assert.ok(body.reasonCodes.includes("auth-store-missing"));
+});
+
+test("protected mode enforces bearer credentials and vault route permissions", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Protected\n", "utf8");
+  const vault = testVault(rootPath);
+
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
+  await writeProtectedAuthStores(appDataDir, {
+    vaultId: vault.id,
+    vaultPermissions: ["readIndex"],
+  });
+
+  const route = `/api/vaults/${vault.id}/file?path=note.md`;
+  const missing = await routeRequest(request("GET", route), cwd);
+  assert.equal(missing.status, 401);
+  assert.equal((missing.body as { code: string }).code, "requires-authentication");
+
+  const invalidSecret = "invalid-server-protected-token";
+  const invalid = await routeRequest(
+    request("GET", route, undefined, { authorization: `Bearer ${invalidSecret}` }),
+    cwd,
+  );
+  assert.equal(invalid.status, 401);
+  assert.equal(JSON.stringify(invalid.body).includes(invalidSecret), false);
+
+  const unauthorized = await routeRequest(
+    request("GET", route, undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(unauthorized.status, 403);
+  assert.equal((unauthorized.body as { code: string }).code, "requires-authorization");
+
+  await writeProtectedAuthStores(appDataDir, {
+    vaultId: vault.id,
+    vaultPermissions: ["readContent"],
+  });
+  const allowed = await routeRequest(
+    request("GET", route, undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(allowed.status, 200);
+  assert.equal((allowed.body as { content: string }).content, "# Protected\n");
+
+  const paths = resolveAuthStoragePaths(appDataDir);
+  const audit = await readAuthAuditEvents(paths.auditEvents);
+  const serializedAudit = JSON.stringify(audit.events);
+  assert.ok(audit.events.length >= 4);
+  assert.equal(serializedAudit.includes(protectedBearerToken), false);
+  assert.equal(serializedAudit.includes(invalidSecret), false);
+  assert.equal(serializedAudit.includes("verifierHash"), false);
+  assert.equal(serializedAudit.includes("salt"), false);
+});
+
+test("protected mode returns reduced anonymous status and full authorized status", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
+  await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode"] });
+
+  const anonymous = await routeRequest(request("GET", "/api/node/status"), cwd);
+  assert.equal(anonymous.status, 200);
+  const reduced = anonymous.body as {
+    ok: true;
+    responseKind: string;
+    endpoint: string;
+    authRequired: boolean;
+    protectedModeOperational: boolean;
+  };
+  assert.equal(reduced.ok, true);
+  assert.equal(reduced.responseKind, "reduced-anonymous-status");
+  assert.equal(reduced.endpoint, "nodeStatus");
+  assert.equal(reduced.authRequired, true);
+  assert.equal("runtime" in reduced, false);
+  assert.equal("protectedModeReadiness" in reduced, false);
+
+  const authorized = await routeRequest(
+    request("GET", "/api/node/status", undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(authorized.status, 200);
+  const full = authorized.body as LocalNodeRuntimeStatus;
+  assert.equal(full.auth.mode, "protected");
+  assert.equal(full.auth.enabled, true);
+  assert.equal(full.auth.enforcement, "protected");
+  assert.equal(full.requestPolicy.enforcementActive, true);
+  assert.equal(full.requestPolicy.acceptsBearerTokens, true);
+  assert.equal(full.requestPolicy.acceptsSessions, false);
+  assert.equal(full.protectedModeReadiness.readyForEnforcement, true);
+  assert.equal(full.protectedModeReadiness.protectedModeOperational, true);
+  assert.equal(full.protectedModeReadiness.enforcementActive, true);
+  assert.equal(full.protectedModeReadiness.networkExposureSafe, false);
+});
+
+test("protected mode fails closed for routes without a permission policy", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const vault = testVault(rootPath);
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
+  await writeProtectedAuthStores(appDataDir, {
+    vaultId: vault.id,
+    vaultPermissions: ["readIndex", "readContent"],
+  });
+
+  const response = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/uncovered`, undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(response.status, 404);
+  const body = response.body as { ok: false; code: string; reasonCodes: string[] };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "route-not-found");
+  assert.ok(body.reasonCodes.includes("route-not-found"));
+});
+
+test("protected dry-run canary remains sanitized when anonymous dry-run is enabled", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir, {
+    auth: { mode: "protected", dryRunRequestPolicy: true },
+  });
+  await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode"] });
+
+  const response = await routeRequest(
+    request("GET", "/api/node/auth/dry-run", undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+      "x-source-body": "secret-source-body",
+    }),
+    cwd,
+  );
   assert.equal(response.status, 200);
-  const body = response.body as { vaults: unknown[] };
-  assert.deepEqual(body.vaults, []);
+  const serialized = JSON.stringify(response.body);
+  assert.equal(serialized.includes(protectedBearerToken), false);
+  assert.equal(serialized.includes("secret-source-body"), false);
+  assert.equal(serialized.includes("verifierHash"), false);
+  assert.equal(serialized.includes("salt"), false);
+
+  const anonymous = await routeRequest(request("GET", "/api/node/auth/dry-run"), cwd);
+  assert.equal(anonymous.status, 200);
+  assert.equal((anonymous.body as { diagnosticOnly: boolean }).diagnosticOnly, true);
+});
+
+test("protected mode treats session-cookie auth as unsupported in this slice", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
+  await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode"] });
+
+  const secret = "unsupported-session-secret";
+  const response = await routeRequest(
+    request("GET", "/api/node/status", undefined, { cookie: `arepo_session=${secret}` }),
+    cwd,
+  );
+  assert.equal(response.status, 401);
+  assert.equal(JSON.stringify(response.body).includes(secret), false);
 });
 
 test("unsupported auth modes still fail closed clearly", async () => {

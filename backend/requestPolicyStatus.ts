@@ -7,21 +7,22 @@ import type { RequestPolicyRuntimeStatus } from "./types.js";
 
 export function getRequestPolicyRuntimeStatus(auth: AuthConfig): RequestPolicyRuntimeStatus {
   const dryRunStatus = getProtectedRequestDryRunStatus(auth);
+  const protectedMode = auth.mode === "protected";
   return {
     routePolicyInventoryPresent: PROTECTED_ROUTE_POLICIES.length > 0,
     routePolicyCount: PROTECTED_ROUTE_POLICIES.length,
     browserSecurityPolicyPresent: typeof planBrowserSecurity === "function",
     authorizationPlannerPresent: typeof planProtectedRouteAuthorization === "function",
     ...dryRunStatus,
-    enforcementActive: false,
-    enforced: false,
-    credentialVerificationActive: false,
-    auditRequestLoggingActive: false,
-    revocationChecksActive: false,
+    enforcementActive: protectedMode,
+    enforced: protectedMode,
+    credentialVerificationActive: protectedMode,
+    auditRequestLoggingActive: protectedMode,
+    revocationChecksActive: protectedMode,
     csrfOriginEnforcementActive: false,
-    acceptsCredentials: false,
+    acceptsCredentials: protectedMode,
     acceptsSessions: false,
-    acceptsBearerTokens: false,
+    acceptsBearerTokens: protectedMode,
     networkExposureSafe: false,
   };
 }

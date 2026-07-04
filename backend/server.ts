@@ -17,6 +17,7 @@ import {
   resolveBackendRuntimeOptions,
 } from "./nodeRuntime.js";
 import { getVaultStorageSummary } from "./storage.js";
+import { enforceProtectedMode } from "./protectedModeEnforcement.js";
 import {
   getProtectedRequestDryRunCanaryStatus,
   runProtectedRequestDryRun,
@@ -72,9 +73,17 @@ export async function routeRequest(
     return json(204, null, cors.headers);
   }
 
-  await runProtectedRequestDryRun({ request, cwd, url });
-
   try {
+    const protectedModeResponse = await enforceProtectedMode({
+      request,
+      cwd,
+      url,
+      corsHeaders: cors.headers,
+    });
+    if (protectedModeResponse) return protectedModeResponse;
+
+    await runProtectedRequestDryRun({ request, cwd, url });
+
     if (method === "GET" && url.pathname === "/api/health") {
       return json(200, await getLocalNodeHealth(cwd), cors.headers);
     }

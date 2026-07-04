@@ -11,6 +11,7 @@ import {
 } from "./browserSecurityPolicy.js";
 import {
   verifyHttpCredentialInput,
+  type HttpCredentialSource,
   type HttpCredentialAdapterResult,
   type HttpCredentialAdapterInput,
   type RequestShapedCredentialInput,
@@ -47,6 +48,7 @@ export type RequestAuthorizationPlannerInput = {
   allowedOrigins?: readonly string[];
   csrfTokenPresent?: boolean;
   strongerConfirmationPresent?: boolean;
+  allowedCredentialSource?: HttpCredentialSource | "either";
   now?: Date;
 };
 
@@ -82,7 +84,7 @@ export function planRouteAwareRequestAuthorization(
   const credentialResult = verifyHttpCredentialInput({
     request: input.request,
     stores: input.stores,
-    options: { now: input.now },
+    options: { now: input.now, allowedSource: input.allowedCredentialSource ?? "either" },
   });
 
   if (!policy) {

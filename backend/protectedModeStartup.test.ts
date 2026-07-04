@@ -90,7 +90,7 @@ test("requested protected mode reports unsafe auth paths", async () => {
   assert.match(assessment.unsafeStorePaths[0] ?? "", /must not be placed inside/);
 });
 
-test("valid empty stores still do not make protected mode operational", async () => {
+test("valid empty stores satisfy requested protected-mode startup availability", async () => {
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-startup-"));
   await writeCredentialStore(appDataDir, { credentials: [] });
   await writeTokenVerifierStore(appDataDir, { tokenVerifiers: [] });
@@ -105,10 +105,35 @@ test("valid empty stores still do not make protected mode operational", async ()
 
   assert.deepEqual(assessment.missingRequiredStores, []);
   assert.deepEqual(assessment.corruptStores, []);
-  assert.equal(assessment.protectedModeAvailable, false);
-  assert.equal(assessment.protectedModeMayStart, false);
+  assert.equal(assessment.protectedModeAvailable, true);
+  assert.equal(assessment.protectedModeMayStart, true);
   assert.equal(assessment.enforcementActive, false);
   assert.equal(assessment.credentialVerificationActive, false);
+});
+
+test("valid empty stores activate protected-mode startup gate when mode is protected", async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-startup-"));
+  await writeCredentialStore(appDataDir, { credentials: [] });
+  await writeTokenVerifierStore(appDataDir, { tokenVerifiers: [] });
+  await writeBrowserSessionStore(appDataDir, { sessions: [] });
+  await writeRevocationStore(appDataDir, { revocations: [] });
+
+  const assessment = await assessProtectedModeStartup({
+    auth: { mode: "protected" },
+    appDataDir,
+    runtime: localRuntime,
+  });
+
+  assert.deepEqual(assessment.missingRequiredStores, []);
+  assert.deepEqual(assessment.corruptStores, []);
+  assert.equal(assessment.protectedModeAvailable, true);
+  assert.equal(assessment.protectedModeMayStart, true);
+  assert.equal(assessment.enforcementActive, true);
+  assert.equal(assessment.credentialVerificationActive, true);
+  assert.equal(assessment.auditWiringActive, true);
+  assert.equal(assessment.revocationChecksActive, true);
+  assert.equal(assessment.csrfOriginEnforcementActive, false);
+  assert.equal(assessment.networkExposureSafe, false);
 });
 
 test("non-local bind with disabled auth remains unsafe", async () => {
@@ -127,8 +152,7 @@ test("non-local bind with disabled auth remains unsafe", async () => {
   assert.equal(assessment.networkExposureSafe, false);
 });
 
-test("active request handling does not import protected-mode startup assessment", async () => {
+test("active request handling mounts protected-mode enforcement", async () => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
-  assert.equal(serverSource.includes("protectedModeStartup"), false);
-  assert.equal(serverSource.includes("assessProtectedModeStartup"), false);
+  assert.equal(serverSource.includes("enforceProtectedMode"), true);
 });

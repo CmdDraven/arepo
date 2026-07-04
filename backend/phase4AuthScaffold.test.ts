@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
 import { routeRequest, type RequestLike } from "./server.js";
 import {
   planProtectedRequestPipeline,
@@ -11,19 +10,6 @@ import {
   PROTECTED_REQUEST_PIPELINE_NETWORK_EXPOSURE_SAFE,
 } from "./protectedRequestPipeline.js";
 import type { LocalNodeRuntimeStatus } from "./types.js";
-
-const unmountedProtectedModeNeedles = [
-  "authAudit",
-  "authRevocation",
-  "credentialVerifier",
-  "sessionVerifier",
-  "credentialVerificationService",
-  "credentialVerificationAudit",
-  "httpCredentialAdapter",
-  "requestAuthorizationPlanner",
-  "protectedRequestPipeline",
-  "planProtectedRequestPipeline",
-] as const;
 
 function request(
   method: string,
@@ -93,14 +79,9 @@ async function configuredWorkspace(auth?: {
   return { cwd, appDataDir };
 }
 
-test("phase 4 unmounted verifier adapter planner and pipeline modules stay out of active handlers", async () => {
-  const activeFiles = ["server.ts", "nodeService.ts"];
-  for (const file of activeFiles) {
-    const source = await fs.readFile(path.join(process.cwd(), "backend", file), "utf8");
-    for (const needle of unmountedProtectedModeNeedles) {
-      assert.equal(source.includes(needle), false, `${file} must not import ${needle}`);
-    }
-  }
+test("protected request enforcement is mounted in active handlers", async () => {
+  const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
+  assert.equal(serverSource.includes("enforceProtectedMode"), true);
 });
 
 test("disabled auth mode still permits current local V1 endpoint behavior", async () => {
@@ -117,99 +98,39 @@ test("disabled auth mode still permits current local V1 endpoint behavior", asyn
   assert.deepEqual((response.body as { vaults: unknown[] }).vaults, []);
 });
 
-test("requested protected mode remains unavailable and non-operational", async () => {
+test("protected mode with incomplete readiness fails closed", async () => {
   const { cwd } = await configuredWorkspace({ mode: "protected" });
+  const secret = "invalid-protected-mode-token";
 
   const vaults = await routeRequest(
     request("GET", "/api/vaults", undefined, {
-      authorization: "Bearer invalid-protected-mode-token",
+      authorization: `Bearer ${secret}`,
       cookie: "arepo_session=invalid-protected-mode-session",
     }),
     cwd,
   );
-  assert.equal(vaults.status, 200);
-  assert.deepEqual((vaults.body as { vaults: unknown[] }).vaults, []);
+  assert.equal(vaults.status, 503);
+  const vaultBody = vaults.body as { ok: false; code: string; reasonCodes: string[] };
+  assert.equal(vaultBody.ok, false);
+  assert.equal(vaultBody.code, "protected-mode-not-ready");
+  assert.equal(JSON.stringify(vaultBody).includes(secret), false);
 
   const statusResponse = await routeRequest(request("GET", "/api/node/status"), cwd);
-  assert.equal(statusResponse.status, 200);
-  const status = statusResponse.body as LocalNodeRuntimeStatus;
+  assert.equal(statusResponse.status, 503);
+  const status = statusResponse.body as {
+    ok: true;
+    responseKind: string;
+    protectedModeOperational: boolean;
+    authRequired: boolean;
+    reasonCodes: string[];
+  };
 
-  assert.equal(status.auth.mode, "disabled");
-  assert.equal(status.auth.requestedMode, "protected");
-  assert.equal(status.auth.enabled, false);
-  assert.equal(status.auth.enforcement, "none");
-  assert.equal(status.auth.protectedModeAvailable, false);
-  assert.equal(status.auth.protectedModeRequested, true);
-  assert.match(status.auth.warning, /not implemented/);
-  assert.equal(status.capabilities.authentication, false);
-
-  assert.equal(status.requestPolicy.routePolicyInventoryPresent, true);
-  assert.equal(status.requestPolicy.routePolicyCount, PROTECTED_ROUTE_POLICIES.length);
-  assert.equal(status.requestPolicy.dryRunMiddlewareConfigured, false);
-  assert.equal(status.requestPolicy.dryRunMiddlewareMounted, false);
-  assert.equal(status.requestPolicy.dryRunAuditConfigured, false);
-  assert.equal(status.requestPolicy.dryRunAuditAppendCount, 0);
-  assert.equal(status.requestPolicy.enforcementActive, false);
-  assert.equal(status.requestPolicy.credentialVerificationActive, false);
-  assert.equal(status.requestPolicy.auditRequestLoggingActive, false);
-  assert.equal(status.requestPolicy.revocationChecksActive, false);
-  assert.equal(status.requestPolicy.csrfOriginEnforcementActive, false);
-  assert.equal(status.requestPolicy.acceptsCredentials, false);
-  assert.equal(status.requestPolicy.acceptsSessions, false);
-  assert.equal(status.requestPolicy.acceptsBearerTokens, false);
-  assert.equal(status.requestPolicy.networkExposureSafe, false);
-
-  assert.equal(status.protectedModeStartup.requestedAuthMode, "protected");
-  assert.equal(status.protectedModeStartup.operationalAuthMode, "disabled");
-  assert.equal(status.protectedModeStartup.protectedModeAvailable, false);
-  assert.equal(status.protectedModeStartup.protectedModeMayStart, false);
-  assert.equal(status.protectedModeStartup.enforcementActive, false);
-  assert.equal(status.protectedModeStartup.credentialVerificationActive, false);
-  assert.equal(status.protectedModeStartup.auditWiringActive, false);
-  assert.equal(status.protectedModeStartup.revocationChecksActive, false);
-  assert.equal(status.protectedModeStartup.csrfOriginEnforcementActive, false);
-  assert.equal(status.protectedModeStartup.networkExposureSafe, false);
-  assert.equal(status.protectedModeReadiness.readyForEnforcement, false);
-  assert.equal(status.protectedModeReadiness.enforcementActive, false);
-  assert.equal(status.protectedModeReadiness.protectedModeOperational, false);
-  assert.equal(status.protectedModeReadiness.networkExposureSafe, false);
-  assert.ok(status.protectedModeReadiness.blockers.includes("explicit-enforcement-flag-disabled"));
-  assert.ok(status.protectedModeReadiness.blockers.includes("credential-verification-inactive"));
-  assert.ok(
-    status.protectedModeReadiness.blockers.includes("credential-session-issuance-inactive"),
-  );
-  assert.ok(
-    status.protectedModeReadiness.blockers.includes("credential-session-lifecycle-planning-only"),
-  );
-  assert.ok(status.protectedModeReadiness.blockers.includes("revocation-checks-inactive"));
-  assert.ok(status.protectedModeReadiness.blockers.includes("audit-enforcement-inactive"));
-  assert.ok(status.protectedModeReadiness.blockers.includes("audit-requirement-planning-only"));
-  assert.ok(status.protectedModeReadiness.blockers.includes("csrf-origin-enforcement-inactive"));
-  assert.ok(status.protectedModeReadiness.blockers.includes("browser-request-guard-planning-only"));
-  assert.ok(
-    status.protectedModeReadiness.blockers.includes("reduced-anonymous-status-not-enforced"),
-  );
-  assert.ok(
-    status.protectedModeReadiness.blockers.includes("reduced-anonymous-status-planning-only"),
-  );
-  assert.ok(status.protectedModeReadiness.blockers.includes("stronger-confirmation-not-enforced"));
-  assert.ok(status.protectedModeReadiness.blockers.includes("stronger-confirmation-planning-only"));
-  assert.equal(status.protectedModeReadiness.checks.reducedAnonymousStatusEnforced, false);
-  assert.equal(status.protectedModeReadiness.checks.reducedAnonymousStatusPlannerAvailable, true);
-  assert.equal(status.protectedModeReadiness.checks.strongerConfirmationEnforced, false);
-  assert.equal(status.protectedModeReadiness.checks.strongerConfirmationPlannerAvailable, true);
-  assert.equal(status.protectedModeReadiness.checks.auditEnforcementActive, false);
-  assert.equal(status.protectedModeReadiness.checks.auditRequirementPlannerAvailable, true);
-  assert.equal(status.protectedModeReadiness.checks.csrfOriginEnforcementActive, false);
-  assert.equal(status.protectedModeReadiness.checks.browserRequestGuardPlannerAvailable, true);
-  assert.equal(status.protectedModeReadiness.checks.credentialIssuanceActive, false);
-  assert.equal(status.protectedModeReadiness.checks.sessionIssuanceActive, false);
-  assert.equal(status.protectedModeReadiness.checks.tokenIssuanceActive, false);
-  assert.equal(
-    status.protectedModeReadiness.checks.credentialSessionLifecyclePlannerAvailable,
-    true,
-  );
-
+  assert.equal(status.ok, true);
+  assert.equal(status.responseKind, "reduced-anonymous-status");
+  assert.equal(status.authRequired, true);
+  assert.equal(status.protectedModeOperational, false);
+  assert.equal("vaults" in status, false);
+  assert.equal("runtime" in status, false);
   assert.deepEqual(
     networkExposureValues(status).filter((value) => value),
     [],

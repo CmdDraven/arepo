@@ -11,7 +11,6 @@ import {
 import {
   DEFAULT_AUTH_CONFIG,
   DEFAULT_PERMISSIONS,
-  PROTECTED_MODE_UNAVAILABLE_REASON,
   type NodeInfo,
   type AuthConfig,
   type VaultIndexScope,
@@ -288,20 +287,6 @@ function normalizeAuthConfig(auth: unknown): AuthConfig {
   const dryRunRequestPolicy = (auth as { dryRunRequestPolicy?: unknown }).dryRunRequestPolicy;
   const dryRunAudit = (auth as { dryRunAudit?: unknown }).dryRunAudit;
   const mode = (auth as { mode?: unknown }).mode;
-  if (mode === "protected") {
-    const normalized: AuthConfig = {
-      mode: "disabled",
-      requestedMode: "protected",
-      protectedModeUnavailableReason: PROTECTED_MODE_UNAVAILABLE_REASON,
-    };
-    if (dryRunRequestPolicy !== undefined) {
-      normalized.dryRunRequestPolicy = dryRunRequestPolicy as boolean;
-    }
-    if (dryRunAudit !== undefined) {
-      normalized.dryRunAudit = dryRunAudit as boolean;
-    }
-    return normalized;
-  }
   const requestedMode = (auth as { requestedMode?: unknown }).requestedMode;
   const normalized: AuthConfig = {
     mode: mode === undefined ? DEFAULT_AUTH_CONFIG.mode : (mode as AuthConfig["mode"]),
@@ -327,22 +312,22 @@ function validateAuthConfig(auth: AuthConfig, file: string): void {
   if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
     throw new Error(`Invalid AREPO config at ${file}: auth must be an object`);
   }
-  if (auth.mode !== "disabled") {
+  if (auth.mode !== "disabled" && auth.mode !== "protected") {
     const mode = typeof auth.mode === "string" ? auth.mode : String(auth.mode);
     throw new Error(
-      `Invalid AREPO config at ${file}: unsupported auth mode "${mode}"; only disabled is supported in V1`,
+      `Invalid AREPO config at ${file}: unsupported auth mode "${mode}"; expected disabled or protected`,
     );
   }
   if (auth.requestedMode !== undefined && !["disabled", "protected"].includes(auth.requestedMode)) {
     const requestedMode =
       typeof auth.requestedMode === "string" ? auth.requestedMode : String(auth.requestedMode);
     throw new Error(
-      `Invalid AREPO config at ${file}: unsupported requested auth mode "${requestedMode}"; protected mode is not implemented`,
+      `Invalid AREPO config at ${file}: unsupported requested auth mode "${requestedMode}"`,
     );
   }
-  if (auth.requestedMode === "protected" && auth.mode !== "disabled") {
+  if (auth.requestedMode === "disabled" && auth.mode === "protected") {
     throw new Error(
-      `Invalid AREPO config at ${file}: protected mode cannot be operational before auth enforcement exists`,
+      `Invalid AREPO config at ${file}: auth.requestedMode cannot be disabled while auth.mode is protected`,
     );
   }
   if (auth.dryRunRequestPolicy !== undefined && typeof auth.dryRunRequestPolicy !== "boolean") {

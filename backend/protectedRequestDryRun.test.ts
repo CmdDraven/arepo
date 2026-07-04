@@ -728,7 +728,7 @@ test("non-local bind remains unsafe when dry-run is mounted", async () => {
   }
 });
 
-test("requested protected mode remains unavailable when dry-run is mounted", async () => {
+test("protected mode with incomplete readiness returns reduced status when dry-run is mounted", async () => {
   resetProtectedRequestDryRunDiagnostics();
   const { cwd } = await workspace({
     mode: "protected",
@@ -737,17 +737,22 @@ test("requested protected mode remains unavailable when dry-run is mounted", asy
   });
 
   const response = await routeRequest(request("GET", "/api/node/status"), cwd);
-  const status = response.body as LocalNodeRuntimeStatus;
+  const status = response.body as {
+    ok: true;
+    responseKind: string;
+    endpoint: string;
+    authRequired: boolean;
+    protectedModeOperational: boolean;
+    publicWarnings: string[];
+  };
 
-  assert.equal(response.status, 200);
-  assert.equal(status.auth.mode, "disabled");
-  assert.equal(status.auth.requestedMode, "protected");
-  assert.equal(status.auth.enforcement, "none");
-  assert.equal(status.auth.protectedModeAvailable, false);
-  assert.equal(status.requestPolicy.dryRunMiddlewareMounted, true);
-  assert.equal(status.requestPolicy.dryRunAuditConfigured, true);
-  assert.equal(status.requestPolicy.enforcementActive, false);
-  assert.equal(status.requestPolicy.networkExposureSafe, false);
-  assert.equal(status.protectedModeStartup.protectedModeAvailable, false);
-  assert.equal(status.protectedModeStartup.protectedModeMayStart, false);
+  assert.equal(response.status, 503);
+  assert.equal(status.ok, true);
+  assert.equal(status.responseKind, "reduced-anonymous-status");
+  assert.equal(status.endpoint, "nodeStatus");
+  assert.equal(status.authRequired, true);
+  assert.equal(status.protectedModeOperational, false);
+  assert.ok(status.publicWarnings.includes("protected-mode-not-operational"));
+  assert.equal("requestPolicy" in status, false);
+  assert.equal("protectedModeStartup" in status, false);
 });

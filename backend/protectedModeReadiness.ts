@@ -34,38 +34,54 @@ export function buildProtectedModeReadinessManifest(
     input.requestPolicy.acceptsCredentials ||
     input.requestPolicy.acceptsSessions ||
     input.requestPolicy.acceptsBearerTokens;
+  const enforcementReady =
+    input.auth.mode === "protected" &&
+    input.startup.protectedModeMayStart &&
+    routePolicyComplete &&
+    input.requestPolicy.enforcementActive &&
+    input.requestPolicy.credentialVerificationActive &&
+    credentialAcceptanceActive &&
+    input.requestPolicy.acceptsBearerTokens &&
+    input.requestPolicy.auditRequestLoggingActive &&
+    input.requestPolicy.revocationChecksActive;
 
   const details: ProtectedModeReadinessBlockerDetail[] = [];
 
-  addDetail(details, {
-    group: "auth",
-    label: "Protected mode is not operational.",
-    status: "blocked",
-    codes: [
-      ...(input.auth.mode === "disabled" ? (["auth-mode-disabled"] as const) : []),
-      ...(input.auth.requestedMode === "protected"
-        ? (["protected-mode-requested-unavailable"] as const)
-        : []),
-      "protected-mode-unavailable",
-      "protected-mode-not-operational",
-    ],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "auth",
+      label: "Protected mode is not operational.",
+      status: "blocked",
+      codes: [
+        ...(input.auth.mode === "disabled" ? (["auth-mode-disabled"] as const) : []),
+        ...(input.auth.requestedMode === "protected"
+          ? (["protected-mode-requested-unavailable"] as const)
+          : []),
+        "protected-mode-unavailable",
+        "protected-mode-not-operational",
+      ],
+    });
+  }
 
-  addDetail(details, {
-    group: "startup",
-    label: "Protected-mode startup gate is not ready.",
-    status: "blocked",
-    codes: [
-      "startup-gate-not-ready",
-      ...(input.startup.missingRequiredStores.length > 0 ? (["auth-store-missing"] as const) : []),
-      ...(input.startup.corruptStores.length > 0 ? (["auth-store-corrupt"] as const) : []),
-      ...(input.startup.unsafeStorePaths.length > 0 ? (["auth-store-path-unsafe"] as const) : []),
-    ],
-    count:
-      input.startup.missingRequiredStores.length +
-      input.startup.corruptStores.length +
-      input.startup.unsafeStorePaths.length,
-  });
+  if (!input.startup.protectedModeMayStart) {
+    addDetail(details, {
+      group: "startup",
+      label: "Protected-mode startup gate is not ready.",
+      status: "blocked",
+      codes: [
+        "startup-gate-not-ready",
+        ...(input.startup.missingRequiredStores.length > 0
+          ? (["auth-store-missing"] as const)
+          : []),
+        ...(input.startup.corruptStores.length > 0 ? (["auth-store-corrupt"] as const) : []),
+        ...(input.startup.unsafeStorePaths.length > 0 ? (["auth-store-path-unsafe"] as const) : []),
+      ],
+      count:
+        input.startup.missingRequiredStores.length +
+        input.startup.corruptStores.length +
+        input.startup.unsafeStorePaths.length,
+    });
+  }
 
   if (!input.requestPolicy.routePolicyInventoryPresent || !routePolicyComplete) {
     addDetail(details, {
@@ -82,109 +98,139 @@ export function buildProtectedModeReadinessManifest(
     });
   }
 
-  addDetail(details, {
-    group: "requestPolicy",
-    label: "Credential verification and acceptance are not active.",
-    status: "blocked",
-    codes: [
-      ...(!input.requestPolicy.credentialVerificationActive
-        ? (["credential-verification-inactive"] as const)
-        : []),
-      ...(!credentialAcceptanceActive ? (["credential-acceptance-inactive"] as const) : []),
-      ...(!input.requestPolicy.enforcementActive
-        ? (["explicit-enforcement-flag-disabled"] as const)
-        : []),
-    ],
-  });
+  if (
+    !input.requestPolicy.credentialVerificationActive ||
+    !credentialAcceptanceActive ||
+    !input.requestPolicy.enforcementActive
+  ) {
+    addDetail(details, {
+      group: "requestPolicy",
+      label: "Credential verification and acceptance are not active.",
+      status: "blocked",
+      codes: [
+        ...(!input.requestPolicy.credentialVerificationActive
+          ? (["credential-verification-inactive"] as const)
+          : []),
+        ...(!credentialAcceptanceActive ? (["credential-acceptance-inactive"] as const) : []),
+        ...(!input.requestPolicy.enforcementActive
+          ? (["explicit-enforcement-flag-disabled"] as const)
+          : []),
+      ],
+    });
+  }
 
-  addDetail(details, {
-    group: "lifecycle",
-    label: "Credential, session, and token issuance are not active.",
-    status: "blocked",
-    codes: ["credential-session-issuance-inactive"],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "lifecycle",
+      label: "Credential, session, and token issuance are not active.",
+      status: "blocked",
+      codes: ["credential-session-issuance-inactive"],
+    });
+  }
 
-  addDetail(details, {
-    group: "lifecycle",
-    label: "Credential/session lifecycle planner is available for planning only.",
-    status: "planning-only",
-    codes: ["credential-session-lifecycle-planning-only"],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "lifecycle",
+      label: "Credential/session lifecycle planner is available for planning only.",
+      status: "planning-only",
+      codes: ["credential-session-lifecycle-planning-only"],
+    });
+  }
 
-  addDetail(details, {
-    group: "audit",
-    label: "Audit enforcement is not active.",
-    status: "blocked",
-    codes: !input.requestPolicy.auditRequestLoggingActive ? ["audit-enforcement-inactive"] : [],
-  });
+  if (!input.requestPolicy.auditRequestLoggingActive) {
+    addDetail(details, {
+      group: "audit",
+      label: "Audit enforcement is not active.",
+      status: "blocked",
+      codes: ["audit-enforcement-inactive"],
+    });
+  }
 
-  addDetail(details, {
-    group: "audit",
-    label: "Audit requirement planner is available for planning only.",
-    status: "planning-only",
-    codes: ["audit-requirement-planning-only"],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "audit",
+      label: "Audit requirement planner is available for planning only.",
+      status: "planning-only",
+      codes: ["audit-requirement-planning-only"],
+    });
+  }
 
-  addDetail(details, {
-    group: "revocation",
-    label: "Revocation checks are not active.",
-    status: "blocked",
-    codes: !input.requestPolicy.revocationChecksActive ? ["revocation-checks-inactive"] : [],
-  });
+  if (!input.requestPolicy.revocationChecksActive) {
+    addDetail(details, {
+      group: "revocation",
+      label: "Revocation checks are not active.",
+      status: "blocked",
+      codes: ["revocation-checks-inactive"],
+    });
+  }
 
-  addDetail(details, {
-    group: "browserSecurity",
-    label: "CSRF/origin enforcement and reduced anonymous status are not active.",
-    status: "blocked",
-    codes: [
-      ...(!input.requestPolicy.csrfOriginEnforcementActive
-        ? (["csrf-origin-enforcement-inactive"] as const)
-        : []),
-      "reduced-anonymous-status-not-enforced",
-    ],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "browserSecurity",
+      label: "CSRF/origin enforcement and reduced anonymous status are not active.",
+      status: "blocked",
+      codes: [
+        ...(!input.requestPolicy.csrfOriginEnforcementActive
+          ? (["csrf-origin-enforcement-inactive"] as const)
+          : []),
+        "reduced-anonymous-status-not-enforced",
+      ],
+    });
+  }
 
-  addDetail(details, {
-    group: "browserSecurity",
-    label: "Browser request guard planner is available for planning only.",
-    status: "planning-only",
-    codes: ["browser-request-guard-planning-only"],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "browserSecurity",
+      label: "Browser request guard planner is available for planning only.",
+      status: "planning-only",
+      codes: ["browser-request-guard-planning-only"],
+    });
+  }
 
-  addDetail(details, {
-    group: "confirmation",
-    label: "Stronger confirmation enforcement is not active.",
-    status: "blocked",
-    codes: ["stronger-confirmation-not-enforced"],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "confirmation",
+      label: "Stronger confirmation enforcement is not active.",
+      status: "blocked",
+      codes: ["stronger-confirmation-not-enforced"],
+    });
+  }
 
-  addDetail(details, {
-    group: "confirmation",
-    label: "Stronger confirmation planner is available for planning only.",
-    status: "planning-only",
-    codes: ["stronger-confirmation-planning-only"],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "confirmation",
+      label: "Stronger confirmation planner is available for planning only.",
+      status: "planning-only",
+      codes: ["stronger-confirmation-planning-only"],
+    });
+  }
 
-  addDetail(details, {
-    group: "pipeline",
-    label: "Protected request pipeline is available for planning only.",
-    status: "planning-only",
-    codes: ["request-pipeline-planning-only"],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "pipeline",
+      label: "Protected request pipeline is available for planning only.",
+      status: "planning-only",
+      codes: ["request-pipeline-planning-only"],
+    });
+  }
 
-  addDetail(details, {
-    group: "responsePlanning",
-    label: "Protected response planner is available for planning only.",
-    status: "planning-only",
-    codes: ["response-planner-planning-only"],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "responsePlanning",
+      label: "Protected response planner is available for planning only.",
+      status: "planning-only",
+      codes: ["response-planner-planning-only"],
+    });
+  }
 
-  addDetail(details, {
-    group: "responsePlanning",
-    label: "Reduced anonymous status planner is available for planning only.",
-    status: "planning-only",
-    codes: ["reduced-anonymous-status-planning-only"],
-  });
+  if (input.auth.mode !== "protected") {
+    addDetail(details, {
+      group: "responsePlanning",
+      label: "Reduced anonymous status planner is available for planning only.",
+      status: "planning-only",
+      codes: ["reduced-anonymous-status-planning-only"],
+    });
+  }
 
   if (input.requestPolicy.dryRun.configured || input.requestPolicy.dryRun.observed.count > 0) {
     addDetail(details, {
@@ -208,14 +254,14 @@ export function buildProtectedModeReadinessManifest(
   const blockers = unique(details.flatMap((detail) => detail.codes));
 
   return {
-    readyForEnforcement: false,
-    enforcementActive: false,
-    protectedModeOperational: false,
+    readyForEnforcement: enforcementReady,
+    enforcementActive: enforcementReady,
+    protectedModeOperational: enforcementReady,
     networkExposureSafe: false,
     requestedAuthMode: input.auth.requestedMode,
     operationalAuthMode: input.auth.mode,
-    protectedModeAvailable: false,
-    protectedModeMayStart: false,
+    protectedModeAvailable: input.startup.protectedModeAvailable,
+    protectedModeMayStart: input.startup.protectedModeMayStart,
     blockerCount: blockers.length,
     blockers,
     blockerDetails: details,
@@ -227,17 +273,17 @@ export function buildProtectedModeReadinessManifest(
     },
     dryRun: input.requestPolicy.dryRun,
     checks: {
-      credentialVerificationActive: false,
-      credentialAcceptanceActive: false,
+      credentialVerificationActive: input.requestPolicy.credentialVerificationActive,
+      credentialAcceptanceActive,
       credentialIssuanceActive: false,
       sessionIssuanceActive: false,
       tokenIssuanceActive: false,
-      auditEnforcementActive: false,
-      revocationChecksActive: false,
+      auditEnforcementActive: input.requestPolicy.auditRequestLoggingActive,
+      revocationChecksActive: input.requestPolicy.revocationChecksActive,
       csrfOriginEnforcementActive: false,
-      reducedAnonymousStatusEnforced: false,
+      reducedAnonymousStatusEnforced: enforcementReady,
       strongerConfirmationEnforced: false,
-      explicitEnforcementFlagEnabled: false,
+      explicitEnforcementFlagEnabled: input.requestPolicy.enforcementActive,
       protectedRequestPipelineAvailable: typeof planProtectedRequestPipeline === "function",
       protectedResponsePlannerAvailable: typeof planProtectedResponse === "function",
       reducedAnonymousStatusPlannerAvailable: typeof planReducedAnonymousNodeStatus === "function",

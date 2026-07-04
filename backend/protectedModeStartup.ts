@@ -85,12 +85,17 @@ export async function assessProtectedModeStartup(
       }
     }
   }
+  const protectedModeAvailable =
+    protectedModeRequested &&
+    missingRequiredStores.length === 0 &&
+    corruptStores.length === 0 &&
+    unsafeStorePaths.length === 0;
 
   return {
     requestedAuthMode,
     operationalAuthMode: input.auth.mode,
-    protectedModeAvailable: false,
-    protectedModeMayStart: false,
+    protectedModeAvailable,
+    protectedModeMayStart: protectedModeAvailable,
     missingRequiredStores,
     corruptStores,
     unsafeStorePaths,
@@ -98,10 +103,10 @@ export async function assessProtectedModeStartup(
     nonLocalBindWithDisabledAuth: Boolean(
       input.runtime.nonLocalWarning && input.auth.mode === "disabled",
     ),
-    enforcementActive: false,
-    credentialVerificationActive: false,
-    auditWiringActive: false,
-    revocationChecksActive: false,
+    enforcementActive: input.auth.mode === "protected" && protectedModeAvailable,
+    credentialVerificationActive: input.auth.mode === "protected" && protectedModeAvailable,
+    auditWiringActive: input.auth.mode === "protected" && protectedModeAvailable,
+    revocationChecksActive: input.auth.mode === "protected" && protectedModeAvailable,
     csrfOriginEnforcementActive: false,
     networkExposureSafe: false,
   };

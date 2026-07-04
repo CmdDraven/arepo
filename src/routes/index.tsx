@@ -2998,10 +2998,10 @@ type LocalNodeRuntimeStatus = {
     startupWarnings: string[];
   };
   auth: {
-    mode: "disabled";
+    mode: "disabled" | "protected";
     requestedMode: "disabled" | "protected";
     enabled: boolean;
-    enforcement: "none";
+    enforcement: "none" | "protected";
     protectedModeAvailable: boolean;
     protectedModeRequested: boolean;
     warning: string;
@@ -3025,8 +3025,8 @@ type LocalNodeRuntimeStatus = {
       eventId?: string;
       reasonCode?: string;
       error?: string;
-      enforcementActive: false;
-      networkExposureSafe: false;
+      enforcementActive: boolean;
+      networkExposureSafe: boolean;
     };
     lastDryRunResult?: {
       timestamp: string;
@@ -3065,8 +3065,8 @@ type LocalNodeRuntimeStatus = {
           reasonCode: string;
           authRequired: boolean;
           confirmationRequired: boolean;
-          enforcementActive: false;
-          networkExposureSafe: false;
+          enforcementActive: boolean;
+          networkExposureSafe: boolean;
         };
       };
       audited: {
@@ -3076,27 +3076,27 @@ type LocalNodeRuntimeStatus = {
         lastStatus?: "skipped" | "written" | "failed";
         lastReasonCode?: string;
       };
-      enforced: false;
-      enforcementActive: false;
-      protectedModeOperational: false;
-      networkExposureSafe: false;
+      enforced: boolean;
+      enforcementActive: boolean;
+      protectedModeOperational: boolean;
+      networkExposureSafe: boolean;
     };
-    enforcementActive: false;
-    enforced: false;
-    credentialVerificationActive: false;
-    auditRequestLoggingActive: false;
-    revocationChecksActive: false;
-    csrfOriginEnforcementActive: false;
-    acceptsCredentials: false;
-    acceptsSessions: false;
-    acceptsBearerTokens: false;
-    networkExposureSafe: false;
+    enforcementActive: boolean;
+    enforced: boolean;
+    credentialVerificationActive: boolean;
+    auditRequestLoggingActive: boolean;
+    revocationChecksActive: boolean;
+    csrfOriginEnforcementActive: boolean;
+    acceptsCredentials: boolean;
+    acceptsSessions: boolean;
+    acceptsBearerTokens: boolean;
+    networkExposureSafe: boolean;
   };
   protectedModeStartup: {
     requestedAuthMode: "disabled" | "protected";
-    operationalAuthMode: "disabled";
-    protectedModeAvailable: false;
-    protectedModeMayStart: false;
+    operationalAuthMode: "disabled" | "protected";
+    protectedModeAvailable: boolean;
+    protectedModeMayStart: boolean;
     missingRequiredStores: {
       store: "credentials" | "tokenVerifiers" | "sessions" | "revocations";
       path: string;
@@ -3112,22 +3112,22 @@ type LocalNodeRuntimeStatus = {
     unsafeStorePaths: string[];
     permissionWarnings: string[];
     nonLocalBindWithDisabledAuth: boolean;
-    enforcementActive: false;
-    credentialVerificationActive: false;
-    auditWiringActive: false;
-    revocationChecksActive: false;
-    csrfOriginEnforcementActive: false;
-    networkExposureSafe: false;
+    enforcementActive: boolean;
+    credentialVerificationActive: boolean;
+    auditWiringActive: boolean;
+    revocationChecksActive: boolean;
+    csrfOriginEnforcementActive: boolean;
+    networkExposureSafe: boolean;
   };
   protectedModeReadiness: {
-    readyForEnforcement: false;
-    enforcementActive: false;
-    protectedModeOperational: false;
-    networkExposureSafe: false;
+    readyForEnforcement: boolean;
+    enforcementActive: boolean;
+    protectedModeOperational: boolean;
+    networkExposureSafe: boolean;
     requestedAuthMode: "disabled" | "protected";
-    operationalAuthMode: "disabled";
-    protectedModeAvailable: false;
-    protectedModeMayStart: false;
+    operationalAuthMode: "disabled" | "protected";
+    protectedModeAvailable: boolean;
+    protectedModeMayStart: boolean;
     blockerCount: number;
     blockers: string[];
     routePolicy: {
@@ -3137,17 +3137,17 @@ type LocalNodeRuntimeStatus = {
       complete: boolean;
     };
     checks: {
-      credentialVerificationActive: false;
-      credentialAcceptanceActive: false;
-      credentialIssuanceActive: false;
-      sessionIssuanceActive: false;
-      tokenIssuanceActive: false;
-      auditEnforcementActive: false;
-      revocationChecksActive: false;
-      csrfOriginEnforcementActive: false;
-      reducedAnonymousStatusEnforced: false;
-      strongerConfirmationEnforced: false;
-      explicitEnforcementFlagEnabled: false;
+      credentialVerificationActive: boolean;
+      credentialAcceptanceActive: boolean;
+      credentialIssuanceActive: boolean;
+      sessionIssuanceActive: boolean;
+      tokenIssuanceActive: boolean;
+      auditEnforcementActive: boolean;
+      revocationChecksActive: boolean;
+      csrfOriginEnforcementActive: boolean;
+      reducedAnonymousStatusEnforced: boolean;
+      strongerConfirmationEnforced: boolean;
+      explicitEnforcementFlagEnabled: boolean;
       protectedRequestPipelineAvailable: boolean;
       protectedResponsePlannerAvailable: boolean;
       reducedAnonymousStatusPlannerAvailable: boolean;

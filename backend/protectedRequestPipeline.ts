@@ -82,6 +82,7 @@ export async function planProtectedRequestPipeline(
     allowedOrigins: input.allowedOrigins,
     csrfTokenPresent: input.csrfTokenPresent,
     strongerConfirmationPresent: input.strongerConfirmationPresent,
+    allowedCredentialSource: input.allowedCredentialSource,
     now: input.now,
   });
   const audit = await handleAudit(input, decision);

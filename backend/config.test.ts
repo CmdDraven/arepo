@@ -235,7 +235,7 @@ test("auth config defaults to disabled when omitted", async () => {
   assert.deepEqual(config.auth, { mode: "disabled" });
 });
 
-test("disabled auth config remains the only operational mode", async () => {
+test("disabled auth config remains the default compatibility mode", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
   await writeConfig(cwd, {
     node: {
@@ -277,7 +277,7 @@ test("auth dry-run request policy defaults off and can be enabled explicitly", a
   assert.equal(config.auth.dryRunAudit, true);
 });
 
-test("protected auth config is represented as requested but unavailable", async () => {
+test("protected auth config is persisted as an operational mode request", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
   await writeConfig(cwd, {
     node: {
@@ -293,9 +293,9 @@ test("protected auth config is represented as requested but unavailable", async 
   });
 
   const config = await loadConfig(cwd);
-  assert.equal(config.auth.mode, "disabled");
-  assert.equal(config.auth.requestedMode, "protected");
-  assert.match(config.auth.protectedModeUnavailableReason ?? "", /not implemented/);
+  assert.equal(config.auth.mode, "protected");
+  assert.equal(config.auth.requestedMode, undefined);
+  assert.equal(config.auth.protectedModeUnavailableReason, undefined);
 });
 
 test("config validation rejects unsupported auth modes", async () => {
@@ -373,7 +373,7 @@ test("config validation rejects non-boolean auth dry-run audit flag", async () =
   await assert.rejects(() => loadConfig(cwd), /auth\.dryRunAudit must be boolean/);
 });
 
-test("protected auth config does not mark enforcement active", async () => {
+test("config validation rejects disabled requested mode when protected mode is active", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
   await writeConfig(cwd, {
     node: {
@@ -384,13 +384,15 @@ test("protected auth config does not mark enforcement active", async () => {
     },
     auth: {
       mode: "protected",
+      requestedMode: "disabled",
     },
     vaults: [],
   });
 
-  const config = await loadConfig(cwd);
-  assert.equal(config.auth.mode, "disabled");
-  assert.equal(config.auth.requestedMode, "protected");
+  await assert.rejects(
+    () => loadConfig(cwd),
+    /auth\.requestedMode cannot be disabled while auth\.mode is protected/,
+  );
 });
 
 test("app data directory can be configured in local config", async () => {

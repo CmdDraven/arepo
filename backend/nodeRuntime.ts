@@ -70,6 +70,7 @@ export function resolveAuthPosture(
 ): AuthPosture {
   const requestedMode = auth.requestedMode ?? auth.mode;
   const protectedModeRequested = requestedMode === "protected";
+  const protectedModeEnabled = auth.mode === "protected";
   const unavailableReason =
     auth.protectedModeUnavailableReason ?? PROTECTED_MODE_UNAVAILABLE_REASON;
   const disabledWarning = runtime.nonLocalWarning
@@ -78,15 +79,19 @@ export function resolveAuthPosture(
   const posture: AuthPosture = {
     mode: auth.mode,
     requestedMode,
-    enabled: false,
-    enforcement: "none",
-    protectedModeAvailable: false,
+    enabled: protectedModeEnabled,
+    enforcement: protectedModeEnabled ? "protected" : "none",
+    protectedModeAvailable: protectedModeEnabled,
     protectedModeRequested,
-    warning: protectedModeRequested
-      ? `${unavailableReason}; authentication remains disabled and unenforced.`
-      : disabledWarning,
+    warning: protectedModeEnabled
+      ? runtime.nonLocalWarning
+        ? "Protected mode is enabled, but network exposure is still not considered safe."
+        : "Protected mode is enabled for local bearer-token enforcement."
+      : protectedModeRequested
+        ? `${unavailableReason}; authentication remains disabled and unenforced.`
+        : disabledWarning,
   };
-  if (protectedModeRequested) {
+  if (protectedModeRequested && !protectedModeEnabled) {
     posture.error = unavailableReason;
   }
   return posture;

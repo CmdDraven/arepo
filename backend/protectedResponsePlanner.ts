@@ -130,7 +130,7 @@ export function planProtectedResponse(input: ProtectedResponsePlannerInput): Pro
     });
   }
 
-  if (decision.requiresAuthorization || decision.reasonCodes.includes("requires-authorization")) {
+  if (decision.reasonCodes.includes("requires-authorization")) {
     return responsePlan({
       kind: "unauthorized",
       httpStatus: 403,
