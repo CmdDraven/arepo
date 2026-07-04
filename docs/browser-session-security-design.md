@@ -17,6 +17,9 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
 - Bearer token is the only live protected-mode credential path.
 - Browser-session cookies are intentionally not accepted as live credentials.
 - CSRF enforcement is not live because browser sessions are not live.
+- Inert in-memory browser session store and verifier primitives exist for
+  storage and verification semantics tests only. They are not wired into request
+  authorization.
 - The frontend does not store bearer tokens.
 - Full authorized status reports `browserSessionAuth.status` as
   `planning-only`; reduced anonymous status does not expose session details.
@@ -191,6 +194,15 @@ revocation should either revoke derived browser sessions or make verification
 fail by checking the associated credential and revocation store; the exact model
 must be explicit before sessions become live.
 
+Current implementation note: AREPO now includes an inert in-memory
+`browserSessionStore` primitive and a `browserSessionVerifier` primitive for
+future storage semantics. They can create test records, store only verifier
+hashes, verify a session id plus verifier secret, reject missing/wrong/expired
+or revoked sessions, revoke one session, revoke all sessions for a subject,
+prune expired sessions, and return safe diagnostics. These primitives do not
+persist to disk, do not issue cookies, do not create sessions through any HTTP
+route, and are not accepted by live request authorization.
+
 ## Authorization Integration
 
 Browser sessions should enter the same route authorization path as bearer
@@ -255,7 +267,8 @@ The session lifecycle planner is also observation-only. It reports the future
 shape without creating sessions:
 
 - session issuance is `inactive`.
-- session store and session verifier support are `planned`.
+- session store and session verifier primitives exist as inactive in-memory test
+  infrastructure and are not wired into authorization.
 - session revocation and expiry are `planned`.
 - logout/current-session revocation is `inactive` today and planned for future
   live sessions.
@@ -342,6 +355,11 @@ browserSessionAuth.sessionLifecycle.logout = inactive
 browserSessionAuth.sessionLifecycle.revokeAll = inactive
 browserSessionAuth.sessionLifecycle.storesRawSessionSecrets = false
 browserSessionAuth.sessionLifecycle.returnsSessionSecretsInJson = false
+browserSessionAuth.sessionStore.status = inactive
+browserSessionAuth.sessionStore.implementation = in-memory-test-primitive
+browserSessionAuth.sessionStore.wiredIntoAuthorization = false
+browserSessionAuth.sessionVerifier.status = inactive
+browserSessionAuth.sessionVerifier.wiredIntoAuthorization = false
 browserSessionAuth.cookiePolicy.issuance = inactive
 browserSessionAuth.cookiePolicy.httpOnly = required
 browserSessionAuth.cookiePolicy.secure = required-outside-local-dev
@@ -456,6 +474,9 @@ The current scaffold remains inert for browser sessions:
 6. Do not generate browser sessions, CSRF tokens, or pairing codes.
 7. Do not enforce origin or CSRF checks as live browser-session auth yet.
 8. Do not claim LAN, reverse-proxy, or internet exposure is safe.
+9. Keep the in-memory session store and verifier primitives as unit-tested,
+   inactive infrastructure until issuance, cookie, CSRF, revocation, audit, and
+   authorization integration are designed and tested together.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

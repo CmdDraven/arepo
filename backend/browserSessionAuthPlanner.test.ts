@@ -112,8 +112,15 @@ test("browser session auth planner describes safe future store frontend and audi
   const serialized = JSON.stringify(plan);
 
   assert.equal(plan.sessionStore.verifierMetadataPlanned, true);
+  assert.equal(plan.sessionStore.status, "inactive");
+  assert.equal(plan.sessionStore.implementation, "in-memory-test-primitive");
+  assert.equal(plan.sessionStore.wiredIntoAuthorization, false);
   assert.equal(plan.sessionStore.storesRawSessionSecrets, false);
   assert.equal(plan.sessionStore.revocationRequired, true);
+  assert.equal(plan.sessionVerifier.status, "inactive");
+  assert.equal(plan.sessionVerifier.implementation, "hash-and-constant-time-compare-primitive");
+  assert.equal(plan.sessionVerifier.wiredIntoAuthorization, false);
+  assert.equal(plan.sessionVerifier.storesRawSessionSecrets, false);
   assert.equal(plan.frontend.tokenStorage, false);
   assert.equal(plan.frontend.sessionSecretReadableByJs, false);
   assert.equal(plan.frontend.loginUi, "inactive");

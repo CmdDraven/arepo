@@ -267,6 +267,15 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.sessionLifecycle.acceptsSessionCookies, false);
   assert.equal(status.browserSessionAuth.sessionLifecycle.storesRawSessionSecrets, false);
   assert.equal(status.browserSessionAuth.sessionLifecycle.returnsSessionSecretsInJson, false);
+  assert.equal(status.browserSessionAuth.sessionStore.status, "inactive");
+  assert.equal(status.browserSessionAuth.sessionStore.implementation, "in-memory-test-primitive");
+  assert.equal(status.browserSessionAuth.sessionStore.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.sessionVerifier.status, "inactive");
+  assert.equal(
+    status.browserSessionAuth.sessionVerifier.implementation,
+    "hash-and-constant-time-compare-primitive",
+  );
+  assert.equal(status.browserSessionAuth.sessionVerifier.wiredIntoAuthorization, false);
   assert.equal(status.browserSessionAuth.cookiePolicy.issuance, "inactive");
   assert.equal(status.browserSessionAuth.cookiePolicy.httpOnly, "required");
   assert.equal(status.browserSessionAuth.cookiePolicy.secure, "required-outside-local-dev");
@@ -534,6 +543,15 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.browserSessionAuth.sessionLifecycle.acceptsSessionCookies, false);
   assert.equal(full.browserSessionAuth.sessionLifecycle.storesRawSessionSecrets, false);
   assert.equal(full.browserSessionAuth.sessionLifecycle.returnsSessionSecretsInJson, false);
+  assert.equal(full.browserSessionAuth.sessionStore.status, "inactive");
+  assert.equal(full.browserSessionAuth.sessionStore.implementation, "in-memory-test-primitive");
+  assert.equal(full.browserSessionAuth.sessionStore.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.sessionVerifier.status, "inactive");
+  assert.equal(
+    full.browserSessionAuth.sessionVerifier.implementation,
+    "hash-and-constant-time-compare-primitive",
+  );
+  assert.equal(full.browserSessionAuth.sessionVerifier.wiredIntoAuthorization, false);
   assert.equal(full.browserSessionAuth.cookiePolicy.issuance, "inactive");
   assert.equal(full.browserSessionAuth.cookiePolicy.setsCookiesToday, false);
   assert.equal(full.browserSessionAuth.csrf.tokenIssuance, "inactive");

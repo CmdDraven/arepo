@@ -113,6 +113,11 @@ Implemented components include:
   posture, session-store expectations, and browser-session blockers without
   accepting cookies, issuing sessions, generating pairing codes, generating CSRF
   tokens, or exposing secrets.
+- `backend/browserSessionStore.ts` and `backend/browserSessionVerifier.ts`:
+  inert in-memory browser-session storage and verifier primitives. They define
+  future storage semantics for hashed verifier material, expiry, revocation,
+  subject-wide revocation, pruning, and safe diagnostics, but are not wired into
+  HTTP authorization, cookie acceptance, session issuance, pairing, or CSRF.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

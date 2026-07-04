@@ -404,9 +404,18 @@ export type BrowserSessionAuthRuntimeStatus = {
     returnsSessionSecretsInJson: false;
   };
   sessionStore: {
+    status: "inactive";
+    implementation: "in-memory-test-primitive";
+    wiredIntoAuthorization: false;
     verifierMetadataPlanned: true;
     storesRawSessionSecrets: false;
     revocationRequired: true;
+  };
+  sessionVerifier: {
+    status: "inactive";
+    implementation: "hash-and-constant-time-compare-primitive";
+    wiredIntoAuthorization: false;
+    storesRawSessionSecrets: false;
   };
   csrf: {
     endpoint: "stubbed";
