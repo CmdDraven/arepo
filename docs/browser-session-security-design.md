@@ -328,6 +328,13 @@ Audit records must not include raw session tokens, raw CSRF tokens, raw pairing
 codes, Authorization headers, cookies, verifier hashes, salts, or browser
 fingerprinting data beyond explicitly safe sanitized labels.
 
+Current implementation note: AREPO now includes inert browser-auth audit event
+primitives for future pairing, session, cookie, CSRF, revocation, expiry, and
+rejected-auth events. These primitives build sanitized in-memory test events
+from allowlisted metadata only. They reject secret-shaped detail keys and
+obvious raw secret values, and they are not wired into live request
+authorization, route middleware, or browser-auth route execution.
+
 ## Frontend No-Secret Handling
 
 Frontend constraints:
@@ -378,6 +385,11 @@ browserSessionAuth.pairing.codeStore.wiredIntoRoutes = false
 browserSessionAuth.pairing.codeVerifier.status = inactive
 browserSessionAuth.pairing.codeVerifier.wiredIntoAuthorization = false
 browserSessionAuth.pairing.codeVerifier.wiredIntoRoutes = false
+browserSessionAuth.audit.eventPrimitives.status = inactive
+browserSessionAuth.audit.eventPrimitives.implementation = in-memory-test-primitive
+browserSessionAuth.audit.eventPrimitives.wiredIntoAuthorization = false
+browserSessionAuth.audit.eventPrimitives.wiredIntoRoutes = false
+browserSessionAuth.audit.eventPrimitives.sanitizesSecretMaterial = true
 browserSessionAuth.sessionLifecycle.issuance = inactive
 browserSessionAuth.sessionLifecycle.logout = inactive
 browserSessionAuth.sessionLifecycle.revokeAll = inactive

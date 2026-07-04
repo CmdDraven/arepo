@@ -462,6 +462,13 @@ export type BrowserSessionAuthRuntimeStatus = {
   audit: {
     status: "planned";
     events: readonly BrowserSessionAuditEventPlan[];
+    eventPrimitives: {
+      status: "inactive";
+      implementation: "in-memory-test-primitive";
+      wiredIntoAuthorization: false;
+      wiredIntoRoutes: false;
+      sanitizesSecretMaterial: true;
+    };
     excludesRawBearerTokens: true;
     excludesRawSessionSecrets: true;
     excludesRawPairingCodes: true;

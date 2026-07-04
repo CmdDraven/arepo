@@ -317,6 +317,14 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.frontend.tokenStorage, false);
   assert.equal(status.browserSessionAuth.frontend.sessionSecretReadableByJs, false);
   assert.equal(status.browserSessionAuth.frontend.loginUi, "inactive");
+  assert.equal(status.browserSessionAuth.audit.eventPrimitives.status, "inactive");
+  assert.equal(
+    status.browserSessionAuth.audit.eventPrimitives.implementation,
+    "in-memory-test-primitive",
+  );
+  assert.equal(status.browserSessionAuth.audit.eventPrimitives.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.audit.eventPrimitives.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.audit.eventPrimitives.sanitizesSecretMaterial, true);
   assert.equal(status.protectedModeStartup.requestedAuthMode, "disabled");
   assert.equal(status.protectedModeStartup.operationalAuthMode, "disabled");
   assert.equal(status.protectedModeStartup.protectedModeAvailable, false);
@@ -615,6 +623,14 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.browserSessionAuth.frontend.sessionSecretReadableByJs, false);
   assert.equal(full.browserSessionAuth.frontend.loginUi, "inactive");
   assert.ok(full.browserSessionAuth.audit.events.includes("browser_session_issue_denied"));
+  assert.equal(full.browserSessionAuth.audit.eventPrimitives.status, "inactive");
+  assert.equal(
+    full.browserSessionAuth.audit.eventPrimitives.implementation,
+    "in-memory-test-primitive",
+  );
+  assert.equal(full.browserSessionAuth.audit.eventPrimitives.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.audit.eventPrimitives.wiredIntoRoutes, false);
+  assert.equal(full.browserSessionAuth.audit.eventPrimitives.sanitizesSecretMaterial, true);
   assert.equal(full.browserSessionAuth.audit.excludesRawSessionSecrets, true);
   assert.equal(full.browserSessionAuth.audit.excludesRawPairingCodes, true);
   assert.equal(full.browserSessionAuth.audit.excludesRawCsrfTokens, true);

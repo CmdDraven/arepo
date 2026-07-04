@@ -216,6 +216,9 @@ test infrastructure; CSRF tokens are not issued from routes or validated in live
 request authorization.
 The in-memory pairing-code store and verifier primitives are inactive backend
 test infrastructure; pairing codes are not issued or consumed by routes.
+The browser-auth audit event primitives are inactive backend test
+infrastructure; future browser-auth audit events are sanitized by design but are
+not wired into live route execution.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

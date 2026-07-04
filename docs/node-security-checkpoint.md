@@ -132,6 +132,11 @@ Implemented components include:
   and safe diagnostics, but are not wired into HTTP authorization, route
   middleware, pairing route issuance/consumption, or browser session
   authentication.
+- `backend/browserAuthAuditEvents.ts`: inert browser-auth audit event
+  primitives. They define sanitized future audit categories for pairing,
+  session, cookie, CSRF, revocation, expiry, and rejected-auth events, use
+  allowlisted safe details, reject secret-shaped metadata, and remain unwired
+  from live authorization and route execution.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

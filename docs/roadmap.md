@@ -60,9 +60,10 @@ posture. Inert in-memory browser-session store/verifier primitives now exist for
 future storage semantics tests only, and inert in-memory CSRF token
 store/verifier primitives now exist for future CSRF semantics tests only. Inert
 in-memory pairing-code store/verifier primitives now exist for future browser
-pairing semantics tests only. CSRF live enforcement, browser session issuance,
-pairing route activation, frontend token storage, remote-node, and federation
-work remain deferred.
+pairing semantics tests only. Inert browser-auth audit event primitives now
+exist for future sanitized browser-auth lifecycle audit tests only. CSRF live
+enforcement, browser session issuance, pairing route activation, frontend token
+storage, remote-node, and federation work remain deferred.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

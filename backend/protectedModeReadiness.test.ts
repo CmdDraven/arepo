@@ -150,6 +150,10 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.csrf.tokenVerifier.wiredIntoRoutes, false);
   assert.equal(readiness.browserSessionAuth.frontend.tokenStorage, false);
   assert.equal(readiness.browserSessionAuth.frontend.sessionSecretReadableByJs, false);
+  assert.equal(readiness.browserSessionAuth.audit.eventPrimitives.status, "inactive");
+  assert.equal(readiness.browserSessionAuth.audit.eventPrimitives.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.audit.eventPrimitives.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.audit.eventPrimitives.sanitizesSecretMaterial, true);
   assert.ok(
     readiness.browserSessionAuth.readiness.blockers.includes(
       "browser-session-cookies-not-accepted",

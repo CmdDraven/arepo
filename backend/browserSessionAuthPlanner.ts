@@ -165,6 +165,13 @@ export function planBrowserSessionAuth(
     audit: {
       status: "planned",
       events: browserSessionAuditEvents,
+      eventPrimitives: {
+        status: "inactive",
+        implementation: "in-memory-test-primitive",
+        wiredIntoAuthorization: false,
+        wiredIntoRoutes: false,
+        sanitizesSecretMaterial: true,
+      },
       excludesRawBearerTokens: true,
       excludesRawSessionSecrets: true,
       excludesRawPairingCodes: true,

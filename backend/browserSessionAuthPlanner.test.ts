@@ -161,6 +161,11 @@ test("browser session auth planner describes safe future store frontend and audi
   assert.ok(plan.audit.events.includes("browser_session_denied_expired"));
   assert.ok(plan.audit.events.includes("browser_session_denied_revoked"));
   assert.ok(plan.audit.events.includes("browser_csrf_denied"));
+  assert.equal(plan.audit.eventPrimitives.status, "inactive");
+  assert.equal(plan.audit.eventPrimitives.implementation, "in-memory-test-primitive");
+  assert.equal(plan.audit.eventPrimitives.wiredIntoAuthorization, false);
+  assert.equal(plan.audit.eventPrimitives.wiredIntoRoutes, false);
+  assert.equal(plan.audit.eventPrimitives.sanitizesSecretMaterial, true);
   assert.equal(plan.audit.excludesRawBearerTokens, true);
   assert.equal(plan.audit.excludesRawSessionSecrets, true);
   assert.equal(plan.audit.excludesRawPairingCodes, true);
