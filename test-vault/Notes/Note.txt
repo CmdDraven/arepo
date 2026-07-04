@@ -1,0 +1,15 @@
+Plain Text Test Note
+
+This is a plain text file inside the AREPO test vault.
+
+It exists to confirm that the vault can contain non-Markdown notes without breaking indexing, storage reporting, or basic file inspection.
+
+Unlike Markdown notes, this file does not use headings, wikilinks, frontmatter, or formatted structure. It is intentionally simple.
+
+Useful things this file can help test:
+
+> Plain text files are visible where supported.
+> Plain text content contributes to text storage size.
+> The presence of a .txt file does not create Markdown graph nodes by accident until supported.
+> Reindexing the vault remains stable.
+> File handling stays predictable when different text formats

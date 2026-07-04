@@ -451,6 +451,13 @@ function VaultApp() {
     () => Array.from(selectedPaths).filter((path) => Boolean(index.notes[path])),
     [index.notes, selectedPaths],
   );
+  useEffect(() => {
+    setSelectedPaths((current) => {
+      const next = new Set(Array.from(current).filter((path) => Boolean(index.notes[path])));
+      if (next.size === current.size) return current;
+      return next;
+    });
+  }, [index.notes]);
   const metadataPath = selectedNotePaths.length === 1 ? selectedNotePaths[0] : activePath;
   const metadataNote = metadataPath ? index.notes[metadataPath] : null;
   const metadataFileMeta = metadataPath ? fileMeta[metadataPath] : undefined;

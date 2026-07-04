@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildIndex, type VaultIndex, type ValidationIssue } from "./indexer";
+import { indexedFoldersFromNotePaths } from "./tree";
 
 const LAST_VAULT_KEY = "vault:lastVaultId";
 
@@ -206,8 +207,10 @@ export function useVault(): VaultStore {
       api<FileListResponse>(`/api/vaults/${encodeURIComponent(vaultId)}/files`),
       api<IndexResponse>(`/api/vaults/${encodeURIComponent(vaultId)}/index`),
     ]);
+    const indexedPathSet = new Set(Object.keys(indexResponse.index.notes));
+    const indexedFiles = fileList.files.filter((file) => indexedPathSet.has(file.path));
     const fileData = await Promise.all(
-      fileList.files.map(async (file) => {
+      indexedFiles.map(async (file) => {
         return api<FileResponse>(
           `/api/vaults/${encodeURIComponent(vaultId)}/file?path=${encodeURIComponent(file.path)}`,
         );
@@ -219,7 +222,7 @@ export function useVault(): VaultStore {
     );
     setFiles(Object.fromEntries(fileEntries));
     setFileMeta(Object.fromEntries(metaEntries));
-    setFolders(fileList.folders);
+    setFolders(indexedFoldersFromNotePaths(indexedFiles.map((file) => file.path)));
     setIndex(indexResponse.index);
     setIssues(indexResponse.issues);
     const status = await api<VaultRuntimeStatus>(
