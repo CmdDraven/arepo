@@ -82,6 +82,11 @@ Better Auth as the preferred isolated compatibility target, and
 [Better Auth Compatibility Spike](better-auth-compatibility-spike.md) records
 the current fit, blockers, and proof tests. This does not enable browser auth or
 mount Better Auth.
+`backend/betterAuthDependencyProof.ts` now imports `better-auth@1.6.23` only in
+an isolated backend proof. It verifies import/instantiation, handler shape,
+cookie attribute control, sign-out clearing metadata, and internal
+session/revocation behavior while keeping Better Auth forbidden from live
+server, authorization, and frontend paths.
 
 The remaining sections preserve design rationale and historical checkpoint
 language. Where older text says a component is future/planning-only, prefer the

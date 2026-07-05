@@ -15,6 +15,9 @@ mature auth/session foundation AREPO adopts later.
 [Browser Auth Foundation Decision](browser-auth-foundation-decision.md)
 selects Better Auth as the preferred isolated compatibility target, with
 `express-session` or a comparable server-side session core retained as backup.
+`better-auth@1.6.23` is installed for an isolated backend proof only. The proof
+is not mounted, does not emit live cookies, does not accept cookies as live
+credentials, and does not change bearer-token protected mode.
 
 ## Current V1 Posture
 

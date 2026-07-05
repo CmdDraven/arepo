@@ -1,7 +1,7 @@
 # Browser Auth Foundation Decision
 
-Status: accepted for isolated compatibility work. This is not a live
-integration decision.
+Status: accepted for isolated compatibility work. Better Auth is installed for
+an isolated backend proof only. This is not a live integration decision.
 
 ## Decision
 
@@ -13,10 +13,10 @@ selected, proven in isolation, and deliberately integrated behind AREPO's
 activation gates. Browser sessions, cookies, CSRF tokens, pairing codes, login
 UI, and frontend token/session storage remain inactive.
 
-Better Auth is selected as the preferred target for the next isolated
-compatibility spike. `express-session` or a comparable server-side session core
-remains the backup path. OIDC/OAuth remains future optional external-identity
-work, not the immediate local-first default.
+Better Auth is selected as the preferred target for isolated compatibility and
+adapter/database spikes. `express-session` or a comparable server-side session
+core remains the backup path. OIDC/OAuth remains future optional
+external-identity work, not the immediate local-first default.
 
 ## Rationale
 
@@ -83,18 +83,23 @@ shape.
 
 ## What Must Be Proven Before Live Browser Auth
 
-- Better Auth can remain fully unmounted until activation.
-- Better Auth can coexist with bearer-token protected mode.
+- Better Auth remains fully unmounted until activation. The isolated dependency
+  proof currently satisfies this boundary.
+- Better Auth can coexist with bearer-token protected mode. The isolated proof
+  did not change bearer-token behavior.
 - AREPO can integrate through standard `Request`/`Response` without adopting
-  Express unless explicitly chosen.
+  Express unless explicitly chosen. The isolated proof confirms the handler
+  shape exists; a router adapter is still needed.
 - Session storage can live in AREPO app data, preferably with a deliberate
-  local SQLite strategy.
+  local SQLite strategy. This remains unproven.
 - Cookie names, `HttpOnly`, `SameSite`, `Secure`, `Path`, clearing behavior,
   and trusted origins can match AREPO policy.
 - Local pairing can create or attach a browser session without normal
-  username/password/social signup becoming the default UX.
+  username/password/social signup becoming the default UX. This remains
+  unproven through public/supported Better Auth APIs.
 - Revoke-current and revoke-all semantics are possible without exposing session
-  token material.
+  token material. The isolated proof exercised these through Better Auth
+  internals; the production adapter path remains unproven.
 - CSRF ownership is explicit before cookie-authenticated unsafe routes are live.
 - Better Auth outputs can be wrapped so audit/status/logging never leak
   secrets.
@@ -115,7 +120,7 @@ shape.
 
 ## Next Slice
 
-Run an isolated Better Auth dependency proof outside live server paths. The
-proof should exercise session creation, lookup, expiry, revocation,
-revoke-all, and cookie attributes without mounting live routes or changing
-protected-mode authorization.
+Run an isolated Better Auth app-data database and pairing-session adapter proof
+outside live server paths. It should prove local storage, pairing-to-session
+attachment, route adapter behavior, expiry, revocation, and cookie attributes
+without mounting live routes or changing protected-mode authorization.

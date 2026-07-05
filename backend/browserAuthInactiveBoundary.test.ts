@@ -50,6 +50,9 @@ const browserAuthPrimitiveImportSpecifiers = [
   "./browserAuthCookieSerialization.js",
   "./browserAuthFoundationRequirements.js",
   "./betterAuthCompatibilityModel.js",
+  "./betterAuthDependencyProof.js",
+  "better-auth/minimal",
+  "better-auth/node",
 ] as const;
 
 const browserAuthPrimitiveFactories = [
@@ -75,6 +78,7 @@ const browserAuthPrimitiveFactories = [
   "planBrowserAuthTestOnlyClearCookies",
   "listBrowserAuthFoundationRequirements",
   "planBetterAuthCompatibility",
+  "runIsolatedBetterAuthDependencyProof",
 ] as const;
 
 const secretSamples = [

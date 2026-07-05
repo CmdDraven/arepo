@@ -27,6 +27,8 @@ routes remain inactive stubs.
 [Browser Auth Foundation Decision](browser-auth-foundation-decision.md) selects
 Better Auth as the preferred isolated compatibility target, but no Better Auth
 handler is mounted in the live backend.
+Better Auth is installed only for an isolated backend proof; operators should
+not expect browser login or browser-session cookies to work.
 
 ## Configuration
 

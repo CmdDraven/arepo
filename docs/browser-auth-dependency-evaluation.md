@@ -222,6 +222,10 @@ Decision follow-up:
 - [Better Auth Compatibility Spike](better-auth-compatibility-spike.md)
   records the requirement fit, blockers, open questions, and proof tests for the
   next dependency spike.
+- `better-auth@1.6.23` is now installed for
+  `backend/betterAuthDependencyProof.ts`, an isolated test-only proof. It is not
+  mounted in the live backend, does not change bearer-token protected mode, and
+  does not enable browser auth.
 
 Backup direction:
 

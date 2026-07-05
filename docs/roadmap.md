@@ -95,7 +95,10 @@ Better Auth is now selected as the preferred isolated compatibility target in
 [docs/browser-auth-foundation-decision.md](browser-auth-foundation-decision.md),
 with the current fit and proof work captured in
 [docs/better-auth-compatibility-spike.md](better-auth-compatibility-spike.md).
-No Better Auth handler is mounted and live browser auth remains inactive.
+`better-auth@1.6.23` is installed for an isolated backend dependency proof that
+checks import/instantiation, standard handler shape, cookie policy control,
+sign-out clearing metadata, and internal session/revocation behavior. No Better
+Auth handler is mounted and live browser auth remains inactive.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser
