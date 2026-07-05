@@ -9,6 +9,8 @@ import {
   type BrowserAuthRouteContractPlan,
 } from "./browserAuthRouteContracts.js";
 import type { BrowserAuthLifecycleCoordinator } from "./browserAuthLifecycleCoordinator.js";
+import type { PublicBrowserSessionSummary } from "./browserSessionStore.js";
+import type { BrowserAuthTestOnlyActivationAllowance } from "./browserAuthTestOnlyActivation.js";
 
 export const BROWSER_AUTH_ROUTE_HARNESS_NETWORK_EXPOSURE_SAFE = false;
 export const BROWSER_AUTH_ROUTE_HARNESS_MOUNTED = false;
@@ -32,6 +34,17 @@ export type BrowserAuthRouteHarnessRequest = {
   localOnlyMode?: boolean;
   operatorConfirmationPresent?: boolean;
   activationGate?: Omit<BrowserAuthActivationGateInput, "routeId" | "routeContract">;
+  testOnlyActivation?: BrowserAuthTestOnlyActivationAllowance;
+  subjectId?: string;
+  deviceLabel?: string;
+  originHint?: string;
+  pairingCodeId?: string;
+  pairingCodeSecret?: string;
+  sessionId?: string;
+  sessionVerifierSecret?: string;
+  csrfTokenId?: string;
+  csrfTokenSecret?: string;
+  revokeSubjectId?: string;
 };
 
 export type BrowserAuthRouteHarnessResult = {
@@ -62,6 +75,102 @@ export type BrowserAuthRouteHarnessResult = {
   networkExposureSafe: false;
 };
 
+export type BrowserAuthRouteHarnessTestOnlyResult =
+  BrowserAuthRouteHarnessTestOnlySuccess | BrowserAuthRouteHarnessTestOnlyFailure;
+
+export type BrowserAuthRouteHarnessTestOnlySuccess = {
+  ok: true;
+  status: "test-only-active";
+  httpStatus: 200;
+  routeId: BrowserAuthHarnessRouteId;
+  method: string;
+  path: string;
+  routeContractStatus: BrowserAuthRouteContract["status"];
+  activationGate: BrowserAuthActivationGateDecision;
+  headers: Record<string, never>;
+  setCookieHeaders: readonly [];
+  issuedCookies: false;
+  acceptedCookies: false;
+  authenticatedRequest: false;
+  liveAuthorizationDecision: false;
+  lifecycleCoordinatorCalled: true;
+  networkExposureSafe: false;
+  result:
+    | {
+        operation: "pairing-start";
+        pairingCodeId: string;
+        pairingCodeSecret: string;
+        expiresAtMs: number;
+      }
+    | {
+        operation: "pairing-complete" | "session-issue";
+        sessionId: string;
+        subjectId: string;
+        sessionVerifierSecret: string;
+        sessionExpiresAtMs: number;
+        csrfTokenId: string;
+        csrfTokenSecret: string;
+        csrfExpiresAtMs: number;
+      }
+    | {
+        operation: "csrf-issue";
+        csrfTokenId: string;
+        sessionId: string;
+        csrfTokenSecret: string;
+        expiresAtMs: number;
+      }
+    | {
+        operation: "session-status";
+        session: PublicBrowserSessionSummary | null;
+      }
+    | {
+        operation: "logout" | "revoke-current-session";
+        sessionId: string;
+        revokedSession: boolean;
+        revokedCsrfTokenCount: number;
+      }
+    | {
+        operation: "revoke-all-sessions";
+        subjectId: string;
+        revokedSessionCount: number;
+        revokedCsrfTokenCount: number;
+      };
+};
+
+export type BrowserAuthRouteHarnessTestOnlyFailure = {
+  ok: false;
+  status: "test-only-rejected";
+  httpStatus: 400;
+  routeId: BrowserAuthHarnessRouteId;
+  method: string;
+  path: string;
+  routeContractStatus: BrowserAuthRouteContract["status"];
+  activationGate: BrowserAuthActivationGateDecision;
+  error: {
+    code:
+      | "test_only_lifecycle_unavailable"
+      | "test_only_missing_pairing_code"
+      | "test_only_missing_session"
+      | "test_only_pairing_rejected"
+      | "test_only_session_rejected"
+      | "test_only_csrf_rejected";
+    reason: string;
+  };
+  headers: Record<string, never>;
+  setCookieHeaders: readonly [];
+  issuedCookies: false;
+  acceptedCookies: false;
+  issuedPairingCode: false;
+  consumedPairingCode: false;
+  issuedBrowserSession: false;
+  issuedCsrfToken: false;
+  validatedCsrfToken: false;
+  authenticatedRequest: false;
+  liveAuthorizationDecision: false;
+  lifecycleCoordinatorCalled: boolean;
+  networkExposureSafe: false;
+};
+
 export type BrowserAuthRouteHarnessDiagnostics = {
   status: "inactive";
   implementation: "dark-route-test-harness";
@@ -83,27 +192,33 @@ export type BrowserAuthRouteHarnessDiagnostics = {
 export type BrowserAuthRouteHarness = {
   routePlan: BrowserAuthRouteContractPlan;
   diagnostics(): BrowserAuthRouteHarnessDiagnostics;
-  handle(request: BrowserAuthRouteHarnessRequest): BrowserAuthRouteHarnessResult;
+  handle(
+    request: BrowserAuthRouteHarnessRequest,
+  ): BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult;
   pairingStart(
     input?: Omit<BrowserAuthRouteHarnessRequest, "routeId">,
-  ): BrowserAuthRouteHarnessResult;
+  ): BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult;
   pairingComplete(
     input?: Omit<BrowserAuthRouteHarnessRequest, "routeId">,
-  ): BrowserAuthRouteHarnessResult;
+  ): BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult;
   sessionIssue(
     input?: Omit<BrowserAuthRouteHarnessRequest, "routeId">,
-  ): BrowserAuthRouteHarnessResult;
+  ): BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult;
   sessionStatus(
     input?: Omit<BrowserAuthRouteHarnessRequest, "routeId">,
-  ): BrowserAuthRouteHarnessResult;
-  csrfIssue(input?: Omit<BrowserAuthRouteHarnessRequest, "routeId">): BrowserAuthRouteHarnessResult;
-  logout(input?: Omit<BrowserAuthRouteHarnessRequest, "routeId">): BrowserAuthRouteHarnessResult;
+  ): BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult;
+  csrfIssue(
+    input?: Omit<BrowserAuthRouteHarnessRequest, "routeId">,
+  ): BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult;
+  logout(
+    input?: Omit<BrowserAuthRouteHarnessRequest, "routeId">,
+  ): BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult;
   revokeCurrentSession(
     input?: Omit<BrowserAuthRouteHarnessRequest, "routeId">,
-  ): BrowserAuthRouteHarnessResult;
+  ): BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult;
   revokeAllSessions(
     input?: Omit<BrowserAuthRouteHarnessRequest, "routeId">,
-  ): BrowserAuthRouteHarnessResult;
+  ): BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult;
 };
 
 export function createBrowserAuthRouteHarness(
@@ -114,7 +229,9 @@ export function createBrowserAuthRouteHarness(
 ): BrowserAuthRouteHarness {
   const routePlan = options.routePlan ?? planBrowserAuthRouteContracts();
 
-  function handle(request: BrowserAuthRouteHarnessRequest): BrowserAuthRouteHarnessResult {
+  function handle(
+    request: BrowserAuthRouteHarnessRequest,
+  ): BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult {
     const contract = contractForRoute(routePlan, request.routeId);
     const activationGate = evaluateBrowserAuthActivationGate({
       ...request.activationGate,
@@ -125,7 +242,17 @@ export function createBrowserAuthRouteHarness(
         request.operatorConfirmationPresent ??
         request.activationGate?.operatorConfirmationPresent ??
         false,
+      testOnlyActivation: request.testOnlyActivation,
     });
+
+    if (activationGate.allowed) {
+      return activeTestOnlyResult({
+        request,
+        contract,
+        activationGate,
+        coordinator: options.lifecycleCoordinator,
+      });
+    }
 
     return inactiveResult({
       request,
@@ -180,6 +307,188 @@ export function createBrowserAuthRouteHarness(
     revokeAllSessions(input = {}) {
       return handle({ ...input, routeId: "browser-session-revoke-all" });
     },
+  };
+}
+
+function activeTestOnlyResult(input: {
+  request: BrowserAuthRouteHarnessRequest;
+  contract: BrowserAuthRouteContract;
+  activationGate: BrowserAuthActivationGateDecision;
+  coordinator: BrowserAuthLifecycleCoordinator | undefined;
+}): BrowserAuthRouteHarnessTestOnlyResult {
+  if (!input.coordinator) {
+    return testOnlyFailure(input, "test_only_lifecycle_unavailable", "missing-coordinator", false);
+  }
+  switch (input.request.routeId) {
+    case "browser-pairing-start": {
+      const created = input.coordinator.createPairingCode({
+        subjectId: input.request.subjectId ?? "local-operator",
+        deviceLabel: input.request.deviceLabel,
+        originHint: input.request.originHint,
+        pairingCodeId: input.request.pairingCodeId,
+        pairingCodeSecret: input.request.pairingCodeSecret,
+      });
+      return testOnlySuccess(input, {
+        operation: "pairing-start",
+        pairingCodeId: created.pairingCodeId,
+        pairingCodeSecret: created.pairingCodeSecret,
+        expiresAtMs: created.expiresAtMs,
+      });
+    }
+    case "browser-pairing-complete":
+    case "browser-session-issue": {
+      if (!input.request.pairingCodeId || !input.request.pairingCodeSecret) {
+        return testOnlyFailure(input, "test_only_missing_pairing_code", "missing-code", false);
+      }
+      const session = input.coordinator.createSessionFromPairingCode({
+        pairingCodeId: input.request.pairingCodeId,
+        pairingCodeSecret: input.request.pairingCodeSecret,
+        sessionId: input.request.sessionId,
+        sessionVerifierSecret: input.request.sessionVerifierSecret,
+        originHint: input.request.originHint,
+      });
+      if (!session.ok) {
+        return testOnlyFailure(input, "test_only_pairing_rejected", session.reason, true);
+      }
+      const csrf = input.coordinator.createCsrfTokenForSession({
+        sessionId: session.sessionId,
+        csrfTokenId: input.request.csrfTokenId,
+        csrfTokenSecret: input.request.csrfTokenSecret,
+        originHint: input.request.originHint,
+      });
+      if (!csrf.ok) return testOnlyFailure(input, "test_only_csrf_rejected", csrf.reason, true);
+      return testOnlySuccess(input, {
+        operation:
+          input.request.routeId === "browser-pairing-complete"
+            ? "pairing-complete"
+            : "session-issue",
+        sessionId: session.sessionId,
+        subjectId: session.subjectId,
+        sessionVerifierSecret: session.sessionVerifierSecret,
+        sessionExpiresAtMs: session.expiresAtMs,
+        csrfTokenId: csrf.csrfTokenId,
+        csrfTokenSecret: csrf.csrfTokenSecret,
+        csrfExpiresAtMs: csrf.expiresAtMs,
+      });
+    }
+    case "browser-csrf-issue": {
+      if (!input.request.sessionId) {
+        return testOnlyFailure(input, "test_only_missing_session", "missing-session", false);
+      }
+      const csrf = input.coordinator.createCsrfTokenForSession({
+        sessionId: input.request.sessionId,
+        csrfTokenId: input.request.csrfTokenId,
+        csrfTokenSecret: input.request.csrfTokenSecret,
+        originHint: input.request.originHint,
+      });
+      if (!csrf.ok) return testOnlyFailure(input, "test_only_csrf_rejected", csrf.reason, true);
+      return testOnlySuccess(input, {
+        operation: "csrf-issue",
+        csrfTokenId: csrf.csrfTokenId,
+        sessionId: csrf.sessionId,
+        csrfTokenSecret: csrf.csrfTokenSecret,
+        expiresAtMs: csrf.expiresAtMs,
+      });
+    }
+    case "browser-session-status": {
+      const session = input.request.sessionId
+        ? (input.coordinator.stores.sessions
+            .listPublicSummaries()
+            .find((candidate) => candidate.sessionId === input.request.sessionId) ?? null)
+        : null;
+      return testOnlySuccess(input, { operation: "session-status", session });
+    }
+    case "browser-session-logout":
+    case "browser-session-revoke-current": {
+      if (!input.request.sessionId) {
+        return testOnlyFailure(input, "test_only_missing_session", "missing-session", false);
+      }
+      const revoked = input.coordinator.revokeSession(input.request.sessionId);
+      return testOnlySuccess(input, {
+        operation:
+          input.request.routeId === "browser-session-logout" ? "logout" : "revoke-current-session",
+        sessionId: input.request.sessionId,
+        revokedSession: revoked.revokedSession,
+        revokedCsrfTokenCount: revoked.revokedCsrfTokenCount,
+      });
+    }
+    case "browser-session-revoke-all": {
+      const subjectId = input.request.revokeSubjectId ?? input.request.subjectId;
+      if (!subjectId)
+        return testOnlyFailure(input, "test_only_missing_session", "missing-subject", false);
+      const revoked = input.coordinator.revokeAllSessionsForSubject(subjectId);
+      return testOnlySuccess(input, {
+        operation: "revoke-all-sessions",
+        subjectId,
+        revokedSessionCount: revoked.revokedSessionCount,
+        revokedCsrfTokenCount: revoked.revokedCsrfTokenCount,
+      });
+    }
+  }
+}
+
+function testOnlySuccess(
+  input: {
+    request: BrowserAuthRouteHarnessRequest;
+    contract: BrowserAuthRouteContract;
+    activationGate: BrowserAuthActivationGateDecision;
+  },
+  result: BrowserAuthRouteHarnessTestOnlySuccess["result"],
+): BrowserAuthRouteHarnessTestOnlySuccess {
+  return {
+    ok: true,
+    status: "test-only-active",
+    httpStatus: 200,
+    routeId: input.request.routeId,
+    method: input.request.method ?? input.contract.method,
+    path: input.request.path ?? input.contract.path,
+    routeContractStatus: input.contract.status,
+    activationGate: input.activationGate,
+    headers: {},
+    setCookieHeaders: [],
+    issuedCookies: false,
+    acceptedCookies: false,
+    authenticatedRequest: false,
+    liveAuthorizationDecision: false,
+    lifecycleCoordinatorCalled: true,
+    networkExposureSafe: false,
+    result,
+  };
+}
+
+function testOnlyFailure(
+  input: {
+    request: BrowserAuthRouteHarnessRequest;
+    contract: BrowserAuthRouteContract;
+    activationGate: BrowserAuthActivationGateDecision;
+  },
+  code: BrowserAuthRouteHarnessTestOnlyFailure["error"]["code"],
+  reason: string,
+  lifecycleCoordinatorCalled: boolean,
+): BrowserAuthRouteHarnessTestOnlyFailure {
+  return {
+    ok: false,
+    status: "test-only-rejected",
+    httpStatus: 400,
+    routeId: input.request.routeId,
+    method: input.request.method ?? input.contract.method,
+    path: input.request.path ?? input.contract.path,
+    routeContractStatus: input.contract.status,
+    activationGate: input.activationGate,
+    error: { code, reason },
+    headers: {},
+    setCookieHeaders: [],
+    issuedCookies: false,
+    acceptedCookies: false,
+    issuedPairingCode: false,
+    consumedPairingCode: false,
+    issuedBrowserSession: false,
+    issuedCsrfToken: false,
+    validatedCsrfToken: false,
+    authenticatedRequest: false,
+    liveAuthorizationDecision: false,
+    lifecycleCoordinatorCalled,
+    networkExposureSafe: false,
   };
 }
 

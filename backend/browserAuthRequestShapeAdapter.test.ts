@@ -231,6 +231,8 @@ test("activation-requested posture still cannot bypass the gate through adapter 
   });
 
   assert.equal(result.activationGate.allowed, false);
+  assert.equal(result.status, "inactive");
+  if (result.status !== "inactive") throw new Error("Expected inactive harness result.");
   assert.equal(result.issuedCookies, false);
   assert.equal(result.issuedBrowserSession, false);
   assert.equal(result.issuedCsrfToken, false);

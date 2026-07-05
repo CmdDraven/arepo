@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { BrowserAuthLifecycleCoordinator } from "./browserAuthLifecycleCoordinator.js";
+import { createInMemoryBrowserAuthLifecycleCoordinator } from "./browserAuthLifecycleCoordinator.js";
 import { planBrowserAuthActivationConfigPolicy } from "./browserAuthActivationConfigPolicy.js";
 import { planBrowserAuthActivationPreflight } from "./browserAuthActivationPreflight.js";
 import { planBrowserAuthRouteContracts } from "./browserAuthRouteContracts.js";
@@ -14,7 +15,9 @@ import {
   createBrowserAuthRouteHarness,
   type BrowserAuthHarnessRouteId,
   type BrowserAuthRouteHarnessResult,
+  type BrowserAuthRouteHarnessTestOnlyResult,
 } from "./browserAuthRouteHarness.js";
+import { createBrowserAuthTestOnlyActivationAllowance } from "./browserAuthTestOnlyActivation.js";
 
 const plannedRouteIds: readonly BrowserAuthHarnessRouteId[] = [
   "browser-pairing-start",
@@ -42,6 +45,9 @@ const secretSamples = [
   "salt",
   "stack",
 ] as const;
+const pairingSecret = "bpairsec_route_harness_pairing_secret";
+const sessionSecret = "bsver_route_harness_session_secret";
+const csrfSecret = "bcsrfsec_route_harness_csrf_secret";
 
 function assertNoSecretMaterial(value: unknown): void {
   const serialized = JSON.stringify(value);
@@ -50,7 +56,9 @@ function assertNoSecretMaterial(value: unknown): void {
   }
 }
 
-function assertInactiveResult(result: BrowserAuthRouteHarnessResult): void {
+function assertInactiveResult(
+  result: BrowserAuthRouteHarnessResult | BrowserAuthRouteHarnessTestOnlyResult,
+): asserts result is BrowserAuthRouteHarnessResult {
   assert.equal(result.ok, false);
   assert.equal(result.status, "inactive");
   assert.equal(result.httpStatus, 501);
@@ -73,6 +81,20 @@ function assertInactiveResult(result: BrowserAuthRouteHarnessResult): void {
   assert.equal(result.lifecycleCoordinatorCalled, false);
   assert.equal(result.networkExposureSafe, false);
   assertNoSecretMaterial(result);
+}
+
+function assertNoUnsafeMaterial(value: unknown): void {
+  const serialized = JSON.stringify(value);
+  for (const secret of [...secretSamples, pairingSecret, sessionSecret, csrfSecret]) {
+    assert.equal(serialized.includes(secret), false, `route harness exposed ${secret}`);
+  }
+}
+
+function assertNoRawSecretMaterial(value: unknown): void {
+  const serialized = JSON.stringify(value);
+  for (const secret of [pairingSecret, sessionSecret, csrfSecret]) {
+    assert.equal(serialized.includes(secret), false, `stored record exposed ${secret}`);
+  }
 }
 
 test("browser auth route harness is inactive unmounted diagnostics only", () => {
@@ -215,12 +237,243 @@ test("browser auth harness still blocks with activation-requested planning postu
   });
 
   assertInactiveResult(result);
+  assert.equal(result.activationGate.allowed, false);
+  if (result.activationGate.allowed) throw new Error("Expected activation gate to block.");
   assert.ok(result.activationGate.blockerCodes.includes("browser-auth-activation-gate-blocked"));
   assert.ok(
     result.activationGate.blockerCodes.includes(
       "browser-auth-config-activation-disabled-by-runtime-policy",
     ),
   );
+});
+
+test("test-only harness flow creates pairing session and csrf records without storing raw secrets", () => {
+  const coordinator = createInMemoryBrowserAuthLifecycleCoordinator({ clock: () => 1_000 });
+  const harness = createBrowserAuthRouteHarness({ lifecycleCoordinator: coordinator });
+  const testOnlyActivation = createBrowserAuthTestOnlyActivationAllowance();
+
+  const pairing = harness.pairingStart({
+    testOnlyActivation,
+    subjectId: "subject-a",
+    pairingCodeId: "bpair_route_harness_1",
+    pairingCodeSecret: pairingSecret,
+  });
+  assert.equal(pairing.status, "test-only-active");
+  assert.equal(pairing.ok, true);
+  if (!pairing.ok) throw new Error("Expected pairing start to succeed.");
+  assert.equal(pairing.result.operation, "pairing-start");
+  if (pairing.result.operation !== "pairing-start") {
+    throw new Error("Expected pairing start result.");
+  }
+  assert.equal(pairing.result.pairingCodeSecret, pairingSecret);
+  const pairingRecord = coordinator.stores.pairingCodes.getPairingCode(
+    pairing.result.pairingCodeId,
+  );
+  assert.match(pairingRecord?.pairingCodeHash ?? "", /^sha256:/);
+  assertNoRawSecretMaterial(pairingRecord);
+
+  const complete = harness.pairingComplete({
+    testOnlyActivation,
+    pairingCodeId: pairing.result.pairingCodeId,
+    pairingCodeSecret: pairingSecret,
+    sessionId: "bsess_route_harness_1",
+    sessionVerifierSecret: sessionSecret,
+    csrfTokenId: "bcsrf_route_harness_1",
+    csrfTokenSecret: csrfSecret,
+  });
+
+  assert.equal(complete.status, "test-only-active");
+  assert.equal(complete.ok, true);
+  if (!complete.ok) throw new Error("Expected pairing completion to succeed.");
+  assert.equal(complete.result.operation, "pairing-complete");
+  if (complete.result.operation !== "pairing-complete") {
+    throw new Error("Expected pairing complete result.");
+  }
+  assert.equal(complete.result.sessionVerifierSecret, sessionSecret);
+  assert.equal(complete.result.csrfTokenSecret, csrfSecret);
+  const sessionRecord = coordinator.stores.sessions.getSession(complete.result.sessionId);
+  const csrfRecord = coordinator.stores.csrfTokens.getToken(complete.result.csrfTokenId);
+  assert.match(sessionRecord?.verifierHash ?? "", /^sha256:/);
+  assert.match(csrfRecord?.tokenHash ?? "", /^sha256:/);
+  assertNoRawSecretMaterial(sessionRecord);
+  assertNoRawSecretMaterial(csrfRecord);
+  assert.deepEqual(complete.setCookieHeaders, []);
+  assert.equal(complete.issuedCookies, false);
+  assert.equal(complete.authenticatedRequest, false);
+  assert.equal(complete.liveAuthorizationDecision, false);
+});
+
+test("test-only pairing completion consumes codes once and reports sanitized failures", () => {
+  const coordinator = createInMemoryBrowserAuthLifecycleCoordinator({ clock: () => 1_000 });
+  const harness = createBrowserAuthRouteHarness({ lifecycleCoordinator: coordinator });
+  const testOnlyActivation = createBrowserAuthTestOnlyActivationAllowance();
+  const pairing = harness.pairingStart({
+    testOnlyActivation,
+    subjectId: "subject-a",
+    pairingCodeSecret: pairingSecret,
+  });
+  assert.equal(pairing.ok, true);
+  if (!pairing.ok || pairing.result.operation !== "pairing-start") {
+    throw new Error("Expected pairing start result.");
+  }
+
+  const missing = harness.pairingComplete({ testOnlyActivation });
+  const wrong = harness.pairingComplete({
+    testOnlyActivation,
+    pairingCodeId: pairing.result.pairingCodeId,
+    pairingCodeSecret: "wrong-code",
+  });
+  const valid = harness.pairingComplete({
+    testOnlyActivation,
+    pairingCodeId: pairing.result.pairingCodeId,
+    pairingCodeSecret: pairingSecret,
+  });
+  const consumed = harness.pairingComplete({
+    testOnlyActivation,
+    pairingCodeId: pairing.result.pairingCodeId,
+    pairingCodeSecret: pairingSecret,
+  });
+
+  assert.equal(missing.status, "test-only-rejected");
+  assert.equal(wrong.status, "test-only-rejected");
+  assert.equal(valid.status, "test-only-active");
+  assert.equal(consumed.status, "test-only-rejected");
+  if (missing.status === "test-only-rejected") {
+    assert.equal(missing.error.reason, "missing-code");
+  }
+  if (wrong.status === "test-only-rejected") {
+    assert.equal(wrong.error.reason, "wrong-code");
+  }
+  if (consumed.status === "test-only-rejected") {
+    assert.equal(consumed.error.reason, "consumed-code");
+  }
+  assertNoUnsafeMaterial({ missing, wrong, consumed });
+});
+
+test("test-only harness reports expired revoked and locked pairing code failures", () => {
+  let now = 1_000;
+  const coordinator = createInMemoryBrowserAuthLifecycleCoordinator({ clock: () => now });
+  const harness = createBrowserAuthRouteHarness({ lifecycleCoordinator: coordinator });
+  const testOnlyActivation = createBrowserAuthTestOnlyActivationAllowance();
+  const expired = coordinator.createPairingCode({
+    subjectId: "subject-a",
+    pairingCodeSecret: pairingSecret,
+    ttlMs: 10,
+  });
+  now = 2_000;
+  const expiredResult = harness.pairingComplete({
+    testOnlyActivation,
+    pairingCodeId: expired.pairingCodeId,
+    pairingCodeSecret: pairingSecret,
+  });
+  now = 1_000;
+  const revoked = coordinator.createPairingCode({
+    subjectId: "subject-a",
+    pairingCodeSecret: pairingSecret,
+  });
+  coordinator.stores.pairingCodes.revokePairingCode(revoked.pairingCodeId);
+  const revokedResult = harness.pairingComplete({
+    testOnlyActivation,
+    pairingCodeId: revoked.pairingCodeId,
+    pairingCodeSecret: pairingSecret,
+  });
+  const locked = coordinator.createPairingCode({
+    subjectId: "subject-a",
+    pairingCodeSecret: pairingSecret,
+    maxFailedAttempts: 1,
+  });
+  const lockedResult = harness.pairingComplete({
+    testOnlyActivation,
+    pairingCodeId: locked.pairingCodeId,
+    pairingCodeSecret: "wrong-code",
+  });
+
+  assert.equal(expiredResult.status, "test-only-rejected");
+  assert.equal(revokedResult.status, "test-only-rejected");
+  assert.equal(lockedResult.status, "test-only-rejected");
+  if (expiredResult.status === "test-only-rejected") {
+    assert.equal(expiredResult.error.reason, "expired-code");
+  }
+  if (revokedResult.status === "test-only-rejected") {
+    assert.equal(revokedResult.error.reason, "revoked-code");
+  }
+  if (lockedResult.status === "test-only-rejected") {
+    assert.equal(lockedResult.error.reason, "locked-code");
+  }
+  assertNoUnsafeMaterial({ expiredResult, revokedResult, lockedResult });
+});
+
+test("test-only session status logout revoke current and revoke all mutate only coordinator state", () => {
+  const coordinator = createInMemoryBrowserAuthLifecycleCoordinator({ clock: () => 1_000 });
+  const harness = createBrowserAuthRouteHarness({ lifecycleCoordinator: coordinator });
+  const testOnlyActivation = createBrowserAuthTestOnlyActivationAllowance();
+  const subjectA = issueSession(harness, testOnlyActivation, "subject-a", "a");
+  const subjectB = issueSession(harness, testOnlyActivation, "subject-b", "b");
+  const subjectC = issueSession(harness, testOnlyActivation, "subject-c", "c");
+
+  const status = harness.sessionStatus({
+    testOnlyActivation,
+    sessionId: subjectA.sessionId,
+  });
+  assert.equal(status.status, "test-only-active");
+  if (status.ok && status.result.operation === "session-status") {
+    assert.equal(status.result.session?.sessionId, subjectA.sessionId);
+    assert.equal(status.result.session?.status, "active");
+    assertNoUnsafeMaterial(status.result);
+  } else {
+    throw new Error("Expected session status result.");
+  }
+
+  const logout = harness.logout({ testOnlyActivation, sessionId: subjectA.sessionId });
+  assert.equal(logout.status, "test-only-active");
+  if (logout.ok && logout.result.operation === "logout") {
+    assert.equal(logout.result.revokedSession, true);
+    assert.equal(logout.result.revokedCsrfTokenCount, 1);
+  } else {
+    throw new Error("Expected logout result.");
+  }
+  assert.deepEqual(coordinator.verifySession(subjectA.sessionId, subjectA.sessionSecret), {
+    ok: false,
+    reason: "revoked-session",
+  });
+  assert.deepEqual(coordinator.verifyCsrfToken(subjectA.csrfTokenId, subjectA.csrfSecret), {
+    ok: false,
+    reason: "revoked-token",
+  });
+  assert.equal(coordinator.verifySession(subjectB.sessionId, subjectB.sessionSecret).ok, true);
+
+  const revokeCurrent = harness.revokeCurrentSession({
+    testOnlyActivation,
+    sessionId: subjectC.sessionId,
+  });
+  assert.equal(revokeCurrent.status, "test-only-active");
+  if (revokeCurrent.ok && revokeCurrent.result.operation === "revoke-current-session") {
+    assert.equal(revokeCurrent.result.revokedSession, true);
+    assert.equal(revokeCurrent.result.revokedCsrfTokenCount, 1);
+  } else {
+    throw new Error("Expected revoke current result.");
+  }
+  assert.deepEqual(coordinator.verifySession(subjectC.sessionId, subjectC.sessionSecret), {
+    ok: false,
+    reason: "revoked-session",
+  });
+  assert.equal(coordinator.verifySession(subjectB.sessionId, subjectB.sessionSecret).ok, true);
+
+  const revokeAll = harness.revokeAllSessions({
+    testOnlyActivation,
+    revokeSubjectId: "subject-b",
+  });
+  assert.equal(revokeAll.status, "test-only-active");
+  if (revokeAll.ok && revokeAll.result.operation === "revoke-all-sessions") {
+    assert.equal(revokeAll.result.revokedSessionCount, 1);
+    assert.equal(revokeAll.result.revokedCsrfTokenCount, 1);
+  } else {
+    throw new Error("Expected revoke all result.");
+  }
+  assert.deepEqual(coordinator.verifySession(subjectB.sessionId, subjectB.sessionSecret), {
+    ok: false,
+    reason: "revoked-session",
+  });
 });
 
 test("browser auth route harness is not imported into live server or authorization paths", async () => {
@@ -238,3 +491,37 @@ test("browser auth route harness is not imported into live server or authorizati
     assert.equal(source.includes("createBrowserAuthRouteHarness"), false);
   }
 });
+
+function issueSession(
+  harness: ReturnType<typeof createBrowserAuthRouteHarness>,
+  testOnlyActivation: ReturnType<typeof createBrowserAuthTestOnlyActivationAllowance>,
+  subjectId: string,
+  suffix: string,
+): { sessionId: string; sessionSecret: string; csrfTokenId: string; csrfSecret: string } {
+  const pairing = harness.pairingStart({
+    testOnlyActivation,
+    subjectId,
+    pairingCodeSecret: `pairing-${suffix}`,
+  });
+  if (!pairing.ok || pairing.result.operation !== "pairing-start") {
+    throw new Error("Expected pairing start result.");
+  }
+  const sessionSecretForSubject = `session-${suffix}`;
+  const csrfSecretForSubject = `csrf-${suffix}`;
+  const completed = harness.pairingComplete({
+    testOnlyActivation,
+    pairingCodeId: pairing.result.pairingCodeId,
+    pairingCodeSecret: `pairing-${suffix}`,
+    sessionVerifierSecret: sessionSecretForSubject,
+    csrfTokenSecret: csrfSecretForSubject,
+  });
+  if (!completed.ok || completed.result.operation !== "pairing-complete") {
+    throw new Error("Expected pairing complete result.");
+  }
+  return {
+    sessionId: completed.result.sessionId,
+    sessionSecret: sessionSecretForSubject,
+    csrfTokenId: completed.result.csrfTokenId,
+    csrfSecret: csrfSecretForSubject,
+  };
+}

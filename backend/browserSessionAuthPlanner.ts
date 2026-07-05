@@ -71,6 +71,9 @@ export function planBrowserSessionAuth(
     activationPreflight,
     localOnlyMode: input.localOnlyMode,
   });
+  if (activationGate.allowed) {
+    throw new Error("Browser auth activation gate must block runtime status planning.");
+  }
   const routeHarness = createBrowserAuthRouteHarness({ routePlan: routeContracts }).diagnostics();
 
   return {

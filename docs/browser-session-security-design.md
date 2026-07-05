@@ -48,6 +48,10 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
   unmounted planning/test infrastructure. The harness can model future route
   flow internally, but the activation gate blocks all active behavior and the
   harness is not mounted into live HTTP routes or authorization.
+- A test-only browser-auth issuance flow exists inside the unmounted dark
+  harness path. It proves internal pairing-code consumption can create an
+  in-memory browser session and CSRF token, but only when an explicit
+  test-only allowance is supplied directly in unit tests.
 - A disabled browser-auth request-shape adapter exists as unmounted
   planning/test infrastructure. It translates live-like request shapes into
   sanitized dark-harness input, but does not parse cookies for live
@@ -615,6 +619,9 @@ The current scaffold remains inert for browser sessions:
     live-like headers and route shapes for tests, but it must output only
     sanitized presence/classification data and must not authenticate, validate
     CSRF, issue cookies, or feed live authorization.
+19. Keep the test-only issuance allowance out of runtime config, environment
+    variables, live routes, and frontend code. It may exercise pairing,
+    session, and CSRF semantics inside the unmounted harness only.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

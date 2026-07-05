@@ -12,6 +12,7 @@ import {
   BROWSER_AUTH_ACTIVATION_GATE_WIRED_INTO_ROUTES,
   evaluateBrowserAuthActivationGate,
 } from "./browserAuthActivationGate.js";
+import { createBrowserAuthTestOnlyActivationAllowance } from "./browserAuthTestOnlyActivation.js";
 
 const secretSamples = [
   "arepo_session=secret-cookie",
@@ -118,9 +119,37 @@ test("browser auth activation gate output is sanitized", () => {
   });
 
   assertNoSecretMaterial(decision);
+  assert.equal(decision.allowed, false);
+  if (decision.allowed) throw new Error("Expected activation gate to block.");
   assert.ok(
     decision.blockerCodes.includes("browser-auth-activation-gate-operator-confirmation-missing"),
   );
+});
+
+test("browser auth activation gate allows only explicit test-only dark harness execution", () => {
+  const routeContract = planBrowserAuthRouteContracts().contracts.find(
+    (contract) => contract.routeId === "browser-pairing-start",
+  );
+  assert.ok(routeContract);
+
+  const decision = evaluateBrowserAuthActivationGate({
+    routeContract,
+    testOnlyActivation: createBrowserAuthTestOnlyActivationAllowance(),
+  });
+
+  assert.equal(decision.status, "test-only-allowed");
+  assert.equal(decision.allowed, true);
+  assert.equal(decision.reasonCode, "browser_auth_test_only_activation_allowed");
+  assert.equal(decision.routeId, "browser-pairing-start");
+  assert.equal(decision.browserAuthEnabled, false);
+  assert.equal(decision.mounted, false);
+  assert.equal(decision.wiredIntoAuthorization, false);
+  assert.equal(decision.wiredIntoRoutes, false);
+  assert.equal(decision.issuesCookies, false);
+  assert.equal(decision.acceptsCookies, false);
+  assert.equal(decision.authenticatesRequests, false);
+  assert.deepEqual(decision.blockerCodes, []);
+  assertNoSecretMaterial(decision);
 });
 
 test("browser auth activation gate is not imported into live server or authorization paths", async () => {

@@ -58,6 +58,10 @@ local bearer-token API/operator use:
   planning/tests only. The harness models the future route execution structure,
   but the gate blocks active behavior and neither module is mounted into live
   routes, middleware, enforcement, request authorization, or frontend code.
+- A test-only browser-auth issuance flow exists inside the unmounted dark
+  harness path. It can consume an internal pairing code and create an internal
+  browser session plus CSRF token through the lifecycle coordinator, but only
+  with an explicit test-only allowance and never through live HTTP routes.
 - A disabled browser-auth request-shape adapter exists for planning/tests only.
   It converts live-like request shapes into sanitized dark-harness input, but is
   not mounted and does not authenticate requests, validate CSRF, parse cookies
@@ -199,6 +203,10 @@ Implemented components include:
   request-shape adapter for tests only. It classifies live-like method/path,
   sensitive-header presence, sanitized origin/referer posture, and locality
   into dark-harness input without exposing header values or authenticating.
+- `backend/browserAuthTestOnlyActivation.ts`: explicit test-only allowance for
+  exercising dark-harness browser-auth issuance semantics. It is not runtime
+  configurable and is forbidden from live server, route, authorization, and
+  frontend paths.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and
