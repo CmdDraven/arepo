@@ -54,6 +54,10 @@ local bearer-token API/operator use:
   planning/status only. It defines future-style activation config policy,
   handles unknown browser-auth settings safely, and keeps activation blocked
   even when activation is requested.
+- A browser-auth dark route harness and explicit activation gate exist for
+  planning/tests only. The harness models the future route execution structure,
+  but the gate blocks active behavior and neither module is mounted into live
+  routes, middleware, enforcement, request authorization, or frontend code.
 
 See [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
 the current local operator commands and manual acceptance flow.
@@ -182,6 +186,11 @@ Implemented components include:
   audit readiness, route contracts, inactive-boundary regression, and frontend
   no-secret storage, but always reports activation blocked and remains unwired
   from live config, routes, middleware, and authorization.
+- `backend/browserAuthActivationGate.ts` and `backend/browserAuthRouteHarness.ts`:
+  dark browser-auth route execution infrastructure for tests only. The gate
+  always blocks browser-auth activation in this slice, and the harness returns
+  sanitized inactive route results without issuing cookies, pairing codes,
+  sessions, CSRF tokens, or live authorization decisions.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

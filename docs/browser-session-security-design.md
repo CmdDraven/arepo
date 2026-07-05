@@ -44,6 +44,10 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
   infrastructure only. It defines a future activation config shape and always
   reports activation blocked today, even if future-style activation fields are
   supplied.
+- A browser-auth dark route harness and explicit activation gate exist as
+  unmounted planning/test infrastructure. The harness can model future route
+  flow internally, but the activation gate blocks all active behavior and the
+  harness is not mounted into live HTTP routes or authorization.
 - The frontend does not store bearer tokens.
 - Full authorized status reports `browserSessionAuth.status` as
   `planning-only`; reduced anonymous status does not expose session details.
@@ -597,6 +601,11 @@ The current scaffold remains inert for browser sessions:
     and validate future browser-auth config concepts, but it must not add a live
     activation flag, mount routes, issue or accept cookies, validate CSRF, or
     enable browser sessions.
+17. Keep the activation gate and dark route harness unmounted. They may model
+    future route execution in unit tests, but the gate must block active
+    behavior until a later activation slice deliberately wires browser-session
+    issuance, cookie delivery, CSRF validation, audit, and authorization
+    together.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

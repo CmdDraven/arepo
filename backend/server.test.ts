@@ -266,6 +266,15 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.activationConfigPolicy.wiredIntoRoutes, false);
   assert.equal(status.browserSessionAuth.activationConfigPolicy.issuesCookies, false);
   assert.equal(status.browserSessionAuth.activationConfigPolicy.acceptsCookies, false);
+  assert.equal(status.browserSessionAuth.activationGate.status, "blocked");
+  assert.equal(status.browserSessionAuth.activationGate.allowed, false);
+  assert.equal(status.browserSessionAuth.activationGate.browserAuthEnabled, false);
+  assert.equal(status.browserSessionAuth.activationGate.mounted, false);
+  assert.equal(status.browserSessionAuth.activationGate.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.activationGate.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.activationGate.issuesCookies, false);
+  assert.equal(status.browserSessionAuth.activationGate.acceptsCookies, false);
+  assert.equal(status.browserSessionAuth.activationGate.authenticatesRequests, false);
   assert.equal(status.browserSessionAuth.activationPreflight.status, "inactive");
   assert.equal(status.browserSessionAuth.activationPreflight.activationRequested, false);
   assert.equal(status.browserSessionAuth.activationPreflight.readyForFutureActivation, false);
@@ -289,6 +298,16 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.routeContracts.summary.acceptingCookieRouteCount, 0);
   assert.equal(status.browserSessionAuth.routeContracts.summary.wiredIntoAuthorization, false);
   assert.equal(status.browserSessionAuth.routeContracts.summary.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.routeHarness.status, "inactive");
+  assert.equal(status.browserSessionAuth.routeHarness.mounted, false);
+  assert.equal(status.browserSessionAuth.routeHarness.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.routeHarness.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.routeHarness.issuesCookies, false);
+  assert.equal(status.browserSessionAuth.routeHarness.acceptsCookies, false);
+  assert.equal(status.browserSessionAuth.routeHarness.issuesPairingCodes, false);
+  assert.equal(status.browserSessionAuth.routeHarness.issuesBrowserSessions, false);
+  assert.equal(status.browserSessionAuth.routeHarness.issuesCsrfTokens, false);
+  assert.equal(status.browserSessionAuth.routeHarness.authenticatesRequests, false);
   assert.equal(status.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     status.browserSessionAuth.lifecycleCoordinator.implementation,
@@ -654,6 +673,15 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.browserSessionAuth.activationConfigPolicy.wiredIntoRoutes, false);
   assert.equal(full.browserSessionAuth.activationConfigPolicy.issuesCookies, false);
   assert.equal(full.browserSessionAuth.activationConfigPolicy.acceptsCookies, false);
+  assert.equal(full.browserSessionAuth.activationGate.status, "blocked");
+  assert.equal(full.browserSessionAuth.activationGate.allowed, false);
+  assert.equal(full.browserSessionAuth.activationGate.browserAuthEnabled, false);
+  assert.equal(full.browserSessionAuth.activationGate.mounted, false);
+  assert.equal(full.browserSessionAuth.activationGate.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.activationGate.wiredIntoRoutes, false);
+  assert.equal(full.browserSessionAuth.activationGate.issuesCookies, false);
+  assert.equal(full.browserSessionAuth.activationGate.acceptsCookies, false);
+  assert.equal(full.browserSessionAuth.activationGate.authenticatesRequests, false);
   assert.equal(full.browserSessionAuth.activationPreflight.status, "inactive");
   assert.equal(full.browserSessionAuth.activationPreflight.activationRequested, false);
   assert.equal(full.browserSessionAuth.activationPreflight.readyForFutureActivation, false);
@@ -677,6 +705,16 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.browserSessionAuth.routeContracts.summary.acceptingCookieRouteCount, 0);
   assert.equal(full.browserSessionAuth.routeContracts.summary.wiredIntoAuthorization, false);
   assert.equal(full.browserSessionAuth.routeContracts.summary.wiredIntoRoutes, false);
+  assert.equal(full.browserSessionAuth.routeHarness.status, "inactive");
+  assert.equal(full.browserSessionAuth.routeHarness.mounted, false);
+  assert.equal(full.browserSessionAuth.routeHarness.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.routeHarness.wiredIntoRoutes, false);
+  assert.equal(full.browserSessionAuth.routeHarness.issuesCookies, false);
+  assert.equal(full.browserSessionAuth.routeHarness.acceptsCookies, false);
+  assert.equal(full.browserSessionAuth.routeHarness.issuesPairingCodes, false);
+  assert.equal(full.browserSessionAuth.routeHarness.issuesBrowserSessions, false);
+  assert.equal(full.browserSessionAuth.routeHarness.issuesCsrfTokens, false);
+  assert.equal(full.browserSessionAuth.routeHarness.authenticatesRequests, false);
   assert.equal(full.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     full.browserSessionAuth.lifecycleCoordinator.implementation,

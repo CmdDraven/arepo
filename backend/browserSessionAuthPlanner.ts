@@ -4,9 +4,11 @@ import type {
   BrowserSessionAuthBlockerCode,
   BrowserSessionAuthRuntimeStatus,
 } from "./types.js";
+import { evaluateBrowserAuthActivationGate } from "./browserAuthActivationGate.js";
 import { planBrowserAuthActivationPreflight } from "./browserAuthActivationPreflight.js";
 import { planBrowserAuthActivationConfigPolicy } from "./browserAuthActivationConfigPolicy.js";
 import { planBrowserAuthRouteContracts } from "./browserAuthRouteContracts.js";
+import { createBrowserAuthRouteHarness } from "./browserAuthRouteHarness.js";
 
 export type BrowserSessionAuthPlannerInput = {
   authMode: AuthMode;
@@ -59,6 +61,17 @@ export function planBrowserSessionAuth(
   const activationConfigPolicy = planBrowserAuthActivationConfigPolicy({
     localOnlyMode: input.localOnlyMode,
   });
+  const activationPreflight = planBrowserAuthActivationPreflight({
+    authMode: input.authMode,
+    localOnlyMode: input.localOnlyMode,
+  });
+  const routeContracts = planBrowserAuthRouteContracts();
+  const activationGate = evaluateBrowserAuthActivationGate({
+    activationConfigPolicy,
+    activationPreflight,
+    localOnlyMode: input.localOnlyMode,
+  });
+  const routeHarness = createBrowserAuthRouteHarness({ routePlan: routeContracts }).diagnostics();
 
   return {
     status: "planning-only",
@@ -72,11 +85,10 @@ export function planBrowserSessionAuth(
     frontendTokenStorage: false,
     networkExposureSafe: false,
     activationConfigPolicy,
-    activationPreflight: planBrowserAuthActivationPreflight({
-      authMode: input.authMode,
-      localOnlyMode: input.localOnlyMode,
-    }),
-    routeContracts: planBrowserAuthRouteContracts(),
+    activationPreflight,
+    activationGate,
+    routeContracts,
+    routeHarness,
     lifecycleCoordinator: {
       status: "inactive",
       implementation: "in-memory-test-primitive",

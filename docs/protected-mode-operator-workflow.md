@@ -237,6 +237,9 @@ mounting routes or changing live behavior.
 The browser-auth activation config policy planner is planning/status
 infrastructure only; future-style activation settings remain blocked and do not
 create a working browser-auth config flag.
+The browser-auth dark route harness and activation gate are also planning/test
+infrastructure only; the gate blocks active browser-auth behavior and the
+harness is not mounted into live HTTP routes.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

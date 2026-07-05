@@ -72,7 +72,9 @@ browser auth. A pure browser-auth route contract planner now documents the
 future browser-auth route surface and required protections without mounting
 handlers. A pure browser-auth activation config policy planner now defines and
 validates future activation config concepts while still blocking activation
-today. CSRF live enforcement, browser session issuance, cookie
+today. A browser-auth dark route harness and explicit activation gate now model
+future route execution in tests while remaining unmounted and blocked. CSRF
+live enforcement, browser session issuance, cookie
 issuance/acceptance, pairing route activation, frontend token storage,
 remote-node, and federation work remain deferred.
 

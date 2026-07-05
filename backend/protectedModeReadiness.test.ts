@@ -105,6 +105,15 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.activationConfigPolicy.wiredIntoRoutes, false);
   assert.equal(readiness.browserSessionAuth.activationConfigPolicy.issuesCookies, false);
   assert.equal(readiness.browserSessionAuth.activationConfigPolicy.acceptsCookies, false);
+  assert.equal(readiness.browserSessionAuth.activationGate.status, "blocked");
+  assert.equal(readiness.browserSessionAuth.activationGate.allowed, false);
+  assert.equal(readiness.browserSessionAuth.activationGate.browserAuthEnabled, false);
+  assert.equal(readiness.browserSessionAuth.activationGate.mounted, false);
+  assert.equal(readiness.browserSessionAuth.activationGate.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.activationGate.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.activationGate.issuesCookies, false);
+  assert.equal(readiness.browserSessionAuth.activationGate.acceptsCookies, false);
+  assert.equal(readiness.browserSessionAuth.activationGate.authenticatesRequests, false);
   assert.equal(readiness.browserSessionAuth.activationPreflight.status, "inactive");
   assert.equal(readiness.browserSessionAuth.activationPreflight.activationRequested, false);
   assert.equal(readiness.browserSessionAuth.activationPreflight.readyForFutureActivation, false);
@@ -128,6 +137,16 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.routeContracts.summary.acceptingCookieRouteCount, 0);
   assert.equal(readiness.browserSessionAuth.routeContracts.summary.wiredIntoAuthorization, false);
   assert.equal(readiness.browserSessionAuth.routeContracts.summary.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.routeHarness.status, "inactive");
+  assert.equal(readiness.browserSessionAuth.routeHarness.mounted, false);
+  assert.equal(readiness.browserSessionAuth.routeHarness.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.routeHarness.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.routeHarness.issuesCookies, false);
+  assert.equal(readiness.browserSessionAuth.routeHarness.acceptsCookies, false);
+  assert.equal(readiness.browserSessionAuth.routeHarness.issuesPairingCodes, false);
+  assert.equal(readiness.browserSessionAuth.routeHarness.issuesBrowserSessions, false);
+  assert.equal(readiness.browserSessionAuth.routeHarness.issuesCsrfTokens, false);
+  assert.equal(readiness.browserSessionAuth.routeHarness.authenticatesRequests, false);
   assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     readiness.browserSessionAuth.lifecycleCoordinator.implementation,

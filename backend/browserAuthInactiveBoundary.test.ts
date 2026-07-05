@@ -43,6 +43,8 @@ const browserAuthPrimitiveImportSpecifiers = [
   "./browserAuthActivationPreflight.js",
   "./browserAuthRouteContracts.js",
   "./browserAuthActivationConfigPolicy.js",
+  "./browserAuthActivationGate.js",
+  "./browserAuthRouteHarness.js",
 ] as const;
 
 const browserAuthPrimitiveFactories = [
@@ -60,6 +62,8 @@ const browserAuthPrimitiveFactories = [
   "planBrowserAuthActivationPreflight",
   "planBrowserAuthRouteContracts",
   "planBrowserAuthActivationConfigPolicy",
+  "evaluateBrowserAuthActivationGate",
+  "createBrowserAuthRouteHarness",
 ] as const;
 
 const secretSamples = [
@@ -365,6 +369,15 @@ test("full protected status reports browser-auth primitives as inactive and unwi
   assert.equal(browserSessionAuth.activationConfigPolicy.wiredIntoRoutes, false);
   assert.equal(browserSessionAuth.activationConfigPolicy.issuesCookies, false);
   assert.equal(browserSessionAuth.activationConfigPolicy.acceptsCookies, false);
+  assert.equal(browserSessionAuth.activationGate.status, "blocked");
+  assert.equal(browserSessionAuth.activationGate.allowed, false);
+  assert.equal(browserSessionAuth.activationGate.browserAuthEnabled, false);
+  assert.equal(browserSessionAuth.activationGate.mounted, false);
+  assert.equal(browserSessionAuth.activationGate.wiredIntoAuthorization, false);
+  assert.equal(browserSessionAuth.activationGate.wiredIntoRoutes, false);
+  assert.equal(browserSessionAuth.activationGate.issuesCookies, false);
+  assert.equal(browserSessionAuth.activationGate.acceptsCookies, false);
+  assert.equal(browserSessionAuth.activationGate.authenticatesRequests, false);
   assert.equal(browserSessionAuth.activationPreflight.status, "inactive");
   assert.equal(browserSessionAuth.activationPreflight.liveRouteMountingAllowed, false);
   assert.equal(browserSessionAuth.activationPreflight.browserAuthEnabled, false);
@@ -379,6 +392,16 @@ test("full protected status reports browser-auth primitives as inactive and unwi
   assert.equal(browserSessionAuth.routeContracts.summary.acceptingCookieRouteCount, 0);
   assert.equal(browserSessionAuth.routeContracts.summary.wiredIntoAuthorization, false);
   assert.equal(browserSessionAuth.routeContracts.summary.wiredIntoRoutes, false);
+  assert.equal(browserSessionAuth.routeHarness.status, "inactive");
+  assert.equal(browserSessionAuth.routeHarness.mounted, false);
+  assert.equal(browserSessionAuth.routeHarness.wiredIntoAuthorization, false);
+  assert.equal(browserSessionAuth.routeHarness.wiredIntoRoutes, false);
+  assert.equal(browserSessionAuth.routeHarness.issuesCookies, false);
+  assert.equal(browserSessionAuth.routeHarness.acceptsCookies, false);
+  assert.equal(browserSessionAuth.routeHarness.issuesPairingCodes, false);
+  assert.equal(browserSessionAuth.routeHarness.issuesBrowserSessions, false);
+  assert.equal(browserSessionAuth.routeHarness.issuesCsrfTokens, false);
+  assert.equal(browserSessionAuth.routeHarness.authenticatesRequests, false);
   assert.equal(browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(browserSessionAuth.lifecycleCoordinator.mounted, false);
   assert.equal(browserSessionAuth.lifecycleCoordinator.wiredIntoAuthorization, false);

@@ -423,6 +423,30 @@ export type BrowserSessionAuthRuntimeStatus = {
     safeNotes: readonly string[];
     networkExposureSafe: false;
   };
+  activationGate: {
+    status: "blocked";
+    allowed: false;
+    reasonCode: "browser_auth_activation_blocked";
+    routeId?: string;
+    browserAuthEnabled: false;
+    mounted: false;
+    wiredIntoAuthorization: false;
+    wiredIntoRoutes: false;
+    issuesCookies: false;
+    acceptsCookies: false;
+    issuesPairingCodes: false;
+    consumesPairingCodes: false;
+    issuesBrowserSessions: false;
+    issuesCsrfTokens: false;
+    validatesCsrfTokens: false;
+    authenticatesRequests: false;
+    localOnlyMode: boolean;
+    operatorConfirmationPresent: boolean;
+    blockerCodes: readonly string[];
+    warningCodes: readonly string[];
+    requiredConfirmations: readonly string[];
+    networkExposureSafe: false;
+  };
   routeContracts: {
     status: "planning-only";
     contracts: readonly {
@@ -458,6 +482,23 @@ export type BrowserSessionAuthRuntimeStatus = {
       wiredIntoRoutes: false;
       networkExposureSafe: false;
     };
+    networkExposureSafe: false;
+  };
+  routeHarness: {
+    status: "inactive";
+    implementation: "dark-route-test-harness";
+    mounted: false;
+    wiredIntoAuthorization: false;
+    wiredIntoRoutes: false;
+    routeCount: number;
+    issuesCookies: false;
+    acceptsCookies: false;
+    issuesPairingCodes: false;
+    consumesPairingCodes: false;
+    issuesBrowserSessions: false;
+    issuesCsrfTokens: false;
+    validatesCsrfTokens: false;
+    authenticatesRequests: false;
     networkExposureSafe: false;
   };
   lifecycleCoordinator: {
