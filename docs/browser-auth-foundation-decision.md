@@ -1,7 +1,7 @@
 # Browser Auth Foundation Decision
 
 Status: accepted for isolated compatibility work. Better Auth is installed for
-an isolated backend proof only. This is not a live integration decision.
+isolated backend proofs only. This is not a live integration decision.
 
 ## Decision
 
@@ -91,15 +91,25 @@ shape.
   Express unless explicitly chosen. The isolated proof confirms the handler
   shape exists; a router adapter is still needed.
 - Session storage can live in AREPO app data, preferably with a deliberate
-  local SQLite strategy. This remains unproven.
+  local SQLite strategy. The isolated app-data proof now confirms Better Auth
+  can run migrations and persist sessions in `app-data/auth/better-auth.sqlite`
+  through Node's built-in `node:sqlite`; AREPO still needs schema ownership,
+  backup/reset, corruption handling, and stored session-token policy decisions.
 - Cookie names, `HttpOnly`, `SameSite`, `Secure`, `Path`, clearing behavior,
   and trusted origins can match AREPO policy.
 - Local pairing can create or attach a browser session without normal
-  username/password/social signup becoming the default UX. This remains
-  unproven through public/supported Better Auth APIs.
+  username/password/social signup becoming the default UX. The isolated
+  pairing-session proof can create an internal Better Auth user/session after
+  AREPO pairing acceptance, but a public/supported Better Auth session
+  attachment path remains unproven.
 - Revoke-current and revoke-all semantics are possible without exposing session
   token material. The isolated proof exercised these through Better Auth
   internals; the production adapter path remains unproven.
+- Deterministic expiry must be proven through an accepted request/session
+  adapter. The app-data proof can configure expiry/updateAge, but did not prove
+  expired-session filtering through the internal adapter path.
+- Raw token cookie injection remains rejected in the isolated proof, so signed
+  cookie issuance/clearing must be handled by a deliberate response adapter.
 - CSRF ownership is explicit before cookie-authenticated unsafe routes are live.
 - Better Auth outputs can be wrapped so audit/status/logging never leak
   secrets.
@@ -120,7 +130,8 @@ shape.
 
 ## Next Slice
 
-Run an isolated Better Auth app-data database and pairing-session adapter proof
-outside live server paths. It should prove local storage, pairing-to-session
-attachment, route adapter behavior, expiry, revocation, and cookie attributes
-without mounting live routes or changing protected-mode authorization.
+Run an isolated Better Auth `routeRequest()` to standard `Request`/`Response`
+adapter proof outside live server paths. It should prove signed cookie
+issuance/clearing observation, sanitized response wrapping, session lookup,
+revocation, and expiry behavior through the adapter boundary without mounting
+live routes or changing protected-mode authorization.

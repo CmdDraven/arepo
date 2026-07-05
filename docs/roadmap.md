@@ -97,8 +97,15 @@ with the current fit and proof work captured in
 [docs/better-auth-compatibility-spike.md](better-auth-compatibility-spike.md).
 `better-auth@1.6.23` is installed for an isolated backend dependency proof that
 checks import/instantiation, standard handler shape, cookie policy control,
-sign-out clearing metadata, and internal session/revocation behavior. No Better
-Auth handler is mounted and live browser auth remains inactive.
+sign-out clearing metadata, and internal session/revocation behavior. Isolated
+app-data and pairing-session proofs now show that Better Auth can use a local
+SQLite app-data store through Node `node:sqlite`, persist sessions across
+database reopen, revoke one or all sessions, and create an internal Better Auth
+session after an AREPO pairing acceptance. Remaining blockers include a
+public/supported pairing-to-session path, signed cookie response adaptation,
+deterministic expiry proof, stored session-token policy, AREPO scope metadata,
+and CSRF ownership. No Better Auth handler is mounted and live browser auth
+remains inactive.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

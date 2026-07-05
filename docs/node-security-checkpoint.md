@@ -87,6 +87,19 @@ an isolated backend proof. It verifies import/instantiation, handler shape,
 cookie attribute control, sign-out clearing metadata, and internal
 session/revocation behavior while keeping Better Auth forbidden from live
 server, authorization, and frontend paths.
+`backend/betterAuthAppDataStoreProof.ts` now proves that Better Auth can use a
+local app-data SQLite database at `app-data/auth/better-auth.sqlite` through
+Node's built-in `node:sqlite` without adding a separate database dependency.
+The proof runs migrations, verifies persistence across database reopen,
+exercises session lookup, revoke-current, and revoke-all, and records remaining
+schema ownership, backup/reset/corruption, stored session-token policy, and
+deterministic expiry blockers.
+`backend/betterAuthPairingSessionAdapterProof.ts` now proves that an isolated
+AREPO pairing completion can create an internal Better Auth user/session
+without enabling username/password, OAuth, social login, or frontend credential
+storage. It keeps public/supported pairing-to-session attachment, signed cookie
+response adaptation, arbitrary AREPO scope metadata, and CSRF ownership as
+unresolved blockers.
 
 The remaining sections preserve design rationale and historical checkpoint
 language. Where older text says a component is future/planning-only, prefer the
@@ -225,6 +238,15 @@ Implemented components include:
   exercising dark-harness browser-auth issuance semantics. It is not runtime
   configurable and is forbidden from live server, route, authorization, and
   frontend paths.
+- `backend/betterAuthDependencyProof.ts`,
+  `backend/betterAuthAppDataStoreProof.ts`, and
+  `backend/betterAuthPairingSessionAdapterProof.ts`: isolated Better Auth proof
+  modules. They are not mounted, are forbidden from live server/auth/frontend
+  paths by inactive-boundary tests, and do not enable browser auth. They prove
+  Better Auth import/handler shape, app-data SQLite storage, internal session
+  lookup/revocation, and internal pairing-to-session feasibility while
+  recording remaining adapter, cookie, expiry, storage-policy, and CSRF
+  blockers.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

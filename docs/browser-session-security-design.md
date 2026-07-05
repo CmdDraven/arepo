@@ -15,9 +15,12 @@ mature auth/session foundation AREPO adopts later.
 [Browser Auth Foundation Decision](browser-auth-foundation-decision.md)
 selects Better Auth as the preferred isolated compatibility target, with
 `express-session` or a comparable server-side session core retained as backup.
-`better-auth@1.6.23` is installed for an isolated backend proof only. The proof
-is not mounted, does not emit live cookies, does not accept cookies as live
-credentials, and does not change bearer-token protected mode.
+`better-auth@1.6.23` is installed for isolated backend proofs only. The proofs
+now cover import/handler shape, app-data SQLite storage through Node
+`node:sqlite`, internal session lookup/revocation, and internal
+pairing-to-session feasibility. They are not mounted, do not emit live cookies,
+do not accept cookies as live credentials, and do not change bearer-token
+protected mode.
 
 ## Current V1 Posture
 
@@ -638,6 +641,12 @@ The current scaffold remains inert for browser sessions:
     into planned `Set-Cookie` strings for unit tests, but live routes must not
     emit those headers, accept cookies, or expose cookie values in diagnostics,
     status, audit events, errors, or inactive responses.
+21. Keep the Better Auth dependency, app-data store, and pairing-session proofs
+    isolated from live server paths. They may validate local SQLite storage,
+    internal pairing-to-session behavior, session lookup, revoke-current,
+    revoke-all, and sanitized response observations, but they must not mount
+    Better Auth, issue live cookies, accept cookies, parse cookies for live
+    authorization, validate live CSRF, or change bearer-token protected mode.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

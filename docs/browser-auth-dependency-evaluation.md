@@ -221,11 +221,17 @@ Decision follow-up:
   selects Better Auth as the preferred isolated compatibility target.
 - [Better Auth Compatibility Spike](better-auth-compatibility-spike.md)
   records the requirement fit, blockers, open questions, and proof tests for the
-  next dependency spike.
+  isolated dependency and app-data/pairing-session proofs.
 - `better-auth@1.6.23` is now installed for
   `backend/betterAuthDependencyProof.ts`, an isolated test-only proof. It is not
   mounted in the live backend, does not change bearer-token protected mode, and
   does not enable browser auth.
+- `backend/betterAuthAppDataStoreProof.ts` proves local app-data SQLite storage
+  through Node `node:sqlite` without adding a separate database dependency.
+- `backend/betterAuthPairingSessionAdapterProof.ts` proves isolated internal
+  pairing-to-session creation, while keeping public session attachment, signed
+  cookie response adaptation, deterministic expiry, and CSRF ownership as
+  blockers.
 
 Backup direction:
 
@@ -262,26 +268,26 @@ AREPO-owned:
 
 ## Safest Next Slice
 
-Add a dependency decision-record/integration-spike slice that does not enable
-auth:
+Add an isolated Better Auth `routeRequest()` to standard `Request`/`Response`
+adapter proof that does not enable auth:
 
-- Define a `docs/browser-auth-foundation-decision.md` ADR selecting the
-  preferred foundation for an isolated spike.
-- If Better Auth is selected, create a test-only adapter design that maps an
-  AREPO dark-harness pairing completion into Better Auth-style session
-  requirements without mounting routes.
-- Decide whether the proof needs a real dependency install or can be modeled
-  from official APIs first.
-- Define acceptance criteria: no live route mounting, no live `Set-Cookie`, no
-  cookie credential acceptance, no frontend storage, no bearer-token behavior
-  changes, and inactive-boundary tests remain green.
+- Translate AREPO's route request shape into standard `Request` only inside the
+  isolated proof boundary.
+- Wrap Better Auth `Response` output into sanitized AREPO response metadata.
+- Prove signed session-cookie issuance and clearing from the pairing-session
+  proof path without emitting live `Set-Cookie` headers.
+- Prove or explicitly block session lookup, revoke-current, revoke-all, and
+  expiry through the accepted adapter boundary.
+- Keep acceptance criteria unchanged: no live route mounting, no live
+  `Set-Cookie`, no cookie credential acceptance, no frontend storage, no
+  bearer-token behavior changes, and inactive-boundary tests remain green.
 
 ## Medium-Term Integration Path
 
 1. Choose the foundation in a decision record.
-2. Build an isolated test-only module that exercises the chosen library's
-   session creation, session lookup, logout, revocation, and cookie attributes
-   outside `server.ts`.
+2. Build isolated test-only modules that exercise the chosen library's session
+   creation, local app-data persistence, session lookup, logout, revocation,
+   signed cookie response behavior, and cookie attributes outside `server.ts`.
 3. Add a compatibility adapter from library session identity to AREPO route
    permissions, still unmounted.
 4. Add CSRF verification tests for unsafe cookie-backed requests, still
