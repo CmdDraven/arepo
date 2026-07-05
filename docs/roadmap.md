@@ -77,10 +77,20 @@ future route execution in tests while remaining unmounted and blocked. A
 disabled browser-auth request-shape adapter now sanitizes live-like request
 shapes for that dark harness without mounting or authenticating. The dark
 harness can now exercise test-only pairing-to-session-to-CSRF issuance through
-the unmounted lifecycle coordinator, while live routes remain inactive. CSRF
-live enforcement, browser session issuance, cookie
-issuance/acceptance, pairing route activation, frontend token storage,
-remote-node, and federation work remain deferred.
+the unmounted lifecycle coordinator, while live routes remain inactive. Test-only
+cookie serialization planning now validates future session/CSRF cookie
+attributes, redaction, and clearing behavior inside that unmounted harness path
+without emitting live `Set-Cookie` headers. CSRF live enforcement, browser
+session issuance from live routes, cookie issuance/acceptance, pairing route
+activation, frontend token storage, remote-node, and federation work remain
+deferred.
+
+Further custom live browser-auth implementation is paused pending
+[docs/browser-auth-dependency-evaluation.md](browser-auth-dependency-evaluation.md).
+The current direction is to avoid hand-rolling the final production
+browser-session mechanism, keep bearer-token protected mode as the live path,
+and use the existing browser-auth dark-path scaffolding as acceptance criteria
+for a mature auth/session dependency spike.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

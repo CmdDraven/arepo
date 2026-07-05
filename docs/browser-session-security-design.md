@@ -7,6 +7,11 @@ workflows, documented in
 does not implement browser sessions, cookies, live CSRF-protected browser
 authentication, browser login, pairing UI, or frontend token storage. Protected
 mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
+Further custom live browser-auth implementation is paused pending the
+[Browser Auth Dependency Evaluation](browser-auth-dependency-evaluation.md).
+The existing dark-path scaffolding remains useful as threat-model, route
+contract, activation-gate, and acceptance-test infrastructure for whichever
+mature auth/session foundation AREPO adopts later.
 
 ## Current V1 Posture
 
@@ -532,16 +537,16 @@ Rules for future protected mode:
 Future protected mode should classify requests before deciding which browser
 session checks apply.
 
-| Class | Examples | Cookie session checks |
-| --- | --- | --- |
-| Reduced anonymous status | reduced `GET /api/health`, reduced `GET /api/node/status` | No session required; must expose minimal public data only. |
-| Safe/read metadata | generated index, index filters, index search, storage summary, vault file listing | Session/auth required for protected data; CSRF usually not required for `GET`, but origin policy still applies for browser UI. |
-| Source-content read | `GET /api/vaults/:vaultId/file` | Session/auth and `readContent`; CSRF usually not required for `GET`, but origin policy still applies. |
-| Source mutation | write file, create file/folder, rename, reindex if triggered by browser session | Session/auth, authorization, origin check, and CSRF token. |
-| Delete | delete file | Session/auth, `deleteFiles`, origin check, CSRF token, stronger confirmation, and audit. |
-| Auth management | credential creation, revocation, auth mode changes, node-secret rotation | Session/auth, `manageAuth`, origin check, CSRF token, stronger confirmation, and audit. |
-| Vault management | vault registration/removal, vault permission changes | Session/auth, `manageVaults`, origin check, CSRF token, local-operator confirmation, and audit. |
-| Audit read | future audit endpoints | Session/auth, `readAudit`, origin check; CSRF not normally required for `GET`, but responses may reveal sensitive security metadata. |
+| Class                    | Examples                                                                          | Cookie session checks                                                                                                                |
+| ------------------------ | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Reduced anonymous status | reduced `GET /api/health`, reduced `GET /api/node/status`                         | No session required; must expose minimal public data only.                                                                           |
+| Safe/read metadata       | generated index, index filters, index search, storage summary, vault file listing | Session/auth required for protected data; CSRF usually not required for `GET`, but origin policy still applies for browser UI.       |
+| Source-content read      | `GET /api/vaults/:vaultId/file`                                                   | Session/auth and `readContent`; CSRF usually not required for `GET`, but origin policy still applies.                                |
+| Source mutation          | write file, create file/folder, rename, reindex if triggered by browser session   | Session/auth, authorization, origin check, and CSRF token.                                                                           |
+| Delete                   | delete file                                                                       | Session/auth, `deleteFiles`, origin check, CSRF token, stronger confirmation, and audit.                                             |
+| Auth management          | credential creation, revocation, auth mode changes, node-secret rotation          | Session/auth, `manageAuth`, origin check, CSRF token, stronger confirmation, and audit.                                              |
+| Vault management         | vault registration/removal, vault permission changes                              | Session/auth, `manageVaults`, origin check, CSRF token, local-operator confirmation, and audit.                                      |
+| Audit read               | future audit endpoints                                                            | Session/auth, `readAudit`, origin check; CSRF not normally required for `GET`, but responses may reveal sensitive security metadata. |
 
 Preflight `OPTIONS` is not a class of authorization. It can fail or pass before
 auth checks, but it must not grant access to the actual operation.
@@ -622,6 +627,11 @@ The current scaffold remains inert for browser sessions:
 19. Keep the test-only issuance allowance out of runtime config, environment
     variables, live routes, and frontend code. It may exercise pairing,
     session, and CSRF semantics inside the unmounted harness only.
+20. Keep test-only cookie serialization planning inside the unmounted harness
+    path. It may convert internal test-only session and CSRF issuance material
+    into planned `Set-Cookie` strings for unit tests, but live routes must not
+    emit those headers, accept cookies, or expose cookie values in diagnostics,
+    status, audit events, errors, or inactive responses.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

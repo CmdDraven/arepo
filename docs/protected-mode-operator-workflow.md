@@ -20,6 +20,11 @@ credential-management UI. The `x-arepo-confirmation: confirm` header is a
 backend/operator confirmation signal for protected routes, not the final
 browser UX.
 
+Further browser-session production work is paused pending
+[Browser Auth Dependency Evaluation](browser-auth-dependency-evaluation.md).
+Live protected mode remains bearer-token based, and browser-session/pairing
+routes remain inactive stubs.
+
 ## Configuration
 
 Disabled mode remains the default compatibility mode:
@@ -381,6 +386,8 @@ Markdown.
 - Protected mode does not make LAN, reverse-proxy, or internet exposure safe.
 - Browser login is not implemented.
 - Browser sessions are not accepted.
+- Browser-auth cookie serialization exists only in the unmounted test harness.
+  Planned cookie headers are not emitted by live routes.
 - Live CSRF enforcement is not wired because browser-session auth is not live.
 - Frontend token storage is not implemented.
 - There is no full credential-management UI.

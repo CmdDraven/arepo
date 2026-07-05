@@ -4,6 +4,12 @@ import {
   type BrowserAuthActivationGateInput,
 } from "./browserAuthActivationGate.js";
 import {
+  planBrowserAuthTestOnlyClearCookies,
+  planBrowserAuthTestOnlyIssueCookies,
+  type BrowserAuthCookieClearingPlan,
+  type BrowserAuthCookieSerializationPlan,
+} from "./browserAuthCookieSerialization.js";
+import {
   planBrowserAuthRouteContracts,
   type BrowserAuthRouteContract,
   type BrowserAuthRouteContractPlan,
@@ -111,6 +117,7 @@ export type BrowserAuthRouteHarnessTestOnlySuccess = {
         csrfTokenId: string;
         csrfTokenSecret: string;
         csrfExpiresAtMs: number;
+        plannedCookieOutput: BrowserAuthCookieSerializationPlan;
       }
     | {
         operation: "csrf-issue";
@@ -128,12 +135,14 @@ export type BrowserAuthRouteHarnessTestOnlySuccess = {
         sessionId: string;
         revokedSession: boolean;
         revokedCsrfTokenCount: number;
+        plannedCookieClearing: BrowserAuthCookieClearingPlan;
       }
     | {
         operation: "revoke-all-sessions";
         subjectId: string;
         revokedSessionCount: number;
         revokedCsrfTokenCount: number;
+        plannedCookieClearing: BrowserAuthCookieClearingPlan;
       };
 };
 
@@ -369,6 +378,13 @@ function activeTestOnlyResult(input: {
         csrfTokenId: csrf.csrfTokenId,
         csrfTokenSecret: csrf.csrfTokenSecret,
         csrfExpiresAtMs: csrf.expiresAtMs,
+        plannedCookieOutput: planBrowserAuthTestOnlyIssueCookies({
+          sessionId: session.sessionId,
+          sessionVerifierSecret: session.sessionVerifierSecret,
+          csrfTokenId: csrf.csrfTokenId,
+          csrfTokenSecret: csrf.csrfTokenSecret,
+          localDevelopment: input.request.localOnlyMode ?? true,
+        }),
       });
     }
     case "browser-csrf-issue": {
@@ -410,6 +426,9 @@ function activeTestOnlyResult(input: {
         sessionId: input.request.sessionId,
         revokedSession: revoked.revokedSession,
         revokedCsrfTokenCount: revoked.revokedCsrfTokenCount,
+        plannedCookieClearing: planBrowserAuthTestOnlyClearCookies({
+          localDevelopment: input.request.localOnlyMode ?? true,
+        }),
       });
     }
     case "browser-session-revoke-all": {
@@ -422,6 +441,9 @@ function activeTestOnlyResult(input: {
         subjectId,
         revokedSessionCount: revoked.revokedSessionCount,
         revokedCsrfTokenCount: revoked.revokedCsrfTokenCount,
+        plannedCookieClearing: planBrowserAuthTestOnlyClearCookies({
+          localDevelopment: input.request.localOnlyMode ?? true,
+        }),
       });
     }
   }

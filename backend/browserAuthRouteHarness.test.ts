@@ -291,6 +291,27 @@ test("test-only harness flow creates pairing session and csrf records without st
   }
   assert.equal(complete.result.sessionVerifierSecret, sessionSecret);
   assert.equal(complete.result.csrfTokenSecret, csrfSecret);
+  assert.equal(complete.result.plannedCookieOutput.status, "test-only-planned");
+  assert.equal(complete.result.plannedCookieOutput.operation, "issue");
+  assert.equal(complete.result.plannedCookieOutput.testOnly, true);
+  assert.equal(complete.result.plannedCookieOutput.emitsLiveSetCookieHeader, false);
+  assert.equal(complete.result.plannedCookieOutput.acceptsCookieCredential, false);
+  assert.equal(complete.result.plannedCookieOutput.serializedSetCookieHeaders.length, 2);
+  assert.match(
+    complete.result.plannedCookieOutput.serializedSetCookieHeaders[0],
+    /^arepo_session=/,
+  );
+  assert.match(complete.result.plannedCookieOutput.serializedSetCookieHeaders[0], /HttpOnly/);
+  assert.match(complete.result.plannedCookieOutput.serializedSetCookieHeaders[1], /^arepo_csrf=/);
+  assert.equal(
+    complete.result.plannedCookieOutput.serializedSetCookieHeaders[0].includes(sessionSecret),
+    true,
+  );
+  assert.equal(
+    complete.result.plannedCookieOutput.serializedSetCookieHeaders[1].includes(csrfSecret),
+    true,
+  );
+  assertNoUnsafeMaterial(complete.result.plannedCookieOutput.redactedSummary);
   const sessionRecord = coordinator.stores.sessions.getSession(complete.result.sessionId);
   const csrfRecord = coordinator.stores.csrfTokens.getToken(complete.result.csrfTokenId);
   assert.match(sessionRecord?.verifierHash ?? "", /^sha256:/);
@@ -429,6 +450,13 @@ test("test-only session status logout revoke current and revoke all mutate only 
   if (logout.ok && logout.result.operation === "logout") {
     assert.equal(logout.result.revokedSession, true);
     assert.equal(logout.result.revokedCsrfTokenCount, 1);
+    assert.equal(logout.result.plannedCookieClearing.operation, "clear");
+    assert.deepEqual(logout.setCookieHeaders, []);
+    assert.match(
+      logout.result.plannedCookieClearing.serializedSetCookieHeaders[0],
+      /^arepo_session=; Max-Age=0/,
+    );
+    assertNoUnsafeMaterial(logout.result.plannedCookieClearing.redactedSummary);
   } else {
     throw new Error("Expected logout result.");
   }
@@ -450,6 +478,12 @@ test("test-only session status logout revoke current and revoke all mutate only 
   if (revokeCurrent.ok && revokeCurrent.result.operation === "revoke-current-session") {
     assert.equal(revokeCurrent.result.revokedSession, true);
     assert.equal(revokeCurrent.result.revokedCsrfTokenCount, 1);
+    assert.equal(revokeCurrent.result.plannedCookieClearing.operation, "clear");
+    assert.deepEqual(revokeCurrent.setCookieHeaders, []);
+    assert.match(
+      revokeCurrent.result.plannedCookieClearing.serializedSetCookieHeaders[0],
+      /^arepo_session=; Max-Age=0/,
+    );
   } else {
     throw new Error("Expected revoke current result.");
   }
@@ -467,6 +501,12 @@ test("test-only session status logout revoke current and revoke all mutate only 
   if (revokeAll.ok && revokeAll.result.operation === "revoke-all-sessions") {
     assert.equal(revokeAll.result.revokedSessionCount, 1);
     assert.equal(revokeAll.result.revokedCsrfTokenCount, 1);
+    assert.equal(revokeAll.result.plannedCookieClearing.operation, "clear");
+    assert.deepEqual(revokeAll.setCookieHeaders, []);
+    assert.match(
+      revokeAll.result.plannedCookieClearing.serializedSetCookieHeaders[0],
+      /^arepo_session=; Max-Age=0/,
+    );
   } else {
     throw new Error("Expected revoke all result.");
   }
