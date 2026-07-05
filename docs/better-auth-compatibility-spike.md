@@ -27,6 +27,9 @@ Isolated proofs:
   routeRequest-style input can be adapted to Better Auth's standard
   `Request`/`Response` handler boundary and that handler responses can be
   wrapped with redacted cookie/body metadata.
+- `backend/betterAuthCsrfOwnershipProof.ts` proves Better Auth's own unsafe
+  auth endpoints enforce trusted-origin behavior, but does not provide a
+  supported CSRF token issue/verify API for arbitrary AREPO API routes.
 - No Better Auth handler is mounted in `backend/server.ts`.
 - No live route emits Better Auth cookies or accepts Better Auth cookies as
   credentials.
@@ -52,9 +55,11 @@ isolated proofs strengthen the recommendation: app-data SQLite storage works
 without a new database dependency, and internal pairing-to-session creation is
 possible. AREPO's routeRequest-style shape can be adapted to Better Auth's
 standard handler boundary, and signed cookie issuance/clearing can be observed
-and redacted through that boundary. Public/supported pairing-session
-attachment, pairing-driven cookie delivery, deterministic expiry proof, and
-CSRF ownership remain unresolved.
+and redacted through that boundary. The CSRF ownership proof establishes that
+AREPO should own CSRF validation for unsafe cookie-authenticated AREPO API
+routes while Better Auth owns protection for its own auth endpoints.
+Public/supported pairing-session attachment, pairing-driven cookie delivery,
+deterministic expiry proof, and storage policy remain unresolved.
 
 ## Requirement Fit
 
@@ -76,7 +81,7 @@ CSRF ownership remain unresolved.
 | Route contract model            | compatible        | AREPO       | Contracts can wrap any foundation.                                                                                                                                           |
 | Activation gate/preflight       | compatible        | AREPO       | Gates must block mounting until activation.                                                                                                                                  |
 | Audit without secrets           | needs-spike       | AREPO       | Better Auth outputs and hooks must be sanitized before audit/status/logging.                                                                                                 |
-| CSRF ownership                  | unknown           | shared      | Must prove whether Better Auth covers AREPO unsafe API routes or AREPO owns CSRF.                                                                                            |
+| CSRF ownership                  | compatible        | AREPO       | Better Auth protects its own auth endpoints; AREPO should own CSRF for arbitrary unsafe AREPO API routes.                                                                    |
 | Inactive-boundary regression    | compatible        | AREPO       | Tests can forbid imports and mounting until activation.                                                                                                                      |
 | Bearer-token migration          | likely-compatible | shared      | Coexistence should work if routes and principals are kept separate.                                                                                                          |
 | Custom Node router integration  | compatible        | shared      | Isolated adapter proof converts AREPO routeRequest-style input to standard Request and wraps Better Auth Response safely.                                                    |
@@ -92,8 +97,8 @@ CSRF ownership remain unresolved.
   once activation gates allow mounting, or does it need a narrower interface?
 - Can cookie `Path`, `SameSite`, `Secure`, `HttpOnly`, names, clearing headers,
   and trusted origins match AREPO policy exactly?
-- Does Better Auth protect AREPO's arbitrary unsafe API routes from CSRF, or
-  must AREPO retain separate CSRF validation?
+- Where should AREPO mount its future CSRF guard relative to browser-session
+  authentication, route authorization, audit, and mutation handlers?
 - Can revoke-current and revoke-all avoid exposing raw session token material?
 - Which Better Auth response/hook fields are safe for AREPO audit events?
 - Can all Better Auth integration code remain forbidden from live server paths
@@ -148,6 +153,17 @@ Passed:
   boundary.
 - Direct raw token cookie injection remains rejected through the adapter
   boundary.
+- Better Auth rejects unsafe signed-cookie auth endpoint requests with missing
+  or untrusted Origin and allows the trusted local origin.
+- The CSRF ownership proof did not find a supported Better Auth CSRF token
+  issue/verify API for arbitrary AREPO routeRequest handlers.
+- Future cookie-backed AREPO POST, PUT, PATCH, DELETE, logout, revoke, config,
+  vault, pairing, and session mutations require AREPO-owned CSRF validation
+  before mutation.
+- SameSite remains useful but insufficient by itself, and Origin/Referer checks
+  are supplemental rather than replacements for CSRF token validation.
+- AREPO's inert CSRF token store/verifier primitives fit the likely ownership
+  model and keep raw tokens and hashes out of diagnostics.
 
 Still unresolved:
 
@@ -165,7 +181,8 @@ Still unresolved:
 - AREPO-specific scope metadata such as vault permission posture. The proof did
   not establish arbitrary session metadata support without schema/authorization
   design.
-- CSRF protection for AREPO's own unsafe cookie-authenticated API routes.
+- An unmounted AREPO-owned CSRF request adapter for future cookie-authenticated
+  AREPO API routes.
 - Sanitized wrapping of Better Auth hooks/outputs for AREPO audit/status beyond
   the response-envelope proof.
 
@@ -175,7 +192,7 @@ Still unresolved:
 - `deterministic-expiry-adapter-proof-needed`
 - `better-auth-session-token-storage-policy-review-needed`
 - `pairing-cookie-issuance-path-unproven`
-- `csrf-ownership-unresolved`
+- `arepo-owned-csrf-required-for-unsafe-api-routes`
 - `better-auth-output-sanitization-unproven`
 - `coexistence-routing-proof-needed`
 - `mounting-gate-tests-needed`
@@ -193,8 +210,8 @@ A later isolated security proof should test, outside `server.ts`:
   operator/principal through the accepted adapter path.
 - Decide whether Better Auth's `session.token` column is acceptable inside
   AREPO app data.
-- Decide whether Better Auth or AREPO owns CSRF for unsafe cookie-authenticated
-  API routes.
+- Build an unmounted AREPO-owned CSRF request adapter for unsafe
+  cookie-authenticated AREPO API routes.
 - Confirm no raw session token, cookie value, bearer token, authorization
   header, hash, salt, or verifier internals appear in sanitized wrappers.
 - Confirm Better Auth remains unmounted and forbidden from live authorization
@@ -216,11 +233,12 @@ A later isolated security proof should test, outside `server.ts`:
 
 ## Recommended Next Slice
 
-Run an isolated CSRF ownership proof for Better Auth plus AREPO unsafe API
-routes, or a storage-policy decision slice for Better Auth's stored
-`session.token` model. The CSRF proof is the stronger next step if cookie-backed
-browser auth remains the target: it should determine whether Better Auth
-protects only its own auth endpoints or can safely cover AREPO's arbitrary
-unsafe API routes. It must stay outside `server.ts`, must not emit live cookies
-or accept cookie credentials in live authorization, and must not mount browser
-auth.
+Run an unmounted AREPO-owned CSRF adapter proof for future cookie-backed unsafe
+AREPO API routes, or a storage-policy decision slice for Better Auth's stored
+`session.token` model. The CSRF adapter proof is the stronger next step if
+cookie-backed browser auth remains the target: it should consume AREPO's inert
+CSRF token store/verifier, classify safe versus unsafe methods, validate
+Origin/Referer as supplemental checks, produce sanitized denial reason codes,
+and prove validation happens before mutation. It must stay outside
+`server.ts`, must not emit live cookies or accept cookie credentials in live
+authorization, and must not mount browser auth.

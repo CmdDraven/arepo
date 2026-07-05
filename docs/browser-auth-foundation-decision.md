@@ -114,6 +114,9 @@ shape.
   cookie issuance and clearing are observable through Better Auth's normal
   handler routes, but pairing-driven signed cookie issuance remains unproven.
 - CSRF ownership is explicit before cookie-authenticated unsafe routes are live.
+  The isolated CSRF ownership proof shows Better Auth protects its own auth
+  endpoints with trusted-origin behavior, but AREPO should own CSRF validation
+  for arbitrary unsafe AREPO API routes.
 - Better Auth outputs can be wrapped so audit/status/logging never leak
   secrets.
 - Inactive-boundary regression tests can forbid accidental mounting until a
@@ -133,9 +136,9 @@ shape.
 
 ## Next Slice
 
-Run an isolated CSRF ownership proof for Better Auth plus AREPO unsafe API
-routes, or a storage-policy decision slice for Better Auth's stored
-`session.token` model. The CSRF proof should determine whether Better Auth can
-cover AREPO's arbitrary unsafe cookie-authenticated API routes or whether AREPO
-must keep a separate CSRF guard. It must remain outside live server paths and
-must not mount browser auth.
+Run an unmounted AREPO-owned CSRF adapter proof, or a storage-policy decision
+slice for Better Auth's stored `session.token` model. The CSRF adapter proof
+should consume AREPO's inert CSRF token store/verifier, classify safe versus
+unsafe route methods, validate Origin/Referer as supplemental checks, and prove
+sanitized denial happens before mutation. It must remain outside live server
+paths and must not mount browser auth.

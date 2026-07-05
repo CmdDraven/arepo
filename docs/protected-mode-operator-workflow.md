@@ -30,8 +30,10 @@ handler is mounted in the live backend.
 Better Auth is installed only for isolated backend proofs. Those proofs now
 cover import/handler shape, app-data SQLite storage, internal session
 lookup/revocation, internal pairing-to-session feasibility, and routeRequest to
-standard `Request`/`Response` adapter behavior, but operators should not expect
-browser login or browser-session cookies to work.
+standard `Request`/`Response` adapter behavior. They also establish that AREPO
+should own CSRF validation for future unsafe AREPO API routes. Operators should
+not expect browser login, browser-session cookies, or live CSRF behavior to
+work.
 
 ## Configuration
 
@@ -265,6 +267,10 @@ proofs are also backend test infrastructure only. They use app-data SQLite and
 Better Auth internals/handlers to evaluate future storage, pairing, cookie
 metadata, and adapter semantics, but they are not mounted, configured by
 operators, or used for live authorization.
+The isolated Better Auth CSRF ownership proof is also backend test
+infrastructure only. It does not enable CSRF validation in live routes; it
+records that future cookie-backed AREPO unsafe API routes need an AREPO-owned
+CSRF guard.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

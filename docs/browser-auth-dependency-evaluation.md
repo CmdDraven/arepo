@@ -238,6 +238,9 @@ Decision follow-up:
   can be observed and redacted through normal Better Auth handler routes,
   session lookup works through the signed cookie, and raw token injection
   remains rejected.
+- `backend/betterAuthCsrfOwnershipProof.ts` proves Better Auth protects its own
+  unsafe auth endpoints with trusted-origin behavior, but AREPO should own CSRF
+  validation for arbitrary unsafe AREPO API routes.
 
 Backup direction:
 
@@ -274,15 +277,14 @@ AREPO-owned:
 
 ## Safest Next Slice
 
-Add an isolated CSRF ownership proof that does not enable auth:
+Add an unmounted AREPO-owned CSRF adapter proof that does not enable auth:
 
-- Determine whether Better Auth's CSRF/trusted-origin behavior protects only
-  Better Auth endpoints or can safely cover AREPO's arbitrary unsafe API
-  routes.
-- Model an AREPO unsafe route behind cookie-backed auth in an isolated proof
-  boundary.
-- Decide whether AREPO must keep a separate CSRF token/store/verifier path for
-  non-Better Auth API routes.
+- Consume AREPO's inert CSRF token store/verifier in a request-shaped adapter.
+- Model an AREPO unsafe route behind future cookie-backed auth and prove CSRF
+  validation happens before mutation.
+- Classify safe/read-only methods separately from unsafe methods.
+- Treat Origin/Referer checks as supplemental and SameSite as helpful but
+  insufficient by itself.
 - Keep deterministic expiry and Better Auth `session.token` storage policy as
   explicit separate blockers if they are not handled in this slice.
 - Keep acceptance criteria unchanged: no live route mounting, no live

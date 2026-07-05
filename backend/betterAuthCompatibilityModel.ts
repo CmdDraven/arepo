@@ -256,12 +256,14 @@ const findingByRequirement = new Map<
   [
     "csrf-ownership",
     {
-      status: "unknown",
-      delegatedTo: "shared",
+      status: "compatible",
+      delegatedTo: "arepo",
       summary:
-        "AREPO must prove whether Better Auth covers its unsafe API CSRF pattern or own CSRF itself.",
-      blockerCodes: ["csrf-ownership-unresolved"],
-      openQuestions: ["Does Better Auth validate CSRF for arbitrary AREPO unsafe API routes?"],
+        "Better Auth can own its auth endpoint protections; AREPO should own CSRF validation for arbitrary unsafe AREPO API routes.",
+      blockerCodes: ["arepo-owned-csrf-adapter-proof-needed"],
+      openQuestions: [
+        "Where should AREPO mount the future CSRF guard relative to browser-session auth and route authorization?",
+      ],
       proofRequiredBeforeLiveActivation: true,
     },
   ],

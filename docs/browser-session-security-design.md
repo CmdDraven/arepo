@@ -23,6 +23,9 @@ AREPO-style request input can reach Better Auth's standard handler boundary and
 that handler responses can be wrapped with redacted cookie/body metadata. They
 are not mounted, do not emit live cookies, do not accept cookies as live
 credentials, and do not change bearer-token protected mode.
+The CSRF ownership proof shows Better Auth protects its own unsafe auth
+endpoints with trusted-origin behavior, while AREPO should own CSRF validation
+for arbitrary unsafe AREPO API routes.
 
 ## Current V1 Posture
 
@@ -655,6 +658,12 @@ The current scaffold remains inert for browser sessions:
     signed-cookie session lookup in tests, but it must not become live route
     middleware or a cookie credential adapter until activation gates, CSRF,
     storage policy, and route contracts are deliberately wired.
+23. Keep the Better Auth CSRF ownership proof isolated from live server paths.
+    It may show Better Auth's own auth endpoint Origin behavior and classify
+    AREPO unsafe route requirements, but AREPO-owned CSRF validation for
+    non-auth API routes must remain unmounted until a deliberate adapter slice
+    proves token validation, supplemental Origin/Referer checks, sanitized
+    denial, and pre-mutation ordering.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

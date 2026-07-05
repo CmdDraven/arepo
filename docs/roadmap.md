@@ -106,11 +106,14 @@ proof now shows AREPO-style request input can reach Better Auth's standard
 handler boundary, signed cookie issuance/clearing can be observed and redacted
 through normal Better Auth handler routes, session lookup works through a
 signed cookie, sign-out invalidates that session, and direct raw token cookie
-injection remains rejected. Remaining blockers include a public/supported
-pairing-to-session path with pairing-driven cookie issuance, deterministic
-expiry proof, stored session-token policy, AREPO scope metadata, and CSRF
-ownership. No Better Auth handler is mounted and live browser auth remains
-inactive.
+injection remains rejected. An isolated CSRF ownership proof now shows Better
+Auth protects its own unsafe auth endpoints with trusted-origin behavior, while
+AREPO should own CSRF validation for future cookie-authenticated unsafe AREPO
+API routes. Remaining blockers include a public/supported pairing-to-session
+path with pairing-driven cookie issuance, deterministic expiry proof, stored
+session-token policy, AREPO scope metadata, and an unmounted AREPO-owned CSRF
+request adapter. No Better Auth handler is mounted and live browser auth
+remains inactive.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

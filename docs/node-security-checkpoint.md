@@ -108,6 +108,14 @@ through Better Auth's normal handler routes, session lookup works through the
 signed cookie, sign-out invalidates that session, and direct raw token cookie
 injection remains rejected. Pairing-driven cookie issuance, deterministic
 expiry, stored session-token policy, and CSRF ownership remain unresolved.
+`backend/betterAuthCsrfOwnershipProof.ts` now proves that Better Auth rejects
+unsafe signed-cookie auth endpoint requests with missing or untrusted Origin
+and allows the trusted local origin, but does not provide proven CSRF coverage
+for arbitrary AREPO API routes. AREPO should own CSRF validation for future
+cookie-authenticated AREPO POST, PUT, PATCH, DELETE, logout, revoke, config,
+vault, pairing, and session mutations. SameSite is helpful but insufficient by
+itself, and Origin/Referer checks are supplemental rather than replacements for
+CSRF token validation.
 
 The remaining sections preserve design rationale and historical checkpoint
 language. Where older text says a component is future/planning-only, prefer the
@@ -256,8 +264,10 @@ Implemented components include:
   lookup/revocation, internal pairing-to-session feasibility, routeRequest to
   standard Request conversion, sanitized Response wrapping, signed cookie
   issuance/clearing observation, signed-cookie session lookup, and direct raw
-  token rejection while recording remaining pairing-cookie, expiry,
-  storage-policy, and CSRF blockers.
+  token rejection. The CSRF ownership proof records that Better Auth owns its
+  auth endpoint protections while AREPO should own CSRF for unsafe AREPO API
+  routes. Remaining blockers include pairing-cookie issuance, expiry,
+  storage-policy, and an unmounted AREPO-owned CSRF request adapter.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and
