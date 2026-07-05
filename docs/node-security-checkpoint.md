@@ -58,6 +58,10 @@ local bearer-token API/operator use:
   planning/tests only. The harness models the future route execution structure,
   but the gate blocks active behavior and neither module is mounted into live
   routes, middleware, enforcement, request authorization, or frontend code.
+- A disabled browser-auth request-shape adapter exists for planning/tests only.
+  It converts live-like request shapes into sanitized dark-harness input, but is
+  not mounted and does not authenticate requests, validate CSRF, parse cookies
+  for live authorization, issue cookies, or accept cookies.
 
 See [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
 the current local operator commands and manual acceptance flow.
@@ -191,6 +195,10 @@ Implemented components include:
   always blocks browser-auth activation in this slice, and the harness returns
   sanitized inactive route results without issuing cookies, pairing codes,
   sessions, CSRF tokens, or live authorization decisions.
+- `backend/browserAuthRequestShapeAdapter.ts`: disabled browser-auth
+  request-shape adapter for tests only. It classifies live-like method/path,
+  sensitive-header presence, sanitized origin/referer posture, and locality
+  into dark-harness input without exposing header values or authenticating.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

@@ -73,8 +73,10 @@ future browser-auth route surface and required protections without mounting
 handlers. A pure browser-auth activation config policy planner now defines and
 validates future activation config concepts while still blocking activation
 today. A browser-auth dark route harness and explicit activation gate now model
-future route execution in tests while remaining unmounted and blocked. CSRF
-live enforcement, browser session issuance, cookie
+future route execution in tests while remaining unmounted and blocked. A
+disabled browser-auth request-shape adapter now sanitizes live-like request
+shapes for that dark harness without mounting or authenticating. CSRF live
+enforcement, browser session issuance, cookie
 issuance/acceptance, pairing route activation, frontend token storage,
 remote-node, and federation work remain deferred.
 

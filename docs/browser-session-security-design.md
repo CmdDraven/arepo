@@ -48,6 +48,11 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
   unmounted planning/test infrastructure. The harness can model future route
   flow internally, but the activation gate blocks all active behavior and the
   harness is not mounted into live HTTP routes or authorization.
+- A disabled browser-auth request-shape adapter exists as unmounted
+  planning/test infrastructure. It translates live-like request shapes into
+  sanitized dark-harness input, but does not parse cookies for live
+  authorization, validate CSRF, authenticate requests, issue cookies, or accept
+  cookies.
 - The frontend does not store bearer tokens.
 - Full authorized status reports `browserSessionAuth.status` as
   `planning-only`; reduced anonymous status does not expose session details.
@@ -606,6 +611,10 @@ The current scaffold remains inert for browser sessions:
     behavior until a later activation slice deliberately wires browser-session
     issuance, cookie delivery, CSRF validation, audit, and authorization
     together.
+18. Keep the disabled request-shape adapter unmounted. It may classify
+    live-like headers and route shapes for tests, but it must output only
+    sanitized presence/classification data and must not authenticate, validate
+    CSRF, issue cookies, or feed live authorization.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

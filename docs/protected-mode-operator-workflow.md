@@ -240,6 +240,10 @@ create a working browser-auth config flag.
 The browser-auth dark route harness and activation gate are also planning/test
 infrastructure only; the gate blocks active browser-auth behavior and the
 harness is not mounted into live HTTP routes.
+The disabled browser-auth request-shape adapter is unmounted test
+infrastructure only; it sanitizes live-like request shapes for the dark harness
+and does not authenticate requests, validate CSRF, or parse cookies for live
+authorization.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

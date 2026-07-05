@@ -45,6 +45,7 @@ const browserAuthPrimitiveImportSpecifiers = [
   "./browserAuthActivationConfigPolicy.js",
   "./browserAuthActivationGate.js",
   "./browserAuthRouteHarness.js",
+  "./browserAuthRequestShapeAdapter.js",
 ] as const;
 
 const browserAuthPrimitiveFactories = [
@@ -64,6 +65,7 @@ const browserAuthPrimitiveFactories = [
   "planBrowserAuthActivationConfigPolicy",
   "evaluateBrowserAuthActivationGate",
   "createBrowserAuthRouteHarness",
+  "adaptBrowserAuthRequestShape",
 ] as const;
 
 const secretSamples = [
