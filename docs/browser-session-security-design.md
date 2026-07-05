@@ -36,6 +36,10 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
   infrastructure only. It lists the gates that must be satisfied before future
   browser auth route mounting can be considered; current blockers are
   intentional and protective.
+- A browser-auth route contract planner exists as planning/status
+  infrastructure only. It documents the future pairing, session, CSRF, logout,
+  and revocation route surface and required protections without mounting routes
+  or changing live behavior.
 - The frontend does not store bearer tokens.
 - Full authorized status reports `browserSessionAuth.status` as
   `planning-only`; reduced anonymous status does not expose session details.
@@ -581,6 +585,10 @@ The current scaffold remains inert for browser sessions:
     blockers, warnings, and required confirmations, but it must not mount routes,
     issue cookies, accept cookies, validate CSRF tokens, or change live bearer
     authorization behavior.
+15. Keep the route contract planner pure and unmounted. It may document future
+    route methods, paths, audit categories, CSRF requirements, pairing
+    requirements, and browser-session requirements, but it must not register
+    handlers or alter live route behavior.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

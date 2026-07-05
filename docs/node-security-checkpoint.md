@@ -46,6 +46,10 @@ local bearer-token API/operator use:
 - A pure browser-auth activation preflight planner exists for planning/status
   only. It reports blockers, warnings, and required confirmations for any future
   browser-auth activation, while keeping browser auth inactive and unwired.
+- A pure browser-auth route contract planner exists for planning/status only.
+  It documents future browser-auth route contracts and required protections, but
+  does not mount routes, issue cookies, accept cookies, validate CSRF, or enable
+  browser sessions.
 
 See [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
 the current local operator commands and manual acceptance flow.
@@ -164,6 +168,10 @@ Implemented components include:
   surfaces, CSRF enforcement, cookie issuance/acceptance, persistence strategy,
   local-only or stronger network policy, inactive-boundary tests, and explicit
   operator confirmation without enabling browser auth.
+- `backend/browserAuthRouteContracts.ts`: pure browser-auth route contract
+  planner. It documents planned pairing, session, CSRF, logout, and revocation
+  route methods and paths plus future audit, CSRF, browser-session, and
+  pairing-code requirements without mounting or wiring any route behavior.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

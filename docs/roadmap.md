@@ -68,7 +68,9 @@ suite that guards against accidental browser-auth activation. An inert
 browser-auth lifecycle coordinator now composes these primitives in unit tests
 only and remains unmounted. A pure browser-auth activation preflight planner now
 documents activation blockers and required confirmations without enabling live
-browser auth. CSRF live enforcement, browser session issuance, cookie
+browser auth. A pure browser-auth route contract planner now documents the
+future browser-auth route surface and required protections without mounting
+handlers. CSRF live enforcement, browser session issuance, cookie
 issuance/acceptance, pairing route activation, frontend token storage,
 remote-node, and federation work remain deferred.
 

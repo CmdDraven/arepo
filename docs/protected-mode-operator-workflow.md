@@ -231,6 +231,9 @@ semantics internally but is not mounted into HTTP routes or authorization.
 The activation preflight planner is planning/status infrastructure only; it
 reports current blockers and required confirmations but does not activate
 browser auth.
+The browser-auth route contract planner is also planning/status infrastructure
+only; it documents future route contracts and required protections without
+mounting routes or changing live behavior.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

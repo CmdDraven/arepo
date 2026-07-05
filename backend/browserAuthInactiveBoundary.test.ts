@@ -41,6 +41,7 @@ const browserAuthPrimitiveImportSpecifiers = [
   "./browserHeaderSanitizer.js",
   "./browserAuthLifecycleCoordinator.js",
   "./browserAuthActivationPreflight.js",
+  "./browserAuthRouteContracts.js",
 ] as const;
 
 const browserAuthPrimitiveFactories = [
@@ -56,6 +57,7 @@ const browserAuthPrimitiveFactories = [
   "sanitizeBrowserAuthHeaders",
   "createInMemoryBrowserAuthLifecycleCoordinator",
   "planBrowserAuthActivationPreflight",
+  "planBrowserAuthRouteContracts",
 ] as const;
 
 const secretSamples = [
@@ -361,6 +363,12 @@ test("full protected status reports browser-auth primitives as inactive and unwi
   assert.equal(browserSessionAuth.activationPreflight.wiredIntoRoutes, false);
   assert.equal(browserSessionAuth.activationPreflight.issuesCookies, false);
   assert.equal(browserSessionAuth.activationPreflight.acceptsCookies, false);
+  assert.equal(browserSessionAuth.routeContracts.status, "planning-only");
+  assert.equal(browserSessionAuth.routeContracts.summary.mountedLiveRouteCount, 0);
+  assert.equal(browserSessionAuth.routeContracts.summary.issuingCookieRouteCount, 0);
+  assert.equal(browserSessionAuth.routeContracts.summary.acceptingCookieRouteCount, 0);
+  assert.equal(browserSessionAuth.routeContracts.summary.wiredIntoAuthorization, false);
+  assert.equal(browserSessionAuth.routeContracts.summary.wiredIntoRoutes, false);
   assert.equal(browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(browserSessionAuth.lifecycleCoordinator.mounted, false);
   assert.equal(browserSessionAuth.lifecycleCoordinator.wiredIntoAuthorization, false);

@@ -273,6 +273,13 @@ test("node status endpoint reports local runtime posture", async () => {
       "browser-auth-route-mounting-blocked",
     ),
   );
+  assert.equal(status.browserSessionAuth.routeContracts.status, "planning-only");
+  assert.equal(status.browserSessionAuth.routeContracts.summary.totalPlannedRouteCount, 8);
+  assert.equal(status.browserSessionAuth.routeContracts.summary.mountedLiveRouteCount, 0);
+  assert.equal(status.browserSessionAuth.routeContracts.summary.issuingCookieRouteCount, 0);
+  assert.equal(status.browserSessionAuth.routeContracts.summary.acceptingCookieRouteCount, 0);
+  assert.equal(status.browserSessionAuth.routeContracts.summary.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.routeContracts.summary.wiredIntoRoutes, false);
   assert.equal(status.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     status.browserSessionAuth.lifecycleCoordinator.implementation,
@@ -645,6 +652,13 @@ test("protected mode returns reduced anonymous status and full authorized status
       "browser-auth-route-mounting-blocked",
     ),
   );
+  assert.equal(full.browserSessionAuth.routeContracts.status, "planning-only");
+  assert.equal(full.browserSessionAuth.routeContracts.summary.totalPlannedRouteCount, 8);
+  assert.equal(full.browserSessionAuth.routeContracts.summary.mountedLiveRouteCount, 0);
+  assert.equal(full.browserSessionAuth.routeContracts.summary.issuingCookieRouteCount, 0);
+  assert.equal(full.browserSessionAuth.routeContracts.summary.acceptingCookieRouteCount, 0);
+  assert.equal(full.browserSessionAuth.routeContracts.summary.wiredIntoAuthorization, false);
+  assert.equal(full.browserSessionAuth.routeContracts.summary.wiredIntoRoutes, false);
   assert.equal(full.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     full.browserSessionAuth.lifecycleCoordinator.implementation,

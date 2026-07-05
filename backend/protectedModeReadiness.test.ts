@@ -112,6 +112,13 @@ test("default disabled auth reports not ready for enforcement without store fail
       "browser-auth-route-mounting-blocked",
     ),
   );
+  assert.equal(readiness.browserSessionAuth.routeContracts.status, "planning-only");
+  assert.equal(readiness.browserSessionAuth.routeContracts.summary.totalPlannedRouteCount, 8);
+  assert.equal(readiness.browserSessionAuth.routeContracts.summary.mountedLiveRouteCount, 0);
+  assert.equal(readiness.browserSessionAuth.routeContracts.summary.issuingCookieRouteCount, 0);
+  assert.equal(readiness.browserSessionAuth.routeContracts.summary.acceptingCookieRouteCount, 0);
+  assert.equal(readiness.browserSessionAuth.routeContracts.summary.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.routeContracts.summary.wiredIntoRoutes, false);
   assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     readiness.browserSessionAuth.lifecycleCoordinator.implementation,

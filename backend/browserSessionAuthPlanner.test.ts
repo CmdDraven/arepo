@@ -37,6 +37,15 @@ test("browser session auth planner reports planning-only inactive live state", (
   assert.ok(
     plan.activationPreflight.requiredConfirmations.includes("confirm-browser-auth-activation"),
   );
+  assert.equal(plan.routeContracts.status, "planning-only");
+  assert.equal(plan.routeContracts.summary.totalPlannedRouteCount, 8);
+  assert.equal(plan.routeContracts.summary.stubbedRouteCount, 6);
+  assert.equal(plan.routeContracts.summary.plannedInactiveRouteCount, 2);
+  assert.equal(plan.routeContracts.summary.mountedLiveRouteCount, 0);
+  assert.equal(plan.routeContracts.summary.issuingCookieRouteCount, 0);
+  assert.equal(plan.routeContracts.summary.acceptingCookieRouteCount, 0);
+  assert.equal(plan.routeContracts.summary.wiredIntoAuthorization, false);
+  assert.equal(plan.routeContracts.summary.wiredIntoRoutes, false);
   assert.equal(plan.lifecycleCoordinator.status, "inactive");
   assert.equal(plan.lifecycleCoordinator.implementation, "in-memory-test-primitive");
   assert.equal(plan.lifecycleCoordinator.mounted, false);

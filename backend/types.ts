@@ -381,6 +381,43 @@ export type BrowserSessionAuthRuntimeStatus = {
     safeNotes: readonly string[];
     networkExposureSafe: false;
   };
+  routeContracts: {
+    status: "planning-only";
+    contracts: readonly {
+      routeId: string;
+      method: string;
+      path: string;
+      status: "stubbed" | "planned-inactive";
+      mountedLive: false;
+      issuesCookies: false;
+      acceptsCookies: false;
+      futureRequiresBrowserSessionAuth: boolean;
+      futureRequiresCsrf: boolean;
+      futureRequiresPairingCodeVerification: boolean;
+      bearerTokenAuthorizationCurrent: true;
+      sanitizedFailureBehavior: "browser_session_auth_inactive" | "not_mounted";
+      futureAuditCategory?: string;
+      activationBlockerCodes: readonly string[];
+      networkExposureSafe: false;
+    }[];
+    summary: {
+      status: "planning-only";
+      totalPlannedRouteCount: number;
+      stubbedRouteCount: number;
+      plannedInactiveRouteCount: number;
+      mountedLiveRouteCount: 0;
+      issuingCookieRouteCount: 0;
+      acceptingCookieRouteCount: 0;
+      futureCsrfRequiredRouteCount: number;
+      futureBrowserSessionAuthRequiredRouteCount: number;
+      futurePairingCodeVerificationRouteCount: number;
+      bearerTokenAuthorizationCurrent: true;
+      wiredIntoAuthorization: false;
+      wiredIntoRoutes: false;
+      networkExposureSafe: false;
+    };
+    networkExposureSafe: false;
+  };
   lifecycleCoordinator: {
     status: "inactive";
     implementation: "in-memory-test-primitive";

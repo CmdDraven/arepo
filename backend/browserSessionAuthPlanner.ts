@@ -5,6 +5,7 @@ import type {
   BrowserSessionAuthRuntimeStatus,
 } from "./types.js";
 import { planBrowserAuthActivationPreflight } from "./browserAuthActivationPreflight.js";
+import { planBrowserAuthRouteContracts } from "./browserAuthRouteContracts.js";
 
 export type BrowserSessionAuthPlannerInput = {
   authMode: AuthMode;
@@ -70,6 +71,7 @@ export function planBrowserSessionAuth(
       authMode: input.authMode,
       localOnlyMode: input.localOnlyMode,
     }),
+    routeContracts: planBrowserAuthRouteContracts(),
     lifecycleCoordinator: {
       status: "inactive",
       implementation: "in-memory-test-primitive",
