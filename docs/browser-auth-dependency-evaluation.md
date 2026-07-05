@@ -215,6 +215,14 @@ Preferred direction:
 4. Treat the existing dark-path code as acceptance criteria and boundary tests
    for any adopted library.
 
+Decision follow-up:
+
+- [Browser Auth Foundation Decision](browser-auth-foundation-decision.md)
+  selects Better Auth as the preferred isolated compatibility target.
+- [Better Auth Compatibility Spike](better-auth-compatibility-spike.md)
+  records the requirement fit, blockers, open questions, and proof tests for the
+  next dependency spike.
+
 Backup direction:
 
 - If Better Auth proves too broad or too invasive, evaluate a smaller

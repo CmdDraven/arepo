@@ -91,6 +91,11 @@ The current direction is to avoid hand-rolling the final production
 browser-session mechanism, keep bearer-token protected mode as the live path,
 and use the existing browser-auth dark-path scaffolding as acceptance criteria
 for a mature auth/session dependency spike.
+Better Auth is now selected as the preferred isolated compatibility target in
+[docs/browser-auth-foundation-decision.md](browser-auth-foundation-decision.md),
+with the current fit and proof work captured in
+[docs/better-auth-compatibility-spike.md](better-auth-compatibility-spike.md).
+No Better Auth handler is mounted and live browser auth remains inactive.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

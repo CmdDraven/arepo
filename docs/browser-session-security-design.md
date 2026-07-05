@@ -12,6 +12,9 @@ Further custom live browser-auth implementation is paused pending the
 The existing dark-path scaffolding remains useful as threat-model, route
 contract, activation-gate, and acceptance-test infrastructure for whichever
 mature auth/session foundation AREPO adopts later.
+[Browser Auth Foundation Decision](browser-auth-foundation-decision.md)
+selects Better Auth as the preferred isolated compatibility target, with
+`express-session` or a comparable server-side session core retained as backup.
 
 ## Current V1 Posture
 

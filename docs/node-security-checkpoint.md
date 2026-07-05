@@ -77,6 +77,11 @@ AREPO selects a mature auth/session foundation for browser sessions. Existing
 browser-auth planning, dark-harness, activation-gate, and inactive-boundary
 tests remain valuable as acceptance criteria and safety infrastructure, but
 they should not be treated as a decision to hand-roll production browser auth.
+[Browser Auth Foundation Decision](browser-auth-foundation-decision.md) selects
+Better Auth as the preferred isolated compatibility target, and
+[Better Auth Compatibility Spike](better-auth-compatibility-spike.md) records
+the current fit, blockers, and proof tests. This does not enable browser auth or
+mount Better Auth.
 
 The remaining sections preserve design rationale and historical checkpoint
 language. Where older text says a component is future/planning-only, prefer the

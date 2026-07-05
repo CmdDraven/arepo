@@ -24,6 +24,9 @@ Further browser-session production work is paused pending
 [Browser Auth Dependency Evaluation](browser-auth-dependency-evaluation.md).
 Live protected mode remains bearer-token based, and browser-session/pairing
 routes remain inactive stubs.
+[Browser Auth Foundation Decision](browser-auth-foundation-decision.md) selects
+Better Auth as the preferred isolated compatibility target, but no Better Auth
+handler is mounted in the live backend.
 
 ## Configuration
 
