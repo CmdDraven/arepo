@@ -120,6 +120,7 @@ const baseUrl = "http://127.0.0.1:8734";
 export async function createBetterAuthAppDataProofContext(
   options: {
     appDataDir?: string;
+    emailAndPasswordEnabled?: boolean;
   } = {},
 ): Promise<BetterAuthProofContext> {
   const appDataDir = options.appDataDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), "arepo-ba-")));
@@ -132,7 +133,7 @@ export async function createBetterAuthAppDataProofContext(
     baseURL: baseUrl,
     trustedOrigins: [baseUrl],
     database,
-    emailAndPassword: { enabled: false },
+    emailAndPassword: { enabled: options.emailAndPasswordEnabled === true },
     socialProviders: {},
     rateLimit: { enabled: false },
     advanced: {

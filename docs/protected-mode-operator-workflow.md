@@ -29,8 +29,9 @@ Better Auth as the preferred isolated compatibility target, but no Better Auth
 handler is mounted in the live backend.
 Better Auth is installed only for isolated backend proofs. Those proofs now
 cover import/handler shape, app-data SQLite storage, internal session
-lookup/revocation, and internal pairing-to-session feasibility, but operators
-should not expect browser login or browser-session cookies to work.
+lookup/revocation, internal pairing-to-session feasibility, and routeRequest to
+standard `Request`/`Response` adapter behavior, but operators should not expect
+browser login or browser-session cookies to work.
 
 ## Configuration
 
@@ -259,10 +260,11 @@ The disabled browser-auth request-shape adapter is unmounted test
 infrastructure only; it sanitizes live-like request shapes for the dark harness
 and does not authenticate requests, validate CSRF, or parse cookies for live
 authorization.
-The isolated Better Auth app-data and pairing-session proofs are also backend
-test infrastructure only. They use app-data SQLite and Better Auth internals to
-evaluate future storage and pairing semantics, but they are not mounted,
-configured by operators, or used for live authorization.
+The isolated Better Auth app-data, pairing-session, and routeRequest adapter
+proofs are also backend test infrastructure only. They use app-data SQLite and
+Better Auth internals/handlers to evaluate future storage, pairing, cookie
+metadata, and adapter semantics, but they are not mounted, configured by
+operators, or used for live authorization.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

@@ -232,6 +232,12 @@ Decision follow-up:
   pairing-to-session creation, while keeping public session attachment, signed
   cookie response adaptation, deterministic expiry, and CSRF ownership as
   blockers.
+- `backend/betterAuthRouteRequestAdapterProof.ts` proves AREPO
+  routeRequest-style input can be converted to a standard `Request`, Better
+  Auth `Response` output can be wrapped safely, signed cookie issuance/clearing
+  can be observed and redacted through normal Better Auth handler routes,
+  session lookup works through the signed cookie, and raw token injection
+  remains rejected.
 
 Backup direction:
 
@@ -268,16 +274,17 @@ AREPO-owned:
 
 ## Safest Next Slice
 
-Add an isolated Better Auth `routeRequest()` to standard `Request`/`Response`
-adapter proof that does not enable auth:
+Add an isolated CSRF ownership proof that does not enable auth:
 
-- Translate AREPO's route request shape into standard `Request` only inside the
-  isolated proof boundary.
-- Wrap Better Auth `Response` output into sanitized AREPO response metadata.
-- Prove signed session-cookie issuance and clearing from the pairing-session
-  proof path without emitting live `Set-Cookie` headers.
-- Prove or explicitly block session lookup, revoke-current, revoke-all, and
-  expiry through the accepted adapter boundary.
+- Determine whether Better Auth's CSRF/trusted-origin behavior protects only
+  Better Auth endpoints or can safely cover AREPO's arbitrary unsafe API
+  routes.
+- Model an AREPO unsafe route behind cookie-backed auth in an isolated proof
+  boundary.
+- Decide whether AREPO must keep a separate CSRF token/store/verifier path for
+  non-Better Auth API routes.
+- Keep deterministic expiry and Better Auth `session.token` storage policy as
+  explicit separate blockers if they are not handled in this slice.
 - Keep acceptance criteria unchanged: no live route mounting, no live
   `Set-Cookie`, no cookie credential acceptance, no frontend storage, no
   bearer-token behavior changes, and inactive-boundary tests remain green.

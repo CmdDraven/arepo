@@ -18,9 +18,11 @@ selects Better Auth as the preferred isolated compatibility target, with
 `better-auth@1.6.23` is installed for isolated backend proofs only. The proofs
 now cover import/handler shape, app-data SQLite storage through Node
 `node:sqlite`, internal session lookup/revocation, and internal
-pairing-to-session feasibility. They are not mounted, do not emit live cookies,
-do not accept cookies as live credentials, and do not change bearer-token
-protected mode.
+pairing-to-session feasibility. The routeRequest adapter proof also shows that
+AREPO-style request input can reach Better Auth's standard handler boundary and
+that handler responses can be wrapped with redacted cookie/body metadata. They
+are not mounted, do not emit live cookies, do not accept cookies as live
+credentials, and do not change bearer-token protected mode.
 
 ## Current V1 Posture
 
@@ -647,6 +649,12 @@ The current scaffold remains inert for browser sessions:
     revoke-all, and sanitized response observations, but they must not mount
     Better Auth, issue live cookies, accept cookies, parse cookies for live
     authorization, validate live CSRF, or change bearer-token protected mode.
+22. Keep the Better Auth routeRequest adapter proof isolated from live server
+    paths. It may validate standard `Request` conversion, sanitized
+    `Response` wrapping, signed cookie issuance/clearing observation, and
+    signed-cookie session lookup in tests, but it must not become live route
+    middleware or a cookie credential adapter until activation gates, CSRF,
+    storage policy, and route contracts are deliberately wired.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

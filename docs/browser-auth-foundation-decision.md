@@ -88,8 +88,10 @@ shape.
 - Better Auth can coexist with bearer-token protected mode. The isolated proof
   did not change bearer-token behavior.
 - AREPO can integrate through standard `Request`/`Response` without adopting
-  Express unless explicitly chosen. The isolated proof confirms the handler
-  shape exists; a router adapter is still needed.
+  Express unless explicitly chosen. The isolated routeRequest adapter proof now
+  confirms AREPO-style method/path/query/header/body input can become a
+  standard `Request`, and Better Auth `Response` output can be wrapped with
+  redacted cookie/body metadata.
 - Session storage can live in AREPO app data, preferably with a deliberate
   local SQLite strategy. The isolated app-data proof now confirms Better Auth
   can run migrations and persist sessions in `app-data/auth/better-auth.sqlite`
@@ -108,8 +110,9 @@ shape.
 - Deterministic expiry must be proven through an accepted request/session
   adapter. The app-data proof can configure expiry/updateAge, but did not prove
   expired-session filtering through the internal adapter path.
-- Raw token cookie injection remains rejected in the isolated proof, so signed
-  cookie issuance/clearing must be handled by a deliberate response adapter.
+- Raw token cookie injection remains rejected in the isolated proof. Signed
+  cookie issuance and clearing are observable through Better Auth's normal
+  handler routes, but pairing-driven signed cookie issuance remains unproven.
 - CSRF ownership is explicit before cookie-authenticated unsafe routes are live.
 - Better Auth outputs can be wrapped so audit/status/logging never leak
   secrets.
@@ -130,8 +133,9 @@ shape.
 
 ## Next Slice
 
-Run an isolated Better Auth `routeRequest()` to standard `Request`/`Response`
-adapter proof outside live server paths. It should prove signed cookie
-issuance/clearing observation, sanitized response wrapping, session lookup,
-revocation, and expiry behavior through the adapter boundary without mounting
-live routes or changing protected-mode authorization.
+Run an isolated CSRF ownership proof for Better Auth plus AREPO unsafe API
+routes, or a storage-policy decision slice for Better Auth's stored
+`session.token` model. The CSRF proof should determine whether Better Auth can
+cover AREPO's arbitrary unsafe cookie-authenticated API routes or whether AREPO
+must keep a separate CSRF guard. It must remain outside live server paths and
+must not mount browser auth.
