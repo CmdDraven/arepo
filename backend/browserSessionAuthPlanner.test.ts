@@ -15,6 +15,26 @@ test("browser session auth planner reports planning-only inactive live state", (
   assert.equal(plan.csrfEndpoint, "stubbed");
   assert.equal(plan.frontendTokenStorage, false);
   assert.equal(plan.networkExposureSafe, false);
+  assert.equal(plan.activationConfigPolicy.status, "inactive");
+  assert.equal(plan.activationConfigPolicy.requestedActivation, false);
+  assert.equal(plan.activationConfigPolicy.effectiveActivationStatus, "inactive");
+  assert.equal(plan.activationConfigPolicy.activationAllowed, false);
+  assert.equal(plan.activationConfigPolicy.buildRuntimeAllowsActivation, false);
+  assert.equal(plan.activationConfigPolicy.browserAuthEnabled, false);
+  assert.equal(plan.activationConfigPolicy.mounted, false);
+  assert.equal(plan.activationConfigPolicy.wiredIntoAuthorization, false);
+  assert.equal(plan.activationConfigPolicy.wiredIntoRoutes, false);
+  assert.equal(plan.activationConfigPolicy.issuesCookies, false);
+  assert.equal(plan.activationConfigPolicy.acceptsCookies, false);
+  assert.equal(plan.activationConfigPolicy.acceptsCsrfTokens, false);
+  assert.ok(
+    plan.activationConfigPolicy.blockerCodes.includes(
+      "browser-auth-config-activation-not-requested",
+    ),
+  );
+  assert.ok(
+    plan.activationConfigPolicy.blockerCodes.includes("browser-auth-config-live-mounting-blocked"),
+  );
   assert.equal(plan.activationPreflight.status, "inactive");
   assert.equal(plan.activationPreflight.activationRequested, false);
   assert.equal(plan.activationPreflight.readyForFutureActivation, false);
@@ -37,6 +57,10 @@ test("browser session auth planner reports planning-only inactive live state", (
   assert.ok(
     plan.activationPreflight.requiredConfirmations.includes("confirm-browser-auth-activation"),
   );
+  assert.equal(plan.activationPreflight.activationConfigPolicy.status, "inactive");
+  assert.equal(plan.activationPreflight.activationConfigPolicy.activationAllowed, false);
+  assert.equal(plan.activationPreflight.activationConfigPolicy.wiredIntoAuthorization, false);
+  assert.equal(plan.activationPreflight.activationConfigPolicy.wiredIntoRoutes, false);
   assert.equal(plan.routeContracts.status, "planning-only");
   assert.equal(plan.routeContracts.summary.totalPlannedRouteCount, 8);
   assert.equal(plan.routeContracts.summary.stubbedRouteCount, 6);

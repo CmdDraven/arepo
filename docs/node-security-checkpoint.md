@@ -50,6 +50,10 @@ local bearer-token API/operator use:
   It documents future browser-auth route contracts and required protections, but
   does not mount routes, issue cookies, accept cookies, validate CSRF, or enable
   browser sessions.
+- A pure browser-auth activation config policy planner exists for
+  planning/status only. It defines future-style activation config policy,
+  handles unknown browser-auth settings safely, and keeps activation blocked
+  even when activation is requested.
 
 See [Protected Mode Operator Workflow](protected-mode-operator-workflow.md) for
 the current local operator commands and manual acceptance flow.
@@ -172,6 +176,12 @@ Implemented components include:
   planner. It documents planned pairing, session, CSRF, logout, and revocation
   route methods and paths plus future audit, CSRF, browser-session, and
   pairing-code requirements without mounting or wiring any route behavior.
+- `backend/browserAuthActivationConfigPolicy.ts`: pure browser-auth activation
+  config policy planner. It defines future activation config concepts such as
+  operator confirmation, cookie policy, CSRF enforcement, session persistence,
+  audit readiness, route contracts, inactive-boundary regression, and frontend
+  no-secret storage, but always reports activation blocked and remains unwired
+  from live config, routes, middleware, and authorization.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

@@ -49,6 +49,12 @@ test("default browser auth activation preflight is inactive and blocked", () => 
   assert.equal(plan.acceptsCookies, false);
   assert.equal(plan.acceptsCsrfTokens, false);
   assert.equal(plan.lifecycleCoordinatorMounted, false);
+  assert.equal(plan.activationConfigPolicy.status, "inactive");
+  assert.equal(plan.activationConfigPolicy.activationAllowed, false);
+  assert.equal(plan.activationConfigPolicy.browserAuthEnabled, false);
+  assert.equal(plan.activationConfigPolicy.mounted, false);
+  assert.equal(plan.activationConfigPolicy.wiredIntoAuthorization, false);
+  assert.equal(plan.activationConfigPolicy.wiredIntoRoutes, false);
   assert.ok(plan.blockerCodes.includes("browser-auth-activation-not-requested"));
   assert.ok(plan.blockerCodes.includes("browser-auth-route-mounting-blocked"));
 });

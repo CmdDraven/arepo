@@ -70,7 +70,9 @@ only and remains unmounted. A pure browser-auth activation preflight planner now
 documents activation blockers and required confirmations without enabling live
 browser auth. A pure browser-auth route contract planner now documents the
 future browser-auth route surface and required protections without mounting
-handlers. CSRF live enforcement, browser session issuance, cookie
+handlers. A pure browser-auth activation config policy planner now defines and
+validates future activation config concepts while still blocking activation
+today. CSRF live enforcement, browser session issuance, cookie
 issuance/acceptance, pairing route activation, frontend token storage,
 remote-node, and federation work remain deferred.
 

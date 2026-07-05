@@ -96,6 +96,15 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.sessionRoutes, "stubbed");
   assert.equal(readiness.browserSessionAuth.pairingRoutes, "stubbed");
   assert.equal(readiness.browserSessionAuth.csrfEndpoint, "stubbed");
+  assert.equal(readiness.browserSessionAuth.activationConfigPolicy.status, "inactive");
+  assert.equal(readiness.browserSessionAuth.activationConfigPolicy.requestedActivation, false);
+  assert.equal(readiness.browserSessionAuth.activationConfigPolicy.activationAllowed, false);
+  assert.equal(readiness.browserSessionAuth.activationConfigPolicy.browserAuthEnabled, false);
+  assert.equal(readiness.browserSessionAuth.activationConfigPolicy.mounted, false);
+  assert.equal(readiness.browserSessionAuth.activationConfigPolicy.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.activationConfigPolicy.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.activationConfigPolicy.issuesCookies, false);
+  assert.equal(readiness.browserSessionAuth.activationConfigPolicy.acceptsCookies, false);
   assert.equal(readiness.browserSessionAuth.activationPreflight.status, "inactive");
   assert.equal(readiness.browserSessionAuth.activationPreflight.activationRequested, false);
   assert.equal(readiness.browserSessionAuth.activationPreflight.readyForFutureActivation, false);

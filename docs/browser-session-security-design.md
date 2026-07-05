@@ -40,6 +40,10 @@ mode must not be treated as safe for LAN, reverse-proxy, or internet exposure.
   infrastructure only. It documents the future pairing, session, CSRF, logout,
   and revocation route surface and required protections without mounting routes
   or changing live behavior.
+- A browser-auth activation config policy planner exists as planning/status
+  infrastructure only. It defines a future activation config shape and always
+  reports activation blocked today, even if future-style activation fields are
+  supplied.
 - The frontend does not store bearer tokens.
 - Full authorized status reports `browserSessionAuth.status` as
   `planning-only`; reduced anonymous status does not expose session details.
@@ -589,6 +593,10 @@ The current scaffold remains inert for browser sessions:
     route methods, paths, audit categories, CSRF requirements, pairing
     requirements, and browser-session requirements, but it must not register
     handlers or alter live route behavior.
+16. Keep the activation config policy planner pure and unmounted. It may define
+    and validate future browser-auth config concepts, but it must not add a live
+    activation flag, mount routes, issue or accept cookies, validate CSRF, or
+    enable browser sessions.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

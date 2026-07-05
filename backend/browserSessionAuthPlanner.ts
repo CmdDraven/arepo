@@ -5,6 +5,7 @@ import type {
   BrowserSessionAuthRuntimeStatus,
 } from "./types.js";
 import { planBrowserAuthActivationPreflight } from "./browserAuthActivationPreflight.js";
+import { planBrowserAuthActivationConfigPolicy } from "./browserAuthActivationConfigPolicy.js";
 import { planBrowserAuthRouteContracts } from "./browserAuthRouteContracts.js";
 
 export type BrowserSessionAuthPlannerInput = {
@@ -55,6 +56,9 @@ export function planBrowserSessionAuth(
     "browser-pairing-consumption-inactive",
     ...(input.authMode !== "protected" ? (["browser-session-auth-planning-only"] as const) : []),
   ];
+  const activationConfigPolicy = planBrowserAuthActivationConfigPolicy({
+    localOnlyMode: input.localOnlyMode,
+  });
 
   return {
     status: "planning-only",
@@ -67,6 +71,7 @@ export function planBrowserSessionAuth(
     csrfEndpoint: "stubbed",
     frontendTokenStorage: false,
     networkExposureSafe: false,
+    activationConfigPolicy,
     activationPreflight: planBrowserAuthActivationPreflight({
       authMode: input.authMode,
       localOnlyMode: input.localOnlyMode,

@@ -234,6 +234,9 @@ browser auth.
 The browser-auth route contract planner is also planning/status infrastructure
 only; it documents future route contracts and required protections without
 mounting routes or changing live behavior.
+The browser-auth activation config policy planner is planning/status
+infrastructure only; future-style activation settings remain blocked and do not
+create a working browser-auth config flag.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

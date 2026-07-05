@@ -362,6 +362,27 @@ export type BrowserSessionAuthRuntimeStatus = {
   csrfEndpoint: "stubbed";
   frontendTokenStorage: false;
   networkExposureSafe: false;
+  activationConfigPolicy: {
+    status: "inactive" | "blocked";
+    requestedActivation: boolean;
+    effectiveActivationStatus: "inactive";
+    activationAllowed: false;
+    buildRuntimeAllowsActivation: false;
+    browserAuthEnabled: false;
+    mounted: false;
+    wiredIntoAuthorization: false;
+    wiredIntoRoutes: false;
+    issuesCookies: false;
+    acceptsCookies: false;
+    acceptsCsrfTokens: false;
+    localOnlyMode: boolean;
+    unknownConfigKeys: readonly string[];
+    blockerCodes: readonly string[];
+    warningCodes: readonly string[];
+    requiredConfirmations: readonly string[];
+    safeNotes: readonly string[];
+    networkExposureSafe: false;
+  };
   activationPreflight: {
     status: "inactive" | "blocked" | "planning-only";
     activationRequested: boolean;
@@ -378,6 +399,27 @@ export type BrowserSessionAuthRuntimeStatus = {
     blockerCodes: readonly string[];
     warningCodes: readonly string[];
     requiredConfirmations: readonly string[];
+    activationConfigPolicy: {
+      status: "inactive" | "blocked";
+      requestedActivation: boolean;
+      effectiveActivationStatus: "inactive";
+      activationAllowed: false;
+      buildRuntimeAllowsActivation: false;
+      browserAuthEnabled: false;
+      mounted: false;
+      wiredIntoAuthorization: false;
+      wiredIntoRoutes: false;
+      issuesCookies: false;
+      acceptsCookies: false;
+      acceptsCsrfTokens: false;
+      localOnlyMode: boolean;
+      unknownConfigKeys: readonly string[];
+      blockerCodes: readonly string[];
+      warningCodes: readonly string[];
+      requiredConfirmations: readonly string[];
+      safeNotes: readonly string[];
+      networkExposureSafe: false;
+    };
     safeNotes: readonly string[];
     networkExposureSafe: false;
   };

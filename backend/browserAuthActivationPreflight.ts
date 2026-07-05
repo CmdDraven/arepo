@@ -1,4 +1,9 @@
 import type { AuthMode } from "./types.js";
+import {
+  planBrowserAuthActivationConfigPolicy,
+  type BrowserAuthActivationConfigPolicyPlan,
+  type BrowserAuthFutureConfig,
+} from "./browserAuthActivationConfigPolicy.js";
 
 export const BROWSER_AUTH_ACTIVATION_PREFLIGHT_NETWORK_EXPOSURE_SAFE = false;
 export const BROWSER_AUTH_ACTIVATION_PREFLIGHT_WIRED_INTO_AUTHORIZATION = false;
@@ -50,6 +55,7 @@ export type BrowserAuthActivationPreflightInput = {
   inactiveBoundaryRegressionPresent?: boolean;
   revocationAndExpiryPreserved?: boolean;
   frontendStoresBearerTokens?: boolean;
+  browserAuthConfig?: BrowserAuthFutureConfig & Record<string, unknown>;
 };
 
 export type BrowserAuthActivationPreflightPlan = {
@@ -68,6 +74,7 @@ export type BrowserAuthActivationPreflightPlan = {
   blockerCodes: readonly BrowserAuthActivationPreflightBlockerCode[];
   warningCodes: readonly BrowserAuthActivationPreflightWarningCode[];
   requiredConfirmations: readonly BrowserAuthActivationConfirmationCode[];
+  activationConfigPolicy: BrowserAuthActivationConfigPolicyPlan;
   safeNotes: readonly string[];
   networkExposureSafe: false;
 };
@@ -79,6 +86,10 @@ export function planBrowserAuthActivationPreflight(
   const blockerCodes = preflightBlockers(normalized);
   const warningCodes = preflightWarnings(normalized);
   const requiredConfirmations = preflightConfirmations(normalized);
+  const activationConfigPolicy = planBrowserAuthActivationConfigPolicy({
+    browserAuth: input.browserAuthConfig,
+    localOnlyMode: normalized.localOnlyMode,
+  });
 
   return {
     status: normalized.activationRequested
@@ -100,6 +111,7 @@ export function planBrowserAuthActivationPreflight(
     blockerCodes,
     warningCodes,
     requiredConfirmations,
+    activationConfigPolicy,
     safeNotes: [
       "Browser auth remains inactive until every preflight gate is satisfied in a future slice.",
       "Bearer-token protected mode remains the only live credential path.",
@@ -129,6 +141,7 @@ function normalizeInput(
     inactiveBoundaryRegressionPresent: input.inactiveBoundaryRegressionPresent ?? true,
     revocationAndExpiryPreserved: input.revocationAndExpiryPreserved ?? true,
     frontendStoresBearerTokens: input.frontendStoresBearerTokens ?? false,
+    browserAuthConfig: input.browserAuthConfig ?? {},
   };
 }
 
