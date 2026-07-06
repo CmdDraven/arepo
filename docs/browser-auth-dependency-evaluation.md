@@ -288,11 +288,14 @@ AREPO-owned:
 
 ## Safest Next Slice
 
-Run a pairing-driven signed-cookie issuance proof. AREPO now has an unmounted
-CSRF request adapter proof, a session-token storage policy decision, and an
-isolated deterministic expiry proof, so the next highest-risk question is
-whether AREPO pairing completion can create or attach a Better Auth session and
-produce the signed browser cookie through an acceptable boundary.
+Run an isolated session-scope metadata proof. AREPO now has an unmounted CSRF
+request adapter proof, a session-token storage policy decision, deterministic
+expiry proof, and pairing-created signed-cookie proof. The next highest-risk
+question is where AREPO's local operator subject, device label, and future
+route/vault permission posture should live relative to Better Auth user/session
+records or AREPO-owned authorization state. The pairing-cookie proof validates
+the mechanics in isolation but still leaves production blocked on a supported
+Better Auth session/cookie response boundary.
 
 Keep acceptance criteria unchanged: no live route mounting, no live
 `Set-Cookie`, no cookie credential acceptance, no frontend storage, no

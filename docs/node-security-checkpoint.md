@@ -99,14 +99,21 @@ without enabling username/password, OAuth, social login, or frontend credential
 storage. It keeps public/supported pairing-to-session attachment, signed cookie
 response adaptation, arbitrary AREPO scope metadata, and CSRF ownership as
 unresolved blockers.
+`backend/betterAuthPairingCookieIssuanceProof.ts` now proves that an isolated
+AREPO pairing-created Better Auth session can be accepted through a signed
+`arepo_session` cookie, that direct raw token injection remains rejected, and
+that sign-out and expiry apply to that pairing-issued signed-cookie session.
+The proof uses Better Auth's internal adapter plus exported signing, so a
+public/supported pairing session and cookie response boundary remains an
+activation blocker.
 `backend/betterAuthRouteRequestAdapterProof.ts` now proves that AREPO
 routeRequest-style method/path/query/header/body input can be converted to a
 standard `Request`, Better Auth `Response` output can be wrapped with redacted
 cookie/body metadata, signed cookie issuance and clearing can be observed
 through Better Auth's normal handler routes, session lookup works through the
 signed cookie, sign-out invalidates that session, and direct raw token cookie
-injection remains rejected. Pairing-driven cookie issuance and session-scope
-metadata remain unresolved.
+injection remains rejected. Production-safe pairing-driven cookie issuance and
+session-scope metadata remain unresolved.
 `backend/betterAuthCsrfOwnershipProof.ts` now proves that Better Auth rejects
 unsafe signed-cookie auth endpoint requests with missing or untrusted Origin
 and allows the trusted local origin, but does not provide proven CSRF coverage
@@ -274,22 +281,25 @@ Implemented components include:
   frontend paths.
 - `backend/betterAuthDependencyProof.ts`,
   `backend/betterAuthAppDataStoreProof.ts`, and
-  `backend/betterAuthPairingSessionAdapterProof.ts`, and
+  `backend/betterAuthPairingSessionAdapterProof.ts`,
   `backend/betterAuthRouteRequestAdapterProof.ts`, and
-  `backend/betterAuthDeterministicExpiryProof.ts`: isolated Better Auth proof
+  `backend/betterAuthDeterministicExpiryProof.ts`, and
+  `backend/betterAuthPairingCookieIssuanceProof.ts`: isolated Better Auth proof
   modules. They are not mounted, are forbidden from live server/auth/frontend
   paths by inactive-boundary tests, and do not enable browser auth. They prove
   Better Auth import/handler shape, app-data SQLite storage, internal session
   lookup/revocation, internal pairing-to-session feasibility, routeRequest to
   standard Request conversion, sanitized Response wrapping, signed cookie
   issuance/clearing observation, signed-cookie session lookup, deterministic
-  expiry rejection, and direct raw token rejection. The CSRF ownership proof records that Better Auth owns its
+  expiry rejection, pairing-created signed-cookie lookup through an internal
+  proof path, and direct raw token rejection. The CSRF ownership proof records that Better Auth owns its
   auth endpoint protections while AREPO should own CSRF for unsafe AREPO API
   routes. The AREPO-owned CSRF request adapter proof records the future
   unmounted request validation shape. The Better Auth session-token storage
   policy accepts app-data storage with conditions. Remaining blockers include
-  pairing-cookie issuance, renewal/pruning/backup policy, session-scope
-  metadata, output sanitization, and live CSRF integration.
+  a supported pairing session/cookie response boundary, renewal/pruning/backup
+  policy, session-scope metadata, output sanitization, and live CSRF
+  integration.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

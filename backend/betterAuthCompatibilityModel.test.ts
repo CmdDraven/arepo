@@ -75,7 +75,7 @@ test("Better Auth compatibility covers every AREPO browser-auth requirement", ()
   assert.equal(plan.parsesCookiesForLiveAuthorization, false);
   assert.equal(plan.validatesCsrfInLiveAuthorization, false);
   assert.equal(plan.changesBearerTokenProtectedMode, false);
-  assert.equal(plan.nextSlice, "isolated-better-auth-dependency-proof");
+  assert.equal(plan.nextSlice, "isolated-session-scope-metadata-proof");
   assertNoSecretMaterial(plan);
 });
 
@@ -92,7 +92,10 @@ test("Better Auth compatibility makes unknowns blockers and proof work explicit"
     assert.equal(finding.proofRequiredBeforeLiveActivation, true);
   }
   assert.ok(plan.summary.blockerCodes.includes("arepo-owned-csrf-live-integration-blocked"));
-  assert.ok(plan.summary.blockerCodes.includes("pairing-to-better-auth-session-unproven"));
+  assert.ok(plan.summary.blockerCodes.includes("supported-pairing-session-api-needed"));
+  assert.ok(
+    plan.summary.blockerCodes.includes("supported-pairing-cookie-response-boundary-needed"),
+  );
   assert.equal(plan.summary.incompatibleCount, 0);
   assert.equal(plan.summary.unknownCount > 0, true);
   assert.equal(plan.summary.needsSpikeCount > 0, true);

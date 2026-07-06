@@ -42,6 +42,11 @@ Isolated proofs:
 - `backend/betterAuthDeterministicExpiryProof.ts` proves deterministic expiry
   behavior through isolated app-data and Request/Response signed-cookie
   boundaries without long real-time waits.
+- `backend/betterAuthPairingCookieIssuanceProof.ts` proves that an AREPO
+  pairing-created Better Auth session can be accepted through a signed
+  `arepo_session` cookie in isolation. The proof uses Better Auth's internal
+  adapter plus exported signing primitive, so production activation remains
+  blocked on a supported session/cookie response boundary.
 - No Better Auth handler is mounted in `backend/server.ts`.
 - No live route emits Better Auth cookies or accepts Better Auth cookies as
   credentials.
@@ -72,11 +77,12 @@ AREPO should own CSRF validation for unsafe cookie-authenticated AREPO API
 routes while Better Auth owns protection for its own auth endpoints. The
 AREPO-owned CSRF request adapter proof now validates the future request-side
 shape for unsafe AREPO mutations, but it remains unmounted and not live.
-Public/supported pairing-session attachment and pairing-driven cookie delivery
-remain unresolved. The Better Auth `session.token` storage policy is accepted
-with conditions, and deterministic expiry is proven in isolation, but live
-activation is still blocked until the remaining proofs and mitigations are
-complete.
+Pairing-driven signed-cookie lookup is now proven in isolation, but the proof
+uses Better Auth's internal adapter plus an exported signing primitive rather
+than a supported public pairing-cookie response boundary. The Better Auth
+`session.token` storage policy is accepted with conditions, and deterministic
+expiry is proven in isolation, but live activation is still blocked until the
+remaining proofs and mitigations are complete.
 
 ## Requirement Fit
 
@@ -87,14 +93,14 @@ complete.
 | Single-node self-hosting        | needs-spike       | shared      | HTTPS, Secure cookies, and non-local binding policy remain unresolved.                                                                                                                |
 | No mandatory cloud identity     | likely-compatible | Better Auth | Better Auth supports local methods, but AREPO must avoid unwanted signup/provider UX.                                                                                                 |
 | Server-side session semantics   | compatible        | Better Auth | App-data SQLite storage works in isolation through Node `node:sqlite`; `session.token` storage is accepted with app-data, vault-exclusion, reset, backup, and corruption conditions.  |
-| Secure cookie issuance/clearing | likely-compatible | Better Auth | Handler-boundary proof observed signed cookie issuance and clearing metadata with redaction; pairing-driven issuance remains unresolved and live emission remains forbidden.          |
+| Secure cookie issuance/clearing | likely-compatible | Better Auth | Handler-boundary proof observed signed cookie issuance and clearing metadata with redaction; pairing-driven signed-cookie lookup works only through an internal proof path.           |
 | Session expiry                  | compatible        | Better Auth | Deterministic expiry is proven through app-data active-session filtering and signed-cookie `get-session` rejection after an isolated expiry override; renewal/pruning policy remains. |
 | Session rotation                | unknown           | shared      | Renewal/rotation policy needs a deliberate AREPO decision.                                                                                                                            |
 | Logout                          | likely-compatible | Better Auth | Isolated proof observed sign-out clearing behavior; route adapter/live semantics remain unmounted.                                                                                    |
 | Revoke-current                  | likely-compatible | Better Auth | Handler-boundary proof shows sign-out/revocation invalidates a signed-cookie session; production route policy remains unmounted.                                                      |
 | Revoke-all                      | likely-compatible | Better Auth | Isolated proof deleted all sessions for one internal user; local-operator mapping still needs proof.                                                                                  |
 | No frontend secret storage      | likely-compatible | shared      | Cookie-backed flow can work if AREPO avoids durable frontend secrets.                                                                                                                 |
-| Explicit pairing flow           | likely-compatible | shared      | Pairing remains custom; internal pairing-to-session creation works; public/supported session attachment remains unproven.                                                             |
+| Explicit pairing flow           | likely-compatible | shared      | Pairing remains custom; internal pairing-to-session and signed-cookie lookup works; public/supported session/cookie response boundary remains unproven.                               |
 | Route contract model            | compatible        | AREPO       | Contracts can wrap any foundation.                                                                                                                                                    |
 | Activation gate/preflight       | compatible        | AREPO       | Gates must block mounting until activation.                                                                                                                                           |
 | Audit without secrets           | needs-spike       | AREPO       | Better Auth outputs and hooks must be sanitized before audit/status/logging.                                                                                                          |
@@ -105,9 +111,9 @@ complete.
 
 ## Open Questions
 
-- Can AREPO create or attach a Better Auth session from a local pairing proof
-  through a public/supported Better Auth path without enabling normal
-  username/password or social signup UX?
+- Can AREPO create or attach a Better Auth session and emit the signed browser
+  cookie from a local pairing proof through a public/supported Better Auth path
+  without enabling normal username/password or social signup UX?
 - How should AREPO implement the accepted app-data storage mitigations for
   Better Auth's session table before live activation?
 - Should the isolated routeRequest adapter become the production adapter shape
@@ -200,19 +206,31 @@ Passed:
   lookup, forces an isolated session expiry without sleeping, and verifies
   Better Auth's signed-cookie `get-session` path returns null and emits
   redacted cookie-clearing metadata for the expired session.
+- The pairing-cookie proof creates a Better Auth user/session after isolated
+  AREPO pairing acceptance, signs the session token with Better Auth's exported
+  crypto primitive, and verifies that Better Auth accepts the resulting
+  `arepo_session` cookie for isolated session lookup.
+- Direct raw token cookie injection remains rejected for the pairing-issued
+  session.
+- Sign-out invalidates the pairing-issued signed-cookie session, and the
+  deterministic expiry behavior also applies to the pairing-issued signed
+  cookie.
+- The pairing-cookie proof does not enable username/password, OAuth, social
+  login, email login, frontend credential storage, login UI, live routes, or
+  live cookies.
 
 Still unresolved:
 
-- Public/supported creation or attachment of a Better Auth session after AREPO
-  local pairing. The current proof uses Better Auth internal adapter behavior.
+- Public/supported creation or attachment of a Better Auth session and signed
+  cookie response after AREPO local pairing. The current proof uses Better Auth
+  internal adapter behavior plus exported signing.
 - Implementation of the accepted app-data storage mitigations for Better Auth's
   `session.token` column.
 - Renewal/update-age values, explicit expired-session pruning policy, and
   backup/restore session-state policy before live activation.
-- Signed cookie issuance from the AREPO pairing-session path. The adapter proof
-  observed signed cookie issuance only through Better Auth's normal email
-  sign-up handler, so pairing-driven cookie issuance still needs a supported
-  path or an explicit internal-boundary decision.
+- Production-safe signed cookie issuance from the AREPO pairing-session path.
+  The pairing-cookie proof validates the mechanics in isolation, but the
+  supported Better Auth API/plugin boundary remains unproven.
 - AREPO-specific scope metadata such as vault permission posture. The proof did
   not establish arbitrary session metadata support without schema/authorization
   design.
@@ -224,12 +242,12 @@ Still unresolved:
 
 ## Adoption Blockers
 
-- `public-pairing-to-session-api-unproven`
+- `supported-pairing-session-api-needed`
+- `supported-pairing-cookie-response-boundary-needed`
 - `better-auth-session-token-storage-mitigations-needed`
 - `session-renewal-policy-needed`
 - `expired-session-pruning-policy-needed`
 - `backup-restore-session-state-policy-needed`
-- `pairing-cookie-issuance-path-unproven`
 - `arepo-owned-csrf-live-integration-blocked`
 - `better-auth-output-sanitization-unproven`
 - `coexistence-routing-proof-needed`
@@ -239,10 +257,9 @@ Still unresolved:
 
 A later isolated security proof should test, outside `server.ts`:
 
-- Create or attach a session from an AREPO test-only pairing proof through a
-  supported public path, or document deliberate acceptance of an internal
-  adapter boundary.
-- Prove signed cookie issuance from that pairing path, or keep it blocked.
+- Create or attach a session and signed cookie response from an AREPO test-only
+  pairing proof through a supported public path, or document deliberate
+  acceptance of an internal adapter/signing boundary.
 - Define renewal/update-age values and expired-session pruning policy.
 - Revoke the current session and revoke all sessions for the local
   operator/principal through the accepted adapter path.
@@ -272,9 +289,10 @@ A later isolated security proof should test, outside `server.ts`:
 
 ## Recommended Next Slice
 
-Run a pairing-driven signed-cookie issuance proof. Expiry and storage policy
-now have isolated answers, so the next highest-risk blocker is whether AREPO's
-pairing completion can produce a Better Auth signed session cookie through an
-acceptable boundary without enabling normal signup UI. That slice must remain
-isolated, must not mount Better Auth or browser auth, and must not emit live
-cookies or accept cookie credentials in live authorization.
+Run an isolated session-scope metadata proof. Pairing-created signed-cookie
+lookup, storage policy, expiry, CSRF ownership, and route adaptation now have
+isolated answers. The next blocker is deciding where AREPO's local operator
+subject, device label, and future route/vault permission posture live relative
+to Better Auth's user/session schema. That slice must remain isolated, must not
+mount Better Auth or browser auth, and must not emit live cookies or accept
+cookie credentials in live authorization.

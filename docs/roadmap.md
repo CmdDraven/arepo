@@ -118,12 +118,15 @@ inside sensitive AREPO app data outside vault roots, with vault sync/export
 exclusion, fail-closed corruption behavior, reset/re-pairing semantics, and
 backup/restore warnings. An isolated deterministic expiry proof now shows
 Better Auth can reject expired sessions through app-data active-session lookup
-and signed-cookie `get-session` behavior without slow sleeps. Remaining
-blockers include a
-public/supported pairing-to-session path with pairing-driven cookie issuance,
-AREPO scope metadata, renewal/pruning/backup policy, output sanitization, and
-live CSRF integration. No Better Auth handler is mounted and live browser auth
-remains inactive.
+and signed-cookie `get-session` behavior without slow sleeps. An isolated
+pairing-cookie proof now shows a pairing-created Better Auth session can be
+accepted through a signed `arepo_session` cookie, direct raw token injection
+remains rejected, and sign-out/expiry apply to that pairing-issued session. The
+proof still relies on Better Auth's internal adapter plus exported signing, so
+remaining blockers include a supported pairing session/cookie response
+boundary, AREPO scope metadata, renewal/pruning/backup policy, output
+sanitization, and live CSRF integration. No Better Auth handler is mounted and
+live browser auth remains inactive.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

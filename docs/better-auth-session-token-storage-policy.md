@@ -105,7 +105,7 @@ reverse-proxy, or internet exposure safe by itself.
 This policy removes the storage-policy decision blocker, but it does not enable
 browser auth. These blockers remain:
 
-- pairing-driven signed-cookie issuance
+- supported pairing-driven session/cookie response boundary
 - AREPO-specific session scope metadata
 - renewal/update-age values and expired-session pruning policy
 - backup/restore session-state policy

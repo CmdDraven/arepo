@@ -43,7 +43,7 @@ export type BetterAuthCompatibilityPlan = {
     blockerCodes: readonly string[];
     openQuestions: readonly string[];
   };
-  nextSlice: "isolated-better-auth-dependency-proof";
+  nextSlice: "isolated-session-scope-metadata-proof";
 };
 
 const findingByRequirement = new Map<
@@ -122,10 +122,10 @@ const findingByRequirement = new Map<
       status: "likely-compatible",
       delegatedTo: "better-auth",
       summary:
-        "Cookie names and secure-cookie behavior are configurable, but AREPO attributes must be tested.",
-      blockerCodes: ["cookie-attribute-proof-missing"],
+        "Cookie names and secure-cookie behavior are configurable; pairing-created signed cookies work only through the isolated internal proof path.",
+      blockerCodes: ["supported-pairing-cookie-response-boundary-needed"],
       openQuestions: [
-        "Can Path, SameSite, Secure, HttpOnly, and clearing behavior match AREPO policy exactly?",
+        "Which supported Better Auth boundary should emit Set-Cookie after AREPO pairing completion?",
       ],
       proofRequiredBeforeLiveActivation: true,
     },
@@ -213,13 +213,16 @@ const findingByRequirement = new Map<
   [
     "explicit-pairing-flow",
     {
-      status: "needs-spike",
+      status: "likely-compatible",
       delegatedTo: "arepo",
       summary:
-        "AREPO pairing should remain custom and create/attach library sessions only after proof.",
-      blockerCodes: ["pairing-to-better-auth-session-unproven"],
+        "AREPO pairing can create a Better Auth user/session and signed cookie in an isolated internal proof, but a supported production boundary is still required.",
+      blockerCodes: [
+        "supported-pairing-session-api-needed",
+        "supported-pairing-cookie-response-boundary-needed",
+      ],
       openQuestions: [
-        "Can a local pairing proof create or attach a Better Auth session without signup UX?",
+        "Can this flow be implemented through a supported Better Auth API or plugin boundary without internal adapter reliance?",
       ],
       proofRequiredBeforeLiveActivation: true,
     },
@@ -342,7 +345,7 @@ export function planBetterAuthCompatibility(): BetterAuthCompatibilityPlan {
     requirementCount: browserAuthFoundationRequirements.length,
     findings,
     summary,
-    nextSlice: "isolated-better-auth-dependency-proof",
+    nextSlice: "isolated-session-scope-metadata-proof",
   };
 }
 

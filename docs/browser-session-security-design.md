@@ -17,12 +17,13 @@ selects Better Auth as the preferred isolated compatibility target, with
 `express-session` or a comparable server-side session core retained as backup.
 `better-auth@1.6.23` is installed for isolated backend proofs only. The proofs
 now cover import/handler shape, app-data SQLite storage through Node
-`node:sqlite`, internal session lookup/revocation, and internal
-pairing-to-session feasibility. The routeRequest adapter proof also shows that
-AREPO-style request input can reach Better Auth's standard handler boundary and
-that handler responses can be wrapped with redacted cookie/body metadata. They
-are not mounted, do not emit live cookies, do not accept cookies as live
-credentials, and do not change bearer-token protected mode.
+`node:sqlite`, internal session lookup/revocation, internal
+pairing-to-session feasibility, and pairing-created signed-cookie lookup
+through an isolated internal proof path. The routeRequest adapter proof also
+shows that AREPO-style request input can reach Better Auth's standard handler
+boundary and that handler responses can be wrapped with redacted cookie/body
+metadata. They are not mounted, do not emit live cookies, do not accept cookies
+as live credentials, and do not change bearer-token protected mode.
 The CSRF ownership proof shows Better Auth protects its own unsafe auth
 endpoints with trusted-origin behavior, while AREPO should own CSRF validation
 for arbitrary unsafe AREPO API routes. AREPO now also has an unmounted
@@ -35,6 +36,10 @@ closed, and backups/restores need explicit browser-session warnings. The
 deterministic expiry proof shows expired Better Auth sessions can be rejected
 predictably through isolated app-data active-session filtering and
 Request/Response signed-cookie lookup without slow real-time waits.
+The pairing-cookie proof shows sign-out and expiry apply to a pairing-issued
+signed-cookie session, but production activation remains blocked because the
+proof uses Better Auth's internal adapter plus exported signing rather than a
+supported public pairing cookie response boundary.
 
 ## Current V1 Posture
 
@@ -686,12 +691,14 @@ The current scaffold remains inert for browser sessions:
     into planned `Set-Cookie` strings for unit tests, but live routes must not
     emit those headers, accept cookies, or expose cookie values in diagnostics,
     status, audit events, errors, or inactive responses.
-21. Keep the Better Auth dependency, app-data store, and pairing-session proofs
+21. Keep the Better Auth dependency, app-data store, pairing-session, and
+    pairing-cookie proofs
     isolated from live server paths. They may validate local SQLite storage,
-    internal pairing-to-session behavior, session lookup, revoke-current,
-    revoke-all, and sanitized response observations, but they must not mount
-    Better Auth, issue live cookies, accept cookies, parse cookies for live
-    authorization, validate live CSRF, or change bearer-token protected mode.
+    internal pairing-to-session behavior, pairing-created signed-cookie lookup,
+    session lookup, revoke-current, revoke-all, and sanitized response
+    observations, but they must not mount Better Auth, issue live cookies,
+    accept cookies, parse cookies for live authorization, validate live CSRF,
+    or change bearer-token protected mode.
 22. Keep the Better Auth routeRequest adapter proof isolated from live server
     paths. It may validate standard `Request` conversion, sanitized
     `Response` wrapping, signed cookie issuance/clearing observation, and

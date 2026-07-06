@@ -105,9 +105,11 @@ shape.
   and trusted origins can match AREPO policy.
 - Local pairing can create or attach a browser session without normal
   username/password/social signup becoming the default UX. The isolated
-  pairing-session proof can create an internal Better Auth user/session after
-  AREPO pairing acceptance, but a public/supported Better Auth session
-  attachment path remains unproven.
+  pairing-cookie proof can create an internal Better Auth user/session after
+  AREPO pairing acceptance and make Better Auth accept a signed
+  `arepo_session` cookie for lookup, but it uses Better Auth's internal adapter
+  plus exported signing. A public/supported session and cookie response
+  boundary remains unproven.
 - Revoke-current and revoke-all semantics are possible without exposing session
   token material. The isolated proof exercised these through Better Auth
   internals; the production adapter path remains unproven.
@@ -119,7 +121,8 @@ shape.
   session-state policy before activation.
 - Raw token cookie injection remains rejected in the isolated proof. Signed
   cookie issuance and clearing are observable through Better Auth's normal
-  handler routes, but pairing-driven signed cookie issuance remains unproven.
+  handler routes; pairing-driven signed-cookie lookup is proven only through an
+  isolated internal proof path.
 - CSRF ownership is explicit before cookie-authenticated unsafe routes are live.
   The isolated CSRF ownership proof shows Better Auth protects its own auth
   endpoints with trusted-origin behavior, but AREPO should own CSRF validation
@@ -149,8 +152,9 @@ shape.
 
 ## Next Slice
 
-Run a pairing-driven signed-cookie issuance proof. Storage policy and
-deterministic expiry now have isolated answers, so the next blocker is whether
-AREPO pairing completion can create or attach a Better Auth session and produce
-the signed browser cookie through an acceptable boundary. The slice must remain
-outside live server paths and must not mount browser auth.
+Run an isolated session-scope metadata proof. Storage policy, deterministic
+expiry, CSRF ownership, routeRequest adaptation, and pairing-created signed
+cookie lookup now have isolated answers. The next blocker is deciding how
+AREPO's local operator subject, device label, and future permission posture map
+to Better Auth user/session records or AREPO-owned authorization state. The
+slice must remain outside live server paths and must not mount browser auth.
