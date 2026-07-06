@@ -103,9 +103,12 @@ session-scope metadata uses an AREPO-owned sidecar authorization model.
 AREPO pairing-created Better Auth session can be accepted through a signed
 `arepo_session` cookie, that direct raw token injection remains rejected, and
 that sign-out and expiry apply to that pairing-issued signed-cookie session.
-The proof uses Better Auth's internal adapter plus exported signing, so a
-public/supported pairing session and cookie response boundary remains an
-activation blocker.
+The proof uses Better Auth's internal adapter plus exported signing.
+`backend/betterAuthPairingCookieBoundaryProof.ts` then proves a public Better
+Auth plugin endpoint can emit the signed `arepo_session` cookie through Better
+Auth response behavior after AREPO pairing acceptance, while still requiring a
+production AREPO plugin and explicit internal-adapter risk decision before
+activation.
 `backend/betterAuthRouteRequestAdapterProof.ts` now proves that AREPO
 routeRequest-style method/path/query/header/body input can be converted to a
 standard `Request`, Better Auth `Response` output can be wrapped with redacted
@@ -290,6 +293,7 @@ Implemented components include:
   `backend/betterAuthRouteRequestAdapterProof.ts`, and
   `backend/betterAuthDeterministicExpiryProof.ts`,
   `backend/betterAuthPairingCookieIssuanceProof.ts`, and
+  `backend/betterAuthPairingCookieBoundaryProof.ts`, and
   `backend/betterAuthSessionScopeMetadataProof.ts`: isolated Better Auth proof
   modules. They are not mounted, are forbidden from live server/auth/frontend
   paths by inactive-boundary tests, and do not enable browser auth. They prove
@@ -303,9 +307,10 @@ Implemented components include:
   routes. The AREPO-owned CSRF request adapter proof records the future
   unmounted request validation shape. The Better Auth session-token storage
   policy accepts app-data storage with conditions. Remaining blockers include
-  a supported pairing session/cookie response boundary, AREPO sidecar
-  authorization store implementation, renewal/pruning/backup policy, output
-  sanitization, and live CSRF integration.
+  production AREPO Better Auth plugin implementation, internal-adapter risk
+  decision, AREPO sidecar authorization store implementation,
+  renewal/pruning/backup policy, output sanitization, and live CSRF
+  integration.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

@@ -121,6 +121,7 @@ export async function createBetterAuthAppDataProofContext(
   options: {
     appDataDir?: string;
     emailAndPasswordEnabled?: boolean;
+    plugins?: Parameters<typeof betterAuth>[0]["plugins"];
   } = {},
 ): Promise<BetterAuthProofContext> {
   const appDataDir = options.appDataDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), "arepo-ba-")));
@@ -135,6 +136,7 @@ export async function createBetterAuthAppDataProofContext(
     database,
     emailAndPassword: { enabled: options.emailAndPasswordEnabled === true },
     socialProviders: {},
+    plugins: options.plugins ?? [],
     rateLimit: { enabled: false },
     advanced: {
       useSecureCookies: false,

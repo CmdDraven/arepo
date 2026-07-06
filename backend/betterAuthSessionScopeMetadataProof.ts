@@ -108,7 +108,8 @@ export type BetterAuthSessionScopeMetadataProofResult = {
     restoredAuthDbRequiresArepoSidecarConsistencyCheck: true;
   };
   remainingBlockers: readonly [
-    "supported-pairing-cookie-response-boundary-needed",
+    "production-arepo-better-auth-plugin-needed",
+    "internal-adapter-risk-decision-needed",
     "arepo-sidecar-authorization-store-needed",
     "session-scope-metadata-schema-needed",
     "renewal-update-age-policy-needed",
@@ -299,7 +300,8 @@ export async function runIsolatedBetterAuthSessionScopeMetadataProof(): Promise<
       restoredAuthDbRequiresArepoSidecarConsistencyCheck: true,
     },
     remainingBlockers: [
-      "supported-pairing-cookie-response-boundary-needed",
+      "production-arepo-better-auth-plugin-needed",
+      "internal-adapter-risk-decision-needed",
       "arepo-sidecar-authorization-store-needed",
       "session-scope-metadata-schema-needed",
       "renewal-update-age-policy-needed",

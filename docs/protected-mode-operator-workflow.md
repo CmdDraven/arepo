@@ -32,8 +32,10 @@ cover import/handler shape, app-data SQLite storage, internal session
 lookup/revocation, internal pairing-to-session feasibility, and routeRequest to
 standard `Request`/`Response` adapter behavior. They also show that a
 pairing-created Better Auth session can be accepted through a signed
-`arepo_session` cookie in isolation, while production remains blocked on a
-supported pairing session/cookie response boundary. The session-scope metadata
+`arepo_session` cookie in isolation, and that a public Better Auth plugin
+endpoint can emit that signed cookie through Better Auth response behavior. A
+production AREPO plugin, internal-adapter risk decision, activation gates, and
+sidecar authorization state remain future work. The session-scope metadata
 proof selects the future ownership model: Better Auth user/session ids are
 references, while AREPO owns local operator identity, device labels,
 authorization decisions, and vault/node permission posture. They also establish
@@ -304,7 +306,11 @@ expired-session pruning, and backup/restore policy still need activation work.
 The pairing-cookie proof does not create live browser sessions either. It
 records that a pairing-created signed cookie can work only inside isolated
 tests through Better Auth's internal adapter plus exported signing, while a
-supported production boundary still needs design.
+production AREPO Better Auth plugin still needs implementation and review.
+The pairing-cookie boundary proof is also isolated. It records that Better
+Auth's public plugin endpoint and `setSessionCookie` helper can model the
+future pairing cookie response, but it does not mount that plugin or emit live
+cookies.
 The session-scope metadata proof is also isolated. It records that future
 browser-session authorization should use AREPO-owned sidecar state keyed by
 Better Auth user/session references, not raw Better Auth session objects or

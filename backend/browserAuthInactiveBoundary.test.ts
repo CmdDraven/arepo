@@ -60,6 +60,7 @@ const browserAuthPrimitiveImportSpecifiers = [
   "./betterAuthDeterministicExpiryProof.js",
   "./betterAuthPairingCookieIssuanceProof.js",
   "./betterAuthSessionScopeMetadataProof.js",
+  "./betterAuthPairingCookieBoundaryProof.js",
   "better-auth",
   "better-auth/minimal",
   "better-auth/node",
@@ -98,6 +99,7 @@ const browserAuthPrimitiveFactories = [
   "runIsolatedBetterAuthDeterministicExpiryProof",
   "runIsolatedBetterAuthPairingCookieIssuanceProof",
   "runIsolatedBetterAuthSessionScopeMetadataProof",
+  "runIsolatedBetterAuthPairingCookieBoundaryProof",
 ] as const;
 
 const secretSamples = [

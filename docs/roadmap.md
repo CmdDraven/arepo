@@ -123,14 +123,16 @@ pairing-cookie proof now shows a pairing-created Better Auth session can be
 accepted through a signed `arepo_session` cookie, direct raw token injection
 remains rejected, and sign-out/expiry apply to that pairing-issued session. The
 proof still relies on Better Auth's internal adapter plus exported signing, so
-remaining blockers include a supported pairing session/cookie response
-boundary. An isolated session-scope metadata proof now selects the hybrid model:
+an isolated pairing-cookie boundary proof now checks the public Better Auth
+plugin endpoint path and confirms it can emit the signed cookie through Better
+Auth response behavior. An isolated session-scope metadata proof now selects the hybrid model:
 Better Auth owns session/cookie mechanics, while AREPO owns local operator
 identity, device-label policy, route authorization, and vault/node permission
 posture in sidecar app-data state keyed by Better Auth user/session references.
-Remaining work includes implementing that sidecar state, renewal/pruning/backup
-policy, output sanitization, and live CSRF integration. No Better Auth handler
-is mounted and live browser auth remains inactive.
+Remaining work includes production AREPO Better Auth plugin implementation,
+internal-adapter risk decision, sidecar state, renewal/pruning/backup policy,
+output sanitization, and live CSRF integration. No Better Auth handler is
+mounted and live browser auth remains inactive.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

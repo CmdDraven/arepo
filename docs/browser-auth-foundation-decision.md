@@ -109,7 +109,11 @@ shape.
   AREPO pairing acceptance and make Better Auth accept a signed
   `arepo_session` cookie for lookup, but it uses Better Auth's internal adapter
   plus exported signing. A public/supported session and cookie response
-  boundary remains unproven.
+  boundary is now likely viable through a Better Auth plugin endpoint. The
+  plugin-boundary proof emits the signed cookie through Better Auth response
+  behavior using public plugin/endpoint APIs and public `setSessionCookie`,
+  while still relying on `ctx.context.internalAdapter` inside the plugin as
+  Better Auth official plugins do.
 - Revoke-current and revoke-all semantics are possible without exposing session
   token material. The isolated proof exercised these through Better Auth
   internals; the production adapter path remains unproven.
@@ -157,11 +161,11 @@ shape.
 
 ## Next Slice
 
-Run a public pairing-cookie boundary decision/proof. Storage policy,
+Run an isolated AREPO Better Auth plugin-boundary proof. Storage policy,
 deterministic expiry, CSRF ownership, routeRequest adaptation,
-pairing-created signed-cookie lookup, and session-scope metadata now have
-isolated answers. The next blocker is whether AREPO can use a supported Better
-Auth API/plugin boundary for pairing-driven signed-cookie response emission, or
-must explicitly accept an internal-boundary risk or revisit the backup session
-foundation. The slice must remain outside live server paths and must not mount
-browser auth.
+pairing-created signed-cookie lookup, session-scope metadata, and plugin
+cookie emission now have isolated answers. The next blocker is turning the tiny
+proof plugin into a production-shaped unmounted AREPO plugin with sidecar
+authorization references, activation-gate checks, routeRequest wrapping, audit
+redaction, and explicit internal-adapter risk acceptance. The slice must remain
+outside live server paths and must not mount browser auth.

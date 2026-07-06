@@ -43,7 +43,7 @@ export type BetterAuthCompatibilityPlan = {
     blockerCodes: readonly string[];
     openQuestions: readonly string[];
   };
-  nextSlice: "isolated-public-pairing-cookie-boundary-proof";
+  nextSlice: "isolated-arepo-better-auth-plugin-proof";
 };
 
 const findingByRequirement = new Map<
@@ -122,10 +122,10 @@ const findingByRequirement = new Map<
       status: "likely-compatible",
       delegatedTo: "better-auth",
       summary:
-        "Cookie names and secure-cookie behavior are configurable; pairing-created signed cookies work only through the isolated internal proof path.",
-      blockerCodes: ["supported-pairing-cookie-response-boundary-needed"],
+        "Cookie names and secure-cookie behavior are configurable; an isolated Better Auth plugin endpoint can emit the signed session cookie after AREPO pairing acceptance.",
+      blockerCodes: ["production-arepo-better-auth-plugin-needed"],
       openQuestions: [
-        "Which supported Better Auth boundary should emit Set-Cookie after AREPO pairing completion?",
+        "How should AREPO package and gate the production Better Auth pairing plugin before mounting?",
       ],
       proofRequiredBeforeLiveActivation: true,
     },
@@ -217,13 +217,13 @@ const findingByRequirement = new Map<
       status: "likely-compatible",
       delegatedTo: "arepo",
       summary:
-        "AREPO pairing can create a Better Auth user/session and signed cookie in an isolated internal proof, but a supported production boundary is still required.",
+        "AREPO pairing can create a Better Auth user/session and signed cookie through an isolated Better Auth plugin endpoint, but production plugin hardening remains.",
       blockerCodes: [
-        "supported-pairing-session-api-needed",
-        "supported-pairing-cookie-response-boundary-needed",
+        "production-arepo-better-auth-plugin-needed",
+        "internal-adapter-risk-decision-needed",
       ],
       openQuestions: [
-        "Can this flow be implemented through a supported Better Auth API or plugin boundary without internal adapter reliance?",
+        "Should AREPO accept plugin endpoint use of Better Auth's internal adapter context, matching Better Auth official plugin patterns?",
       ],
       proofRequiredBeforeLiveActivation: true,
     },
@@ -346,7 +346,7 @@ export function planBetterAuthCompatibility(): BetterAuthCompatibilityPlan {
     requirementCount: browserAuthFoundationRequirements.length,
     findings,
     summary,
-    nextSlice: "isolated-public-pairing-cookie-boundary-proof",
+    nextSlice: "isolated-arepo-better-auth-plugin-proof",
   };
 }
 
