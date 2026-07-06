@@ -113,6 +113,11 @@ shape.
 - Revoke-current and revoke-all semantics are possible without exposing session
   token material. The isolated proof exercised these through Better Auth
   internals; the production adapter path remains unproven.
+- Session-scope metadata uses a hybrid model. Better Auth user/session ids are
+  acceptable references, but AREPO owns local operator subject policy, device
+  label policy, route authorization decisions, and vault/node permission
+  posture in app-data sidecar state. Permission posture must not be serialized
+  into cookies or trusted from frontend-controlled metadata.
 - Deterministic expiry must be proven through an accepted request/session
   adapter. The isolated deterministic expiry proof now confirms active-session
   filtering in app data and signed-cookie `get-session` rejection after an
@@ -152,9 +157,11 @@ shape.
 
 ## Next Slice
 
-Run an isolated session-scope metadata proof. Storage policy, deterministic
-expiry, CSRF ownership, routeRequest adaptation, and pairing-created signed
-cookie lookup now have isolated answers. The next blocker is deciding how
-AREPO's local operator subject, device label, and future permission posture map
-to Better Auth user/session records or AREPO-owned authorization state. The
-slice must remain outside live server paths and must not mount browser auth.
+Run a public pairing-cookie boundary decision/proof. Storage policy,
+deterministic expiry, CSRF ownership, routeRequest adaptation,
+pairing-created signed-cookie lookup, and session-scope metadata now have
+isolated answers. The next blocker is whether AREPO can use a supported Better
+Auth API/plugin boundary for pairing-driven signed-cookie response emission, or
+must explicitly accept an internal-boundary risk or revisit the backup session
+foundation. The slice must remain outside live server paths and must not mount
+browser auth.

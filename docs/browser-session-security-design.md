@@ -40,6 +40,12 @@ The pairing-cookie proof shows sign-out and expiry apply to a pairing-issued
 signed-cookie session, but production activation remains blocked because the
 proof uses Better Auth's internal adapter plus exported signing rather than a
 supported public pairing cookie response boundary.
+The session-scope metadata proof selects a hybrid model: Better Auth owns
+session/cookie mechanics, while AREPO owns local operator subject policy,
+device-label policy, route authorization, audit redaction, and vault/node
+permission posture in app-data sidecar state keyed by Better Auth user/session
+references. Permission posture must never be serialized into cookies or trusted
+from frontend input.
 
 ## Current V1 Posture
 
@@ -691,14 +697,14 @@ The current scaffold remains inert for browser sessions:
     into planned `Set-Cookie` strings for unit tests, but live routes must not
     emit those headers, accept cookies, or expose cookie values in diagnostics,
     status, audit events, errors, or inactive responses.
-21. Keep the Better Auth dependency, app-data store, pairing-session, and
-    pairing-cookie proofs
+21. Keep the Better Auth dependency, app-data store, pairing-session,
+    pairing-cookie, and session-scope metadata proofs
     isolated from live server paths. They may validate local SQLite storage,
     internal pairing-to-session behavior, pairing-created signed-cookie lookup,
-    session lookup, revoke-current, revoke-all, and sanitized response
-    observations, but they must not mount Better Auth, issue live cookies,
-    accept cookies, parse cookies for live authorization, validate live CSRF,
-    or change bearer-token protected mode.
+    session lookup, revoke-current, revoke-all, metadata reference posture, and
+    sanitized response observations, but they must not mount Better Auth, issue
+    live cookies, accept cookies, parse cookies for live authorization,
+    validate live CSRF, or change bearer-token protected mode.
 22. Keep the Better Auth routeRequest adapter proof isolated from live server
     paths. It may validate standard `Request` conversion, sanitized
     `Response` wrapping, signed cookie issuance/clearing observation, and

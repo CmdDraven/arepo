@@ -43,7 +43,7 @@ export type BetterAuthCompatibilityPlan = {
     blockerCodes: readonly string[];
     openQuestions: readonly string[];
   };
-  nextSlice: "isolated-session-scope-metadata-proof";
+  nextSlice: "isolated-public-pairing-cookie-boundary-proof";
 };
 
 const findingByRequirement = new Map<
@@ -186,12 +186,13 @@ const findingByRequirement = new Map<
   [
     "revoke-all-sessions-for-subject",
     {
-      status: "likely-compatible",
+      status: "compatible",
       delegatedTo: "better-auth",
-      summary: "Session management likely supports subject-wide invalidation or can be wrapped.",
-      blockerCodes: ["revoke-all-proof-missing"],
+      summary:
+        "Isolated proofs revoke all Better Auth sessions for one subject while preserving another subject.",
+      blockerCodes: [],
       openQuestions: [
-        "Can AREPO revoke all sessions for the local operator without normal account UX?",
+        "Which AREPO-owned subject record should initiate revoke-all once browser auth is live?",
       ],
       proofRequiredBeforeLiveActivation: true,
     },
@@ -298,10 +299,10 @@ const findingByRequirement = new Map<
       status: "likely-compatible",
       delegatedTo: "shared",
       summary:
-        "Bearer-token protected mode can coexist if Better Auth stays on separate browser routes.",
-      blockerCodes: ["coexistence-routing-proof-needed"],
+        "Bearer-token protected mode can coexist while Better Auth user/session ids reference AREPO-owned authorization state.",
+      blockerCodes: ["arepo-sidecar-authorization-store-needed"],
       openQuestions: [
-        "How will browser sessions map to AREPO principals without changing bearer APIs?",
+        "What sidecar schema maps Better Auth references to AREPO local operator and route permission state?",
       ],
       proofRequiredBeforeLiveActivation: true,
     },
@@ -345,7 +346,7 @@ export function planBetterAuthCompatibility(): BetterAuthCompatibilityPlan {
     requirementCount: browserAuthFoundationRequirements.length,
     findings,
     summary,
-    nextSlice: "isolated-session-scope-metadata-proof",
+    nextSlice: "isolated-public-pairing-cookie-boundary-proof",
   };
 }
 

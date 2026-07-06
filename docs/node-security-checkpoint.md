@@ -96,9 +96,9 @@ schema ownership implementation plus backup/reset/corruption mitigation work.
 `backend/betterAuthPairingSessionAdapterProof.ts` now proves that an isolated
 AREPO pairing completion can create an internal Better Auth user/session
 without enabling username/password, OAuth, social login, or frontend credential
-storage. It keeps public/supported pairing-to-session attachment, signed cookie
-response adaptation, arbitrary AREPO scope metadata, and CSRF ownership as
-unresolved blockers.
+storage. Later proofs now refine its unresolved blockers: public/supported
+pairing session/cookie response adaptation remains blocked, while
+session-scope metadata uses an AREPO-owned sidecar authorization model.
 `backend/betterAuthPairingCookieIssuanceProof.ts` now proves that an isolated
 AREPO pairing-created Better Auth session can be accepted through a signed
 `arepo_session` cookie, that direct raw token injection remains rejected, and
@@ -112,8 +112,8 @@ standard `Request`, Better Auth `Response` output can be wrapped with redacted
 cookie/body metadata, signed cookie issuance and clearing can be observed
 through Better Auth's normal handler routes, session lookup works through the
 signed cookie, sign-out invalidates that session, and direct raw token cookie
-injection remains rejected. Production-safe pairing-driven cookie issuance and
-session-scope metadata remain unresolved.
+injection remains rejected. Production-safe pairing-driven cookie issuance
+remains unresolved.
 `backend/betterAuthCsrfOwnershipProof.ts` now proves that Better Auth rejects
 unsafe signed-cookie auth endpoint requests with missing or untrusted Origin
 and allows the trusted local origin, but does not provide proven CSRF coverage
@@ -141,6 +141,11 @@ lifetime is configured, safe expiry metadata is inspectable, expired sessions
 are excluded from active app-data lookup, and an expired signed-cookie session
 returns null plus redacted cookie-clearing metadata through the `get-session`
 handler without a real-time sleep.
+`backend/betterAuthSessionScopeMetadataProof.ts` now proves the preferred
+hybrid metadata model in isolation: Better Auth user/session ids are accepted
+as redacted references, sanitized device hints can be retrieved and survive
+app-data DB reopen, revoke-current and revoke-all remain targeted, and
+vault/node permission posture stays AREPO-owned rather than cookie-derived.
 
 The remaining sections preserve design rationale and historical checkpoint
 language. Where older text says a component is future/planning-only, prefer the
@@ -283,8 +288,9 @@ Implemented components include:
   `backend/betterAuthAppDataStoreProof.ts`, and
   `backend/betterAuthPairingSessionAdapterProof.ts`,
   `backend/betterAuthRouteRequestAdapterProof.ts`, and
-  `backend/betterAuthDeterministicExpiryProof.ts`, and
-  `backend/betterAuthPairingCookieIssuanceProof.ts`: isolated Better Auth proof
+  `backend/betterAuthDeterministicExpiryProof.ts`,
+  `backend/betterAuthPairingCookieIssuanceProof.ts`, and
+  `backend/betterAuthSessionScopeMetadataProof.ts`: isolated Better Auth proof
   modules. They are not mounted, are forbidden from live server/auth/frontend
   paths by inactive-boundary tests, and do not enable browser auth. They prove
   Better Auth import/handler shape, app-data SQLite storage, internal session
@@ -292,14 +298,14 @@ Implemented components include:
   standard Request conversion, sanitized Response wrapping, signed cookie
   issuance/clearing observation, signed-cookie session lookup, deterministic
   expiry rejection, pairing-created signed-cookie lookup through an internal
-  proof path, and direct raw token rejection. The CSRF ownership proof records that Better Auth owns its
+  proof path, session-scope metadata reference posture, and direct raw token rejection. The CSRF ownership proof records that Better Auth owns its
   auth endpoint protections while AREPO should own CSRF for unsafe AREPO API
   routes. The AREPO-owned CSRF request adapter proof records the future
   unmounted request validation shape. The Better Auth session-token storage
   policy accepts app-data storage with conditions. Remaining blockers include
-  a supported pairing session/cookie response boundary, renewal/pruning/backup
-  policy, session-scope metadata, output sanitization, and live CSRF
-  integration.
+  a supported pairing session/cookie response boundary, AREPO sidecar
+  authorization store implementation, renewal/pruning/backup policy, output
+  sanitization, and live CSRF integration.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

@@ -33,10 +33,13 @@ lookup/revocation, internal pairing-to-session feasibility, and routeRequest to
 standard `Request`/`Response` adapter behavior. They also show that a
 pairing-created Better Auth session can be accepted through a signed
 `arepo_session` cookie in isolation, while production remains blocked on a
-supported pairing session/cookie response boundary. They also establish that
-AREPO should own CSRF validation for future unsafe AREPO API routes. Operators
-should not expect browser login, browser-session cookies, or live CSRF behavior
-to work.
+supported pairing session/cookie response boundary. The session-scope metadata
+proof selects the future ownership model: Better Auth user/session ids are
+references, while AREPO owns local operator identity, device labels,
+authorization decisions, and vault/node permission posture. They also establish
+that AREPO should own CSRF validation for future unsafe AREPO API routes.
+Operators should not expect browser login, browser-session cookies, or live
+CSRF behavior to work.
 The AREPO-owned CSRF request adapter proof is also backend test infrastructure
 only. It validates future unsafe cookie-backed request semantics against
 AREPO's inert CSRF token store/verifier, but it is unmounted and does not add
@@ -301,7 +304,11 @@ expired-session pruning, and backup/restore policy still need activation work.
 The pairing-cookie proof does not create live browser sessions either. It
 records that a pairing-created signed cookie can work only inside isolated
 tests through Better Auth's internal adapter plus exported signing, while a
-supported production boundary and session-scope metadata still need design.
+supported production boundary still needs design.
+The session-scope metadata proof is also isolated. It records that future
+browser-session authorization should use AREPO-owned sidecar state keyed by
+Better Auth user/session references, not raw Better Auth session objects or
+cookie-derived permission data.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.
