@@ -241,6 +241,10 @@ Decision follow-up:
 - `backend/betterAuthCsrfOwnershipProof.ts` proves Better Auth protects its own
   unsafe auth endpoints with trusted-origin behavior, but AREPO should own CSRF
   validation for arbitrary unsafe AREPO API routes.
+- `backend/browserAuthCsrfRequestAdapterProof.ts` proves an unmounted
+  AREPO-owned CSRF request adapter shape for future unsafe cookie-backed AREPO
+  routes using AREPO's inert CSRF token store/verifier and sanitized test-only
+  allow/deny results.
 
 Backup direction:
 
@@ -277,19 +281,15 @@ AREPO-owned:
 
 ## Safest Next Slice
 
-Add an unmounted AREPO-owned CSRF adapter proof that does not enable auth:
+Run a storage-policy decision slice for Better Auth's stored `session.token`
+model. AREPO now has an unmounted CSRF request adapter proof, so the next
+highest-risk question is whether Better Auth's database session token storage
+is acceptable inside AREPO app data and what hardening, backup, reset,
+corruption-handling, and migration policy must surround it.
 
-- Consume AREPO's inert CSRF token store/verifier in a request-shaped adapter.
-- Model an AREPO unsafe route behind future cookie-backed auth and prove CSRF
-  validation happens before mutation.
-- Classify safe/read-only methods separately from unsafe methods.
-- Treat Origin/Referer checks as supplemental and SameSite as helpful but
-  insufficient by itself.
-- Keep deterministic expiry and Better Auth `session.token` storage policy as
-  explicit separate blockers if they are not handled in this slice.
-- Keep acceptance criteria unchanged: no live route mounting, no live
-  `Set-Cookie`, no cookie credential acceptance, no frontend storage, no
-  bearer-token behavior changes, and inactive-boundary tests remain green.
+Keep acceptance criteria unchanged: no live route mounting, no live
+`Set-Cookie`, no cookie credential acceptance, no frontend storage, no
+bearer-token behavior changes, and inactive-boundary tests remain green.
 
 ## Medium-Term Integration Path
 

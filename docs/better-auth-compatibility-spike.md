@@ -30,6 +30,12 @@ Isolated proofs:
 - `backend/betterAuthCsrfOwnershipProof.ts` proves Better Auth's own unsafe
   auth endpoints enforce trusted-origin behavior, but does not provide a
   supported CSRF token issue/verify API for arbitrary AREPO API routes.
+- `backend/browserAuthCsrfRequestAdapterProof.ts` proves an AREPO-owned,
+  unmounted CSRF request adapter shape for future cookie-backed AREPO API
+  routes. It consumes AREPO's inert CSRF token store/verifier, classifies safe
+  versus unsafe methods, validates token id plus secret, binds tokens to the
+  expected browser session id, applies supplemental Origin/Referer checks, and
+  returns sanitized test-only allow/deny results.
 - No Better Auth handler is mounted in `backend/server.ts`.
 - No live route emits Better Auth cookies or accepts Better Auth cookies as
   credentials.
@@ -57,34 +63,36 @@ possible. AREPO's routeRequest-style shape can be adapted to Better Auth's
 standard handler boundary, and signed cookie issuance/clearing can be observed
 and redacted through that boundary. The CSRF ownership proof establishes that
 AREPO should own CSRF validation for unsafe cookie-authenticated AREPO API
-routes while Better Auth owns protection for its own auth endpoints.
+routes while Better Auth owns protection for its own auth endpoints. The
+AREPO-owned CSRF request adapter proof now validates the future request-side
+shape for unsafe AREPO mutations, but it remains unmounted and not live.
 Public/supported pairing-session attachment, pairing-driven cookie delivery,
 deterministic expiry proof, and storage policy remain unresolved.
 
 ## Requirement Fit
 
-| Requirement                     | Fit               | Owner       | Notes                                                                                                                                                                        |
-| ------------------------------- | ----------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Local-first default             | likely-compatible | shared      | Must prove disabled auth and startup defaults stay unchanged.                                                                                                                |
-| Localhost-only default          | likely-compatible | shared      | Trusted origins and cookie policy must stay localhost-scoped until activation.                                                                                               |
-| Single-node self-hosting        | needs-spike       | shared      | HTTPS, Secure cookies, and non-local binding policy remain unresolved.                                                                                                       |
-| No mandatory cloud identity     | likely-compatible | Better Auth | Better Auth supports local methods, but AREPO must avoid unwanted signup/provider UX.                                                                                        |
-| Server-side session semantics   | compatible        | Better Auth | App-data SQLite storage works in isolation through Node `node:sqlite`; migration/schema ownership still needs a policy.                                                      |
-| Secure cookie issuance/clearing | likely-compatible | Better Auth | Handler-boundary proof observed signed cookie issuance and clearing metadata with redaction; pairing-driven issuance remains unresolved and live emission remains forbidden. |
-| Session expiry                  | needs-spike       | Better Auth | Expiry/updateAge are configurable, but the app-data proof did not prove deterministic expired-session filtering.                                                             |
-| Session rotation                | unknown           | shared      | Renewal/rotation policy needs a deliberate AREPO decision.                                                                                                                   |
-| Logout                          | likely-compatible | Better Auth | Isolated proof observed sign-out clearing behavior; route adapter/live semantics remain unmounted.                                                                           |
-| Revoke-current                  | likely-compatible | Better Auth | Handler-boundary proof shows sign-out/revocation invalidates a signed-cookie session; production route policy remains unmounted.                                             |
-| Revoke-all                      | likely-compatible | Better Auth | Isolated proof deleted all sessions for one internal user; local-operator mapping still needs proof.                                                                         |
-| No frontend secret storage      | likely-compatible | shared      | Cookie-backed flow can work if AREPO avoids durable frontend secrets.                                                                                                        |
-| Explicit pairing flow           | likely-compatible | shared      | Pairing remains custom; internal pairing-to-session creation works; public/supported session attachment remains unproven.                                                    |
-| Route contract model            | compatible        | AREPO       | Contracts can wrap any foundation.                                                                                                                                           |
-| Activation gate/preflight       | compatible        | AREPO       | Gates must block mounting until activation.                                                                                                                                  |
-| Audit without secrets           | needs-spike       | AREPO       | Better Auth outputs and hooks must be sanitized before audit/status/logging.                                                                                                 |
-| CSRF ownership                  | compatible        | AREPO       | Better Auth protects its own auth endpoints; AREPO should own CSRF for arbitrary unsafe AREPO API routes.                                                                    |
-| Inactive-boundary regression    | compatible        | AREPO       | Tests can forbid imports and mounting until activation.                                                                                                                      |
-| Bearer-token migration          | likely-compatible | shared      | Coexistence should work if routes and principals are kept separate.                                                                                                          |
-| Custom Node router integration  | compatible        | shared      | Isolated adapter proof converts AREPO routeRequest-style input to standard Request and wraps Better Auth Response safely.                                                    |
+| Requirement                     | Fit               | Owner       | Notes                                                                                                                                                                          |
+| ------------------------------- | ----------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Local-first default             | likely-compatible | shared      | Must prove disabled auth and startup defaults stay unchanged.                                                                                                                  |
+| Localhost-only default          | likely-compatible | shared      | Trusted origins and cookie policy must stay localhost-scoped until activation.                                                                                                 |
+| Single-node self-hosting        | needs-spike       | shared      | HTTPS, Secure cookies, and non-local binding policy remain unresolved.                                                                                                         |
+| No mandatory cloud identity     | likely-compatible | Better Auth | Better Auth supports local methods, but AREPO must avoid unwanted signup/provider UX.                                                                                          |
+| Server-side session semantics   | compatible        | Better Auth | App-data SQLite storage works in isolation through Node `node:sqlite`; migration/schema ownership still needs a policy.                                                        |
+| Secure cookie issuance/clearing | likely-compatible | Better Auth | Handler-boundary proof observed signed cookie issuance and clearing metadata with redaction; pairing-driven issuance remains unresolved and live emission remains forbidden.   |
+| Session expiry                  | needs-spike       | Better Auth | Expiry/updateAge are configurable, but the app-data proof did not prove deterministic expired-session filtering.                                                               |
+| Session rotation                | unknown           | shared      | Renewal/rotation policy needs a deliberate AREPO decision.                                                                                                                     |
+| Logout                          | likely-compatible | Better Auth | Isolated proof observed sign-out clearing behavior; route adapter/live semantics remain unmounted.                                                                             |
+| Revoke-current                  | likely-compatible | Better Auth | Handler-boundary proof shows sign-out/revocation invalidates a signed-cookie session; production route policy remains unmounted.                                               |
+| Revoke-all                      | likely-compatible | Better Auth | Isolated proof deleted all sessions for one internal user; local-operator mapping still needs proof.                                                                           |
+| No frontend secret storage      | likely-compatible | shared      | Cookie-backed flow can work if AREPO avoids durable frontend secrets.                                                                                                          |
+| Explicit pairing flow           | likely-compatible | shared      | Pairing remains custom; internal pairing-to-session creation works; public/supported session attachment remains unproven.                                                      |
+| Route contract model            | compatible        | AREPO       | Contracts can wrap any foundation.                                                                                                                                             |
+| Activation gate/preflight       | compatible        | AREPO       | Gates must block mounting until activation.                                                                                                                                    |
+| Audit without secrets           | needs-spike       | AREPO       | Better Auth outputs and hooks must be sanitized before audit/status/logging.                                                                                                   |
+| CSRF ownership                  | compatible        | AREPO       | Better Auth protects its own auth endpoints; AREPO owns CSRF for arbitrary unsafe AREPO API routes. The unmounted adapter proof validates token/session/origin request checks. |
+| Inactive-boundary regression    | compatible        | AREPO       | Tests can forbid imports and mounting until activation.                                                                                                                        |
+| Bearer-token migration          | likely-compatible | shared      | Coexistence should work if routes and principals are kept separate.                                                                                                            |
+| Custom Node router integration  | compatible        | shared      | Isolated adapter proof converts AREPO routeRequest-style input to standard Request and wraps Better Auth Response safely.                                                      |
 
 ## Open Questions
 
@@ -99,6 +107,9 @@ deterministic expiry proof, and storage policy remain unresolved.
   and trusted origins match AREPO policy exactly?
 - Where should AREPO mount its future CSRF guard relative to browser-session
   authentication, route authorization, audit, and mutation handlers?
+- How should the unmounted CSRF adapter proof be adapted to the eventual
+  cookie-backed route pipeline without becoming a parallel authorization
+  system?
 - Can revoke-current and revoke-all avoid exposing raw session token material?
 - Which Better Auth response/hook fields are safe for AREPO audit events?
 - Can all Better Auth integration code remain forbidden from live server paths
@@ -164,6 +175,13 @@ Passed:
   are supplemental rather than replacements for CSRF token validation.
 - AREPO's inert CSRF token store/verifier primitives fit the likely ownership
   model and keep raw tokens and hashes out of diagnostics.
+- The AREPO-owned CSRF request adapter proof classifies safe methods
+  separately, requires CSRF for unsafe cookie-backed route shapes, denies
+  missing, malformed, wrong, expired, revoked, consumed, and session-mismatched
+  tokens with sanitized reason codes, and allows a valid token/session match
+  only as a test-only proof result.
+- The CSRF request adapter proof applies Origin/Referer checks as supplemental
+  controls and never treats SameSite as sufficient by itself.
 
 Still unresolved:
 
@@ -181,8 +199,9 @@ Still unresolved:
 - AREPO-specific scope metadata such as vault permission posture. The proof did
   not establish arbitrary session metadata support without schema/authorization
   design.
-- An unmounted AREPO-owned CSRF request adapter for future cookie-authenticated
-  AREPO API routes.
+- Live integration of AREPO-owned CSRF validation into the future cookie-backed
+  route pipeline. The adapter proof is unmounted and does not validate live
+  requests.
 - Sanitized wrapping of Better Auth hooks/outputs for AREPO audit/status beyond
   the response-envelope proof.
 
@@ -192,7 +211,7 @@ Still unresolved:
 - `deterministic-expiry-adapter-proof-needed`
 - `better-auth-session-token-storage-policy-review-needed`
 - `pairing-cookie-issuance-path-unproven`
-- `arepo-owned-csrf-required-for-unsafe-api-routes`
+- `arepo-owned-csrf-live-integration-blocked`
 - `better-auth-output-sanitization-unproven`
 - `coexistence-routing-proof-needed`
 - `mounting-gate-tests-needed`
@@ -210,8 +229,9 @@ A later isolated security proof should test, outside `server.ts`:
   operator/principal through the accepted adapter path.
 - Decide whether Better Auth's `session.token` column is acceptable inside
   AREPO app data.
-- Build an unmounted AREPO-owned CSRF request adapter for unsafe
-  cookie-authenticated AREPO API routes.
+- Adapt the AREPO-owned CSRF request adapter proof into a disabled future route
+  pipeline only after storage policy, session scope, and activation gates are
+  settled.
 - Confirm no raw session token, cookie value, bearer token, authorization
   header, hash, salt, or verifier internals appear in sanitized wrappers.
 - Confirm Better Auth remains unmounted and forbidden from live authorization
@@ -233,12 +253,11 @@ A later isolated security proof should test, outside `server.ts`:
 
 ## Recommended Next Slice
 
-Run an unmounted AREPO-owned CSRF adapter proof for future cookie-backed unsafe
-AREPO API routes, or a storage-policy decision slice for Better Auth's stored
-`session.token` model. The CSRF adapter proof is the stronger next step if
-cookie-backed browser auth remains the target: it should consume AREPO's inert
-CSRF token store/verifier, classify safe versus unsafe methods, validate
-Origin/Referer as supplemental checks, produce sanitized denial reason codes,
-and prove validation happens before mutation. It must stay outside
-`server.ts`, must not emit live cookies or accept cookie credentials in live
-authorization, and must not mount browser auth.
+Run a storage-policy decision slice for Better Auth's stored `session.token`
+model. The CSRF ownership and request-adapter questions now have an unmounted
+AREPO answer, so the next highest-risk blocker is whether Better Auth's
+database session token storage is acceptable inside AREPO app data and what
+backup, reset, corruption-handling, and hardening policy is required. That
+slice should remain documentation/model/test-only work, must not mount Better
+Auth or browser auth, and must not emit live cookies or accept cookie
+credentials in live authorization.

@@ -25,7 +25,10 @@ are not mounted, do not emit live cookies, do not accept cookies as live
 credentials, and do not change bearer-token protected mode.
 The CSRF ownership proof shows Better Auth protects its own unsafe auth
 endpoints with trusted-origin behavior, while AREPO should own CSRF validation
-for arbitrary unsafe AREPO API routes.
+for arbitrary unsafe AREPO API routes. AREPO now also has an unmounted
+AREPO-owned CSRF request adapter proof that validates token/session/origin
+request semantics for future cookie-backed unsafe API routes without enabling
+live CSRF enforcement.
 
 ## Current V1 Posture
 
@@ -245,6 +248,18 @@ reject missing/wrong/expired/revoked/consumed tokens, revoke tokens for one
 session, prune expired tokens, and return safe diagnostics. These primitives do
 not persist to disk, do not issue CSRF tokens through any HTTP route, and are
 not wired into live request authorization or route middleware.
+
+Current adapter proof note: `backend/browserAuthCsrfRequestAdapterProof.ts`
+uses those inert CSRF primitives in an unmounted proof for future
+cookie-backed AREPO API routes. It classifies safe methods separately, requires
+CSRF for unsafe methods, verifies token id plus token secret, binds the token to
+the expected browser session id, denies missing, malformed, wrong, expired,
+revoked, consumed, or session-mismatched token material with sanitized reason
+codes, applies Origin/Referer checks as supplemental controls, and treats
+SameSite as insufficient by itself. Its allow results are explicitly test-only;
+it is not mounted, does not authenticate requests, does not mutate route state,
+does not emit cookies, and does not validate CSRF in live request
+authorization.
 
 ## Session Store And Revocation
 
@@ -664,6 +679,12 @@ The current scaffold remains inert for browser sessions:
     non-auth API routes must remain unmounted until a deliberate adapter slice
     proves token validation, supplemental Origin/Referer checks, sanitized
     denial, and pre-mutation ordering.
+24. Keep the AREPO-owned CSRF request adapter proof isolated from live server
+    paths. It may prove future unsafe cookie-backed route validation with
+    token/session binding and supplemental Origin/Referer checks, but it must
+    not become middleware, live route authorization, live CSRF enforcement, or
+    cookie credential acceptance until a deliberate activation phase wires the
+    full browser-auth path.
 
 Actual enforcement should wait until session storage, credential verification,
 audit writing, revocation checks, CORS/origin policy, and route authorization are

@@ -117,6 +117,12 @@ shape.
   The isolated CSRF ownership proof shows Better Auth protects its own auth
   endpoints with trusted-origin behavior, but AREPO should own CSRF validation
   for arbitrary unsafe AREPO API routes.
+- The AREPO-owned CSRF request adapter shape is proven before live cookie-backed
+  AREPO mutations exist. The unmounted proof now consumes AREPO's inert CSRF
+  token store/verifier, requires CSRF for unsafe route shapes, binds tokens to
+  the expected browser session id, applies supplemental Origin/Referer checks,
+  treats SameSite as insufficient by itself, and returns sanitized test-only
+  allow/deny results.
 - Better Auth outputs can be wrapped so audit/status/logging never leak
   secrets.
 - Inactive-boundary regression tests can forbid accidental mounting until a
@@ -136,9 +142,9 @@ shape.
 
 ## Next Slice
 
-Run an unmounted AREPO-owned CSRF adapter proof, or a storage-policy decision
-slice for Better Auth's stored `session.token` model. The CSRF adapter proof
-should consume AREPO's inert CSRF token store/verifier, classify safe versus
-unsafe route methods, validate Origin/Referer as supplemental checks, and prove
-sanitized denial happens before mutation. It must remain outside live server
-paths and must not mount browser auth.
+Run a storage-policy decision slice for Better Auth's stored `session.token`
+model. The AREPO-owned CSRF adapter proof now exists and remains unmounted, so
+the next blocker is whether Better Auth's session token storage is acceptable
+inside AREPO app data and what hardening, backup, reset, and corruption-handling
+policy must surround it. The slice must remain outside live server paths and
+must not mount browser auth.

@@ -116,6 +116,14 @@ cookie-authenticated AREPO POST, PUT, PATCH, DELETE, logout, revoke, config,
 vault, pairing, and session mutations. SameSite is helpful but insufficient by
 itself, and Origin/Referer checks are supplemental rather than replacements for
 CSRF token validation.
+`backend/browserAuthCsrfRequestAdapterProof.ts` now proves an unmounted
+AREPO-owned CSRF request adapter shape for those future unsafe route classes. It
+uses AREPO's inert CSRF token store/verifier, classifies safe versus unsafe
+methods, denies missing, malformed, wrong, expired, revoked, consumed, and
+session-mismatched CSRF proofs with sanitized reason codes, allows a valid
+token/session match only as a test-only proof result, applies Origin/Referer as
+supplemental checks, and remains forbidden from live server/auth/frontend
+paths.
 
 The remaining sections preserve design rationale and historical checkpoint
 language. Where older text says a component is future/planning-only, prefer the
@@ -266,8 +274,9 @@ Implemented components include:
   issuance/clearing observation, signed-cookie session lookup, and direct raw
   token rejection. The CSRF ownership proof records that Better Auth owns its
   auth endpoint protections while AREPO should own CSRF for unsafe AREPO API
-  routes. Remaining blockers include pairing-cookie issuance, expiry,
-  storage-policy, and an unmounted AREPO-owned CSRF request adapter.
+  routes. The AREPO-owned CSRF request adapter proof records the future
+  unmounted request validation shape. Remaining blockers include pairing-cookie
+  issuance, expiry, storage-policy, and live CSRF integration.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

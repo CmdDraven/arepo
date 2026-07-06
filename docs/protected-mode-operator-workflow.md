@@ -34,6 +34,10 @@ standard `Request`/`Response` adapter behavior. They also establish that AREPO
 should own CSRF validation for future unsafe AREPO API routes. Operators should
 not expect browser login, browser-session cookies, or live CSRF behavior to
 work.
+The AREPO-owned CSRF request adapter proof is also backend test infrastructure
+only. It validates future unsafe cookie-backed request semantics against
+AREPO's inert CSRF token store/verifier, but it is unmounted and does not add
+live CSRF checks.
 
 ## Configuration
 
@@ -271,6 +275,10 @@ The isolated Better Auth CSRF ownership proof is also backend test
 infrastructure only. It does not enable CSRF validation in live routes; it
 records that future cookie-backed AREPO unsafe API routes need an AREPO-owned
 CSRF guard.
+The unmounted AREPO-owned CSRF request adapter proof is also backend test
+infrastructure only. It proves the future guard should validate CSRF token id
+plus secret, session binding, and supplemental Origin/Referer checks before
+mutation, but it is not middleware and does not validate live requests.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.
