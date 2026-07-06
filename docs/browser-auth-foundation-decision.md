@@ -113,7 +113,11 @@ shape.
   plugin-boundary proof emits the signed cookie through Better Auth response
   behavior using public plugin/endpoint APIs and public `setSessionCookie`,
   while still relying on `ctx.context.internalAdapter` inside the plugin as
-  Better Auth official plugins do.
+  Better Auth official plugins do. The production-shaped plugin-boundary proof
+  adds activation-gate ordering, route-contract checking, sidecar authorization
+  references, sanitized device labels, sanitized audit-like events, CSRF
+  sequencing points, signed-cookie lookup, sign-out, revoke-current,
+  revoke-all, and expiry checks inside the unmounted proof boundary.
 - Revoke-current and revoke-all semantics are possible without exposing session
   token material. The isolated proof exercised these through Better Auth
   internals; the production adapter path remains unproven.
@@ -143,7 +147,9 @@ shape.
   treats SameSite as insufficient by itself, and returns sanitized test-only
   allow/deny results.
 - Better Auth outputs can be wrapped so audit/status/logging never leak
-  secrets.
+  secrets. The production-shaped plugin-boundary proof now emits only
+  redacted audit-like categories and safe sidecar counts; production hook
+  wrapping still needs implementation.
 - Inactive-boundary regression tests can forbid accidental mounting until a
   deliberate activation phase.
 
@@ -161,11 +167,11 @@ shape.
 
 ## Next Slice
 
-Run an isolated AREPO Better Auth plugin-boundary proof. Storage policy,
-deterministic expiry, CSRF ownership, routeRequest adaptation,
-pairing-created signed-cookie lookup, session-scope metadata, and plugin
-cookie emission now have isolated answers. The next blocker is turning the tiny
-proof plugin into a production-shaped unmounted AREPO plugin with sidecar
-authorization references, activation-gate checks, routeRequest wrapping, audit
-redaction, and explicit internal-adapter risk acceptance. The slice must remain
-outside live server paths and must not mount browser auth.
+Run an internal-adapter risk decision slice. Storage policy, deterministic
+expiry, CSRF ownership, routeRequest adaptation, pairing-created signed-cookie
+lookup, session-scope metadata, and production-shaped plugin-boundary behavior
+now have isolated answers. The remaining high-risk decision is whether AREPO
+accepts Better Auth plugin endpoint use of `ctx.context.internalAdapter`,
+matching Better Auth official plugin patterns, or keeps the `express-session`
+backup path open. The slice must remain outside live server paths and must not
+mount browser auth.

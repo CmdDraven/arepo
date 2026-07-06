@@ -111,7 +111,7 @@ browser auth. These blockers remain:
 - renewal/update-age values and expired-session pruning policy
 - backup/restore session-state policy
 - live AREPO-owned CSRF integration behind activation gates
-- Better Auth output/hook sanitization for audit and status
+- Better Auth output/hook sanitization wrappers for audit and status
 - deliberate mounting behind activation gate, route contracts, and
   inactive-boundary tests
 

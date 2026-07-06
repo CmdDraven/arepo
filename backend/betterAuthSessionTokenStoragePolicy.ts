@@ -27,11 +27,14 @@ export type BetterAuthSessionTokenStorageMitigation = {
 };
 
 export type BetterAuthSessionTokenStorageBlockerCode =
-  | "deterministic-expiry-proof-needed"
-  | "pairing-cookie-issuance-path-unproven"
-  | "session-scope-metadata-design-needed"
+  | "internal-adapter-risk-decision-needed"
+  | "production-arepo-better-auth-plugin-needed"
+  | "arepo-sidecar-authorization-store-needed"
+  | "renewal-update-age-policy-needed"
+  | "expired-session-pruning-policy-needed"
+  | "backup-restore-session-state-policy-needed"
   | "arepo-owned-csrf-live-integration-blocked"
-  | "better-auth-output-sanitization-unproven"
+  | "better-auth-output-sanitization-wrapper-needed"
   | "activation-gate-mounting-still-forbidden";
 
 export type BetterAuthSessionTokenStoragePolicy = {
@@ -208,18 +211,21 @@ export function planBetterAuthSessionTokenStoragePolicy(): BetterAuthSessionToke
       },
     ],
     remainingActivationBlockers: [
-      "deterministic-expiry-proof-needed",
-      "pairing-cookie-issuance-path-unproven",
-      "session-scope-metadata-design-needed",
+      "internal-adapter-risk-decision-needed",
+      "production-arepo-better-auth-plugin-needed",
+      "arepo-sidecar-authorization-store-needed",
+      "renewal-update-age-policy-needed",
+      "expired-session-pruning-policy-needed",
+      "backup-restore-session-state-policy-needed",
       "arepo-owned-csrf-live-integration-blocked",
-      "better-auth-output-sanitization-unproven",
+      "better-auth-output-sanitization-wrapper-needed",
       "activation-gate-mounting-still-forbidden",
     ],
     operatorWarnings: [
       "Better Auth session storage is sensitive generated app data, not user-authored vault content.",
       "Copying or syncing the auth database can expose or restore browser-session authority.",
       "Deleting the auth database should revoke all browser sessions and require re-pairing.",
-      "Browser sessions remain blocked until expiry, pairing cookie issuance, scope metadata, and CSRF integration are complete.",
+      "Browser sessions remain blocked until internal-adapter risk, production plugin, sidecar state, renewal, pruning, backup, CSRF, and mounting decisions are complete.",
     ],
   };
 }

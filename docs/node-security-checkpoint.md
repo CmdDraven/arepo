@@ -109,6 +109,16 @@ Auth plugin endpoint can emit the signed `arepo_session` cookie through Better
 Auth response behavior after AREPO pairing acceptance, while still requiring a
 production AREPO plugin and explicit internal-adapter risk decision before
 activation.
+`backend/betterAuthArepoPluginBoundaryProof.ts` now expands that into a
+production-shaped but unmounted AREPO plugin-boundary proof. It verifies that
+the activation gate blocks before Better Auth session creation,
+`setSessionCookie`, sidecar authorization reference creation, or success-audit
+emission by default. With an explicit test-only allowance, the proof creates a
+Better Auth session and signed cookie through the plugin boundary, models
+AREPO-owned sidecar authorization references with sanitized device labels,
+records CSRF sequencing points, emits sanitized audit-like events, and confirms
+signed-cookie lookup, sign-out, revoke-current, revoke-all, expiry, and direct
+raw token rejection in isolation.
 `backend/betterAuthRouteRequestAdapterProof.ts` now proves that AREPO
 routeRequest-style method/path/query/header/body input can be converted to a
 standard `Request`, Better Auth `Response` output can be wrapped with redacted
@@ -292,8 +302,9 @@ Implemented components include:
   `backend/betterAuthPairingSessionAdapterProof.ts`,
   `backend/betterAuthRouteRequestAdapterProof.ts`, and
   `backend/betterAuthDeterministicExpiryProof.ts`,
-  `backend/betterAuthPairingCookieIssuanceProof.ts`, and
-  `backend/betterAuthPairingCookieBoundaryProof.ts`, and
+  `backend/betterAuthPairingCookieIssuanceProof.ts`,
+  `backend/betterAuthPairingCookieBoundaryProof.ts`,
+  `backend/betterAuthArepoPluginBoundaryProof.ts`, and
   `backend/betterAuthSessionScopeMetadataProof.ts`: isolated Better Auth proof
   modules. They are not mounted, are forbidden from live server/auth/frontend
   paths by inactive-boundary tests, and do not enable browser auth. They prove
@@ -302,13 +313,16 @@ Implemented components include:
   standard Request conversion, sanitized Response wrapping, signed cookie
   issuance/clearing observation, signed-cookie session lookup, deterministic
   expiry rejection, pairing-created signed-cookie lookup through an internal
-  proof path, session-scope metadata reference posture, and direct raw token rejection. The CSRF ownership proof records that Better Auth owns its
+  proof path, production-shaped plugin-boundary behavior with activation-gate
+  ordering, sidecar authorization references, CSRF sequencing, sanitized
+  audit-like events, session-scope metadata reference posture, and direct raw
+  token rejection. The CSRF ownership proof records that Better Auth owns its
   auth endpoint protections while AREPO should own CSRF for unsafe AREPO API
   routes. The AREPO-owned CSRF request adapter proof records the future
   unmounted request validation shape. The Better Auth session-token storage
   policy accepts app-data storage with conditions. Remaining blockers include
-  production AREPO Better Auth plugin implementation, internal-adapter risk
-  decision, AREPO sidecar authorization store implementation,
+  internal-adapter risk decision, production AREPO Better Auth plugin
+  implementation, AREPO sidecar authorization store implementation,
   renewal/pruning/backup policy, output sanitization, and live CSRF
   integration.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle

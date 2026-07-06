@@ -288,13 +288,14 @@ AREPO-owned:
 
 ## Safest Next Slice
 
-Run an isolated AREPO Better Auth plugin-boundary proof. AREPO now has an
-unmounted CSRF request adapter proof, a session-token storage policy decision,
-deterministic expiry proof, pairing-created signed-cookie proof,
-session-scope metadata proof, and public plugin endpoint boundary proof. The
-next highest-risk question is how to package the production-shaped AREPO
-pairing plugin with sidecar authorization references, activation gates, route
-adapter wrapping, and audit redaction while keeping it unmounted.
+Run an internal-adapter risk decision slice. AREPO now has an unmounted CSRF
+request adapter proof, a session-token storage policy decision, deterministic
+expiry proof, pairing-created signed-cookie proof, session-scope metadata
+proof, public plugin endpoint boundary proof, and production-shaped unmounted
+AREPO Better Auth plugin-boundary proof. The next highest-risk question is
+whether AREPO accepts Better Auth plugin endpoint use of
+`ctx.context.internalAdapter`, matching Better Auth official plugin patterns,
+or keeps the `express-session` backup path open.
 
 Keep acceptance criteria unchanged: no live route mounting, no live
 `Set-Cookie`, no cookie credential acceptance, no frontend storage, no

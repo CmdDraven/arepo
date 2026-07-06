@@ -119,11 +119,14 @@ test("Better Auth session-token policy keeps activation blockers explicit", () =
   const policy = planBetterAuthSessionTokenStoragePolicy();
 
   assert.deepEqual(policy.remainingActivationBlockers, [
-    "deterministic-expiry-proof-needed",
-    "pairing-cookie-issuance-path-unproven",
-    "session-scope-metadata-design-needed",
+    "internal-adapter-risk-decision-needed",
+    "production-arepo-better-auth-plugin-needed",
+    "arepo-sidecar-authorization-store-needed",
+    "renewal-update-age-policy-needed",
+    "expired-session-pruning-policy-needed",
+    "backup-restore-session-state-policy-needed",
     "arepo-owned-csrf-live-integration-blocked",
-    "better-auth-output-sanitization-unproven",
+    "better-auth-output-sanitization-wrapper-needed",
     "activation-gate-mounting-still-forbidden",
   ]);
   assert.equal(

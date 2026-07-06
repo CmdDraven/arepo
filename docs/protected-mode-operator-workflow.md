@@ -34,8 +34,12 @@ standard `Request`/`Response` adapter behavior. They also show that a
 pairing-created Better Auth session can be accepted through a signed
 `arepo_session` cookie in isolation, and that a public Better Auth plugin
 endpoint can emit that signed cookie through Better Auth response behavior. A
-production AREPO plugin, internal-adapter risk decision, activation gates, and
-sidecar authorization state remain future work. The session-scope metadata
+production-shaped unmounted plugin proof now confirms activation gates run
+before session creation, sidecar authorization references are created only
+after test-only allowance, CSRF sequencing points are recorded, and audit-like
+output is sanitized. A production AREPO plugin, internal-adapter risk decision,
+persisted sidecar authorization state, and live CSRF integration remain future
+work. The session-scope metadata
 proof selects the future ownership model: Better Auth user/session ids are
 references, while AREPO owns local operator identity, device labels,
 authorization decisions, and vault/node permission posture. They also establish
@@ -311,6 +315,10 @@ The pairing-cookie boundary proof is also isolated. It records that Better
 Auth's public plugin endpoint and `setSessionCookie` helper can model the
 future pairing cookie response, but it does not mount that plugin or emit live
 cookies.
+The production-shaped AREPO Better Auth plugin-boundary proof is also isolated.
+It models activation-gate checks, sidecar authorization references, CSRF
+sequencing, and sanitized audit-like events, but it remains unmounted and does
+not make browser cookies live credentials.
 The session-scope metadata proof is also isolated. It records that future
 browser-session authorization should use AREPO-owned sidecar state keyed by
 Better Auth user/session references, not raw Better Auth session objects or

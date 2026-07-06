@@ -47,6 +47,14 @@ and frontend secret storage, but production activation still needs a real
 AREPO plugin, activation gates, sidecar authorization state, audit redaction,
 CSRF sequencing, and an explicit decision accepting plugin endpoint use of
 `ctx.context.internalAdapter`.
+The production-shaped AREPO Better Auth plugin-boundary proof now models those
+pieces in isolation: the activation gate blocks before session creation,
+`setSessionCookie`, sidecar reference creation, and success-audit emission by
+default; an explicit test-only allowance can create a signed cookie and sidecar
+authorization reference through the plugin boundary; signed-cookie lookup,
+sign-out, revoke-current, revoke-all, and expiry still work; and audit output,
+cookie metadata, and sidecar diagnostics stay redacted. This proof remains
+unmounted and does not enable live browser auth.
 The session-scope metadata proof selects a hybrid model: Better Auth owns
 session/cookie mechanics, while AREPO owns local operator subject policy,
 device-label policy, route authorization, audit redaction, and vault/node
@@ -705,14 +713,16 @@ The current scaffold remains inert for browser sessions:
     emit those headers, accept cookies, or expose cookie values in diagnostics,
     status, audit events, errors, or inactive responses.
 21. Keep the Better Auth dependency, app-data store, pairing-session,
-    pairing-cookie, pairing-cookie boundary, and session-scope metadata proofs
-    isolated from live server paths. They may validate local SQLite storage,
-    internal pairing-to-session behavior, pairing-created signed-cookie lookup,
-    plugin-boundary cookie emission, session lookup, revoke-current,
-    revoke-all, metadata reference posture, and sanitized response
-    observations, but they must not mount Better Auth, issue live cookies,
-    accept cookies, parse cookies for live authorization, validate live CSRF,
-    or change bearer-token protected mode.
+    pairing-cookie, pairing-cookie boundary, production-shaped AREPO plugin
+    boundary, and session-scope metadata proofs isolated from live server paths.
+    They may validate local SQLite storage, internal pairing-to-session
+    behavior, pairing-created signed-cookie lookup, plugin-boundary cookie
+    emission, sidecar authorization reference posture, CSRF sequencing,
+    sanitized audit-like events, session lookup, revoke-current, revoke-all,
+    metadata reference posture, and sanitized response observations, but they
+    must not mount Better Auth, issue live cookies, accept cookies, parse
+    cookies for live authorization, validate live CSRF, or change bearer-token
+    protected mode.
 22. Keep the Better Auth routeRequest adapter proof isolated from live server
     paths. It may validate standard `Request` conversion, sanitized
     `Response` wrapping, signed cookie issuance/clearing observation, and
