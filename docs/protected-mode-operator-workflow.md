@@ -42,6 +42,10 @@ The Better Auth session-token storage policy is also planning infrastructure
 only. It accepts future Better Auth session storage only under sensitive AREPO
 app data outside vault roots, excluded from vault sync/export, with reset and
 corruption behavior that fails closed and requires re-pairing.
+The Better Auth deterministic expiry proof is also isolated backend test
+infrastructure only. It proves expired Better Auth sessions can be rejected via
+app-data active-session lookup and signed-cookie `get-session` behavior, but it
+does not make browser sessions live.
 
 ## Configuration
 
@@ -288,6 +292,9 @@ today. It records that a future Better Auth auth database should be treated as
 sensitive generated app state; deleting it should revoke all future browser
 sessions, and restoring old backups may restore old session state unless AREPO
 forces reset or re-pairing.
+The deterministic expiry proof does not create live browser sessions either. It
+records that expiry can be tested without slow sleeps, while renewal,
+expired-session pruning, and backup/restore policy still need activation work.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

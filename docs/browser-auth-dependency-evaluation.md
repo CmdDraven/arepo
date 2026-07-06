@@ -249,6 +249,9 @@ Decision follow-up:
 - `backend/betterAuthSessionTokenStoragePolicy.ts` records that Better Auth's
   stored `session.token` model is accepted with conditions only inside
   sensitive AREPO app data outside vault roots.
+- `backend/betterAuthDeterministicExpiryProof.ts` proves expired Better Auth
+  sessions can be rejected through isolated app-data active-session lookup and
+  signed-cookie `get-session` behavior without slow sleeps.
 
 Backup direction:
 
@@ -285,11 +288,11 @@ AREPO-owned:
 
 ## Safest Next Slice
 
-Run a deterministic expiry proof through the isolated Better Auth session
-boundary. AREPO now has an unmounted CSRF request adapter proof and a
-session-token storage policy decision, so the next highest-risk question is
-whether expired Better Auth sessions are rejected predictably through the
-Request/Response or app-data session path AREPO would wrap later.
+Run a pairing-driven signed-cookie issuance proof. AREPO now has an unmounted
+CSRF request adapter proof, a session-token storage policy decision, and an
+isolated deterministic expiry proof, so the next highest-risk question is
+whether AREPO pairing completion can create or attach a Better Auth session and
+produce the signed browser cookie through an acceptable boundary.
 
 Keep acceptance criteria unchanged: no live route mounting, no live
 `Set-Cookie`, no cookie credential acceptance, no frontend storage, no

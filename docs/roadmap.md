@@ -116,10 +116,13 @@ results for those future unsafe route shapes. A Better Auth session-token
 storage policy now accepts the stored `session.token` model with conditions
 inside sensitive AREPO app data outside vault roots, with vault sync/export
 exclusion, fail-closed corruption behavior, reset/re-pairing semantics, and
-backup/restore warnings. Remaining blockers include a
+backup/restore warnings. An isolated deterministic expiry proof now shows
+Better Auth can reject expired sessions through app-data active-session lookup
+and signed-cookie `get-session` behavior without slow sleeps. Remaining
+blockers include a
 public/supported pairing-to-session path with pairing-driven cookie issuance,
-deterministic expiry proof, AREPO scope metadata, output sanitization, and live
-CSRF integration. No Better Auth handler is mounted and live browser auth
+AREPO scope metadata, renewal/pruning/backup policy, output sanitization, and
+live CSRF integration. No Better Auth handler is mounted and live browser auth
 remains inactive.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat

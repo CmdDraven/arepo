@@ -92,8 +92,7 @@ local app-data SQLite database at `app-data/auth/better-auth.sqlite` through
 Node's built-in `node:sqlite` without adding a separate database dependency.
 The proof runs migrations, verifies persistence across database reopen,
 exercises session lookup, revoke-current, and revoke-all, and records remaining
-schema ownership implementation, backup/reset/corruption mitigation, and
-deterministic expiry blockers.
+schema ownership implementation plus backup/reset/corruption mitigation work.
 `backend/betterAuthPairingSessionAdapterProof.ts` now proves that an isolated
 AREPO pairing completion can create an internal Better Auth user/session
 without enabling username/password, OAuth, social login, or frontend credential
@@ -106,8 +105,8 @@ standard `Request`, Better Auth `Response` output can be wrapped with redacted
 cookie/body metadata, signed cookie issuance and clearing can be observed
 through Better Auth's normal handler routes, session lookup works through the
 signed cookie, sign-out invalidates that session, and direct raw token cookie
-injection remains rejected. Pairing-driven cookie issuance, deterministic
-expiry, and session-scope metadata remain unresolved.
+injection remains rejected. Pairing-driven cookie issuance and session-scope
+metadata remain unresolved.
 `backend/betterAuthCsrfOwnershipProof.ts` now proves that Better Auth rejects
 unsafe signed-cookie auth endpoint requests with missing or untrusted Origin
 and allows the trusted local origin, but does not provide proven CSRF coverage
@@ -129,6 +128,12 @@ decision for Better Auth's stored `session.token` model: acceptable with
 conditions only inside sensitive AREPO app data outside vault roots, excluded
 from vault sync/export, with fail-closed corruption handling, reset/re-pairing
 semantics, and explicit backup/restore warnings.
+`backend/betterAuthDeterministicExpiryProof.ts` now proves that Better Auth
+session expiry can be tested deterministically in isolation: bounded session
+lifetime is configured, safe expiry metadata is inspectable, expired sessions
+are excluded from active app-data lookup, and an expired signed-cookie session
+returns null plus redacted cookie-clearing metadata through the `get-session`
+handler without a real-time sleep.
 
 The remaining sections preserve design rationale and historical checkpoint
 language. Where older text says a component is future/planning-only, prefer the
@@ -270,20 +275,21 @@ Implemented components include:
 - `backend/betterAuthDependencyProof.ts`,
   `backend/betterAuthAppDataStoreProof.ts`, and
   `backend/betterAuthPairingSessionAdapterProof.ts`, and
-  `backend/betterAuthRouteRequestAdapterProof.ts`: isolated Better Auth proof
+  `backend/betterAuthRouteRequestAdapterProof.ts`, and
+  `backend/betterAuthDeterministicExpiryProof.ts`: isolated Better Auth proof
   modules. They are not mounted, are forbidden from live server/auth/frontend
   paths by inactive-boundary tests, and do not enable browser auth. They prove
   Better Auth import/handler shape, app-data SQLite storage, internal session
   lookup/revocation, internal pairing-to-session feasibility, routeRequest to
   standard Request conversion, sanitized Response wrapping, signed cookie
-  issuance/clearing observation, signed-cookie session lookup, and direct raw
-  token rejection. The CSRF ownership proof records that Better Auth owns its
+  issuance/clearing observation, signed-cookie session lookup, deterministic
+  expiry rejection, and direct raw token rejection. The CSRF ownership proof records that Better Auth owns its
   auth endpoint protections while AREPO should own CSRF for unsafe AREPO API
   routes. The AREPO-owned CSRF request adapter proof records the future
   unmounted request validation shape. The Better Auth session-token storage
   policy accepts app-data storage with conditions. Remaining blockers include
-  pairing-cookie issuance, expiry, session-scope metadata, output
-  sanitization, and live CSRF integration.
+  pairing-cookie issuance, renewal/pruning/backup policy, session-scope
+  metadata, output sanitization, and live CSRF integration.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and

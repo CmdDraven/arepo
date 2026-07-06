@@ -105,9 +105,10 @@ reverse-proxy, or internet exposure safe by itself.
 This policy removes the storage-policy decision blocker, but it does not enable
 browser auth. These blockers remain:
 
-- deterministic expiry proof
 - pairing-driven signed-cookie issuance
 - AREPO-specific session scope metadata
+- renewal/update-age values and expired-session pruning policy
+- backup/restore session-state policy
 - live AREPO-owned CSRF integration behind activation gates
 - Better Auth output/hook sanitization for audit and status
 - deliberate mounting behind activation gate, route contracts, and

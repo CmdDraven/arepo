@@ -31,7 +31,10 @@ request semantics for future cookie-backed unsafe API routes without enabling
 live CSRF enforcement. The Better Auth session-token storage policy accepts the
 library-owned `session.token` database model with conditions: storage must stay
 in sensitive AREPO app data outside vault roots, reset and corruption must fail
-closed, and backups/restores need explicit browser-session warnings.
+closed, and backups/restores need explicit browser-session warnings. The
+deterministic expiry proof shows expired Better Auth sessions can be rejected
+predictably through isolated app-data active-session filtering and
+Request/Response signed-cookie lookup without slow real-time waits.
 
 ## Current V1 Posture
 
@@ -304,6 +307,16 @@ and require re-pairing. Corruption must fail closed. Restoring old backups may
 restore old session authority, so backup/restore behavior must warn operators
 and should force session reset or re-pairing unless state freshness is proven.
 
+Better Auth expiry proof note: AREPO can configure a bounded Better Auth
+session lifetime and inspect safe expiry metadata in the isolated app-data
+boundary. The deterministic proof forces one isolated session's expiry into the
+past through the internal adapter, confirms active-session lookup excludes it,
+and confirms the signed-cookie `get-session` handler returns null and emits
+redacted cookie-clearing metadata. The proof does not rely on slow sleeps and
+does not enable live cookies. AREPO still needs renewal/update-age policy,
+expired-session pruning policy, and backup/restore session-state rules before
+browser sessions can be activated.
+
 ## Authorization Integration
 
 Browser sessions should enter the same route authorization path as bearer
@@ -379,7 +392,8 @@ shape without creating sessions:
 - session issuance is `inactive`.
 - session store and session verifier primitives exist as inactive in-memory test
   infrastructure and are not wired into authorization.
-- session revocation and expiry are `planned`.
+- session revocation and expiry are `planned`; Better Auth deterministic expiry
+  behavior is proven only in isolated dependency proofs.
 - logout/current-session revocation is `inactive` today and planned for future
   live sessions.
 - revoke-all browser sessions is `inactive` today and planned for emergency

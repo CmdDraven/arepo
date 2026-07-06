@@ -135,9 +135,17 @@ const findingByRequirement = new Map<
     {
       status: "compatible",
       delegatedTo: "better-auth",
-      summary: "Better Auth exposes session expiry and refresh configuration.",
-      blockerCodes: ["expiry-test-needed"],
-      openQuestions: ["What expiry/updateAge values match AREPO local-first expectations?"],
+      summary:
+        "Better Auth exposes session expiry, active-session filtering, and signed-cookie expiry rejection through isolated proof boundaries.",
+      blockerCodes: [
+        "session-renewal-policy-needed",
+        "expired-session-pruning-policy-needed",
+        "backup-restore-session-state-policy-needed",
+      ],
+      openQuestions: [
+        "What expiry/updateAge values match AREPO local-first expectations?",
+        "Should AREPO run explicit expired-session cleanup during startup or maintenance?",
+      ],
       proofRequiredBeforeLiveActivation: true,
     },
   ],

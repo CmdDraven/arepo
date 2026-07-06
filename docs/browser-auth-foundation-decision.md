@@ -112,8 +112,11 @@ shape.
   token material. The isolated proof exercised these through Better Auth
   internals; the production adapter path remains unproven.
 - Deterministic expiry must be proven through an accepted request/session
-  adapter. The app-data proof can configure expiry/updateAge, but did not prove
-  expired-session filtering through the internal adapter path.
+  adapter. The isolated deterministic expiry proof now confirms active-session
+  filtering in app data and signed-cookie `get-session` rejection after an
+  isolated expiry override, without slow wall-clock waits. AREPO still needs
+  renewal/update-age values, expired-session pruning policy, and backup/restore
+  session-state policy before activation.
 - Raw token cookie injection remains rejected in the isolated proof. Signed
   cookie issuance and clearing are observable through Better Auth's normal
   handler routes, but pairing-driven signed cookie issuance remains unproven.
@@ -146,8 +149,8 @@ shape.
 
 ## Next Slice
 
-Run a deterministic expiry proof through the accepted Better Auth session
-boundary. The storage policy is now accepted with conditions, so the next
-blocker is proving expired sessions fail predictably through the same
-Request/Response or app-data session path AREPO would wrap later. The slice must
-remain outside live server paths and must not mount browser auth.
+Run a pairing-driven signed-cookie issuance proof. Storage policy and
+deterministic expiry now have isolated answers, so the next blocker is whether
+AREPO pairing completion can create or attach a Better Auth session and produce
+the signed browser cookie through an acceptable boundary. The slice must remain
+outside live server paths and must not mount browser auth.
