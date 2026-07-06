@@ -65,15 +65,12 @@ test("Better Auth app-data store proof runs migrations and records schema policy
   assert.ok(proof.migrations.sessionColumnNames.includes("token"));
   assert.equal(proof.migrations.schemaOwnershipDecisionNeeded, true);
   assert.equal(proof.storageProof.sessionTokenColumnPresent, true);
-  assert.equal(
-    proof.storageProof.storedSessionTokenPolicy,
-    "better-auth-session-token-column-present",
-  );
+  assert.equal(proof.storageProof.storedSessionTokenPolicy, "accepted-with-conditions");
   assert.equal(proof.storageProof.backupResetCorruptionPolicyNeeded, true);
   assert.ok(
     proof.findings
       .find((finding) => finding.id === "stored-session-token-policy")
-      ?.blockerCodes.includes("better-auth-session-token-storage-policy-review-needed"),
+      ?.blockerCodes.includes("better-auth-session-token-storage-mitigations-needed"),
   );
 });
 

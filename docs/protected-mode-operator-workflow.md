@@ -38,6 +38,10 @@ The AREPO-owned CSRF request adapter proof is also backend test infrastructure
 only. It validates future unsafe cookie-backed request semantics against
 AREPO's inert CSRF token store/verifier, but it is unmounted and does not add
 live CSRF checks.
+The Better Auth session-token storage policy is also planning infrastructure
+only. It accepts future Better Auth session storage only under sensitive AREPO
+app data outside vault roots, excluded from vault sync/export, with reset and
+corruption behavior that fails closed and requires re-pairing.
 
 ## Configuration
 
@@ -279,6 +283,11 @@ The unmounted AREPO-owned CSRF request adapter proof is also backend test
 infrastructure only. It proves the future guard should validate CSRF token id
 plus secret, session binding, and supplemental Origin/Referer checks before
 mutation, but it is not middleware and does not validate live requests.
+The Better Auth session-token storage policy does not create browser sessions
+today. It records that a future Better Auth auth database should be treated as
+sensitive generated app state; deleting it should revoke all future browser
+sessions, and restoring old backups may restore old session state unless AREPO
+forces reset or re-pairing.
 The reserved browser-session, pairing, and CSRF routes return sanitized
 unavailable responses; they do not issue cookies, create pairing codes, create
 CSRF tokens, or provide browser login.

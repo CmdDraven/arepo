@@ -28,7 +28,10 @@ endpoints with trusted-origin behavior, while AREPO should own CSRF validation
 for arbitrary unsafe AREPO API routes. AREPO now also has an unmounted
 AREPO-owned CSRF request adapter proof that validates token/session/origin
 request semantics for future cookie-backed unsafe API routes without enabling
-live CSRF enforcement.
+live CSRF enforcement. The Better Auth session-token storage policy accepts the
+library-owned `session.token` database model with conditions: storage must stay
+in sensitive AREPO app data outside vault roots, reset and corruption must fail
+closed, and backups/restores need explicit browser-session warnings.
 
 ## Current V1 Posture
 
@@ -292,6 +295,14 @@ or revoked sessions, revoke one session, revoke all sessions for a subject,
 prune expired sessions, and return safe diagnostics. These primitives do not
 persist to disk, do not issue cookies, do not create sessions through any HTTP
 route, and are not accepted by live request authorization.
+
+Better Auth storage policy note: AREPO accepts Better Auth's stored
+`session.token` model only as sensitive generated app state under AREPO app
+data. The auth database must remain outside vault roots and outside vault
+sync/export flows. Deleting or resetting it should revoke all browser sessions
+and require re-pairing. Corruption must fail closed. Restoring old backups may
+restore old session authority, so backup/restore behavior must warn operators
+and should force session reset or re-pairing unless state freshness is proven.
 
 ## Authorization Integration
 

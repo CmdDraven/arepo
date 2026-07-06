@@ -13,8 +13,9 @@ are not issued or accepted by live HTTP routes.
 
 - AREPO uses a custom Node HTTP routing layer in `backend/server.ts`, centered
   on `routeRequest()`. It is not currently an Express app.
-- `package.json` has no runtime auth/session library such as `express-session`,
-  Auth.js, Better Auth, Passport, or an OIDC client.
+- `better-auth@1.6.23` is installed for isolated backend proofs only. It is
+  not mounted in the live backend and is forbidden from live server/auth/frontend
+  paths by inactive-boundary tests.
 - `auth.mode = "protected"` already enforces bearer-token authorization for
   protected API/operator requests.
 - Browser-session and pairing routes exist only as inactive stubs.
@@ -245,6 +246,9 @@ Decision follow-up:
   AREPO-owned CSRF request adapter shape for future unsafe cookie-backed AREPO
   routes using AREPO's inert CSRF token store/verifier and sanitized test-only
   allow/deny results.
+- `backend/betterAuthSessionTokenStoragePolicy.ts` records that Better Auth's
+  stored `session.token` model is accepted with conditions only inside
+  sensitive AREPO app data outside vault roots.
 
 Backup direction:
 
@@ -281,11 +285,11 @@ AREPO-owned:
 
 ## Safest Next Slice
 
-Run a storage-policy decision slice for Better Auth's stored `session.token`
-model. AREPO now has an unmounted CSRF request adapter proof, so the next
-highest-risk question is whether Better Auth's database session token storage
-is acceptable inside AREPO app data and what hardening, backup, reset,
-corruption-handling, and migration policy must surround it.
+Run a deterministic expiry proof through the isolated Better Auth session
+boundary. AREPO now has an unmounted CSRF request adapter proof and a
+session-token storage policy decision, so the next highest-risk question is
+whether expired Better Auth sessions are rejected predictably through the
+Request/Response or app-data session path AREPO would wrap later.
 
 Keep acceptance criteria unchanged: no live route mounting, no live
 `Set-Cookie`, no cookie credential acceptance, no frontend storage, no

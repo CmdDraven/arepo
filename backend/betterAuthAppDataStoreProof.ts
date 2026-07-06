@@ -9,7 +9,7 @@ export const BETTER_AUTH_APP_DATA_STORE_PROOF_WIRED_INTO_ROUTES = false;
 export const BETTER_AUTH_APP_DATA_STORE_PROOF_LIVE_BROWSER_AUTH_ENABLED = false;
 
 export type BetterAuthAppDataStoreProofFindingStatus =
-  "passed" | "needs-policy-review" | "needs-adapter-spike";
+  "passed" | "accepted-with-conditions" | "needs-policy-review" | "needs-adapter-spike";
 
 export type BetterAuthAppDataStoreProofFinding = {
   id:
@@ -58,7 +58,7 @@ export type BetterAuthAppDataStoreProofResult = {
     revokeAllForSubjectWorked: boolean;
     deterministicCleanupWorked: boolean;
     sessionTokenColumnPresent: boolean;
-    storedSessionTokenPolicy: "better-auth-session-token-column-present";
+    storedSessionTokenPolicy: "accepted-with-conditions";
     backupResetCorruptionPolicyNeeded: true;
   };
   sessionConfig: {
@@ -240,7 +240,7 @@ export async function runIsolatedBetterAuthAppDataStoreProof(): Promise<BetterAu
       revokeAllForSubjectWorked: revokedSecond === null,
       deterministicCleanupWorked: cleanupWorked,
       sessionTokenColumnPresent: sessionColumnNames.includes("token"),
-      storedSessionTokenPolicy: "better-auth-session-token-column-present",
+      storedSessionTokenPolicy: "accepted-with-conditions",
       backupResetCorruptionPolicyNeeded: true,
     },
     sessionConfig: {
@@ -320,12 +320,12 @@ function buildFindings(
     },
     {
       id: "stored-session-token-policy",
-      status: "needs-policy-review",
+      status: "accepted-with-conditions",
       summary:
-        "Better Auth's session table contains a token column; AREPO must accept or mitigate this storage model.",
-      blockerCodes: ["better-auth-session-token-storage-policy-review-needed"],
+        "Better Auth's session table token column is accepted only under AREPO app-data storage conditions.",
+      blockerCodes: ["better-auth-session-token-storage-mitigations-needed"],
       openQuestions: [
-        "Is Better Auth's stored session token model acceptable inside protected app data?",
+        "How should AREPO implement app-data permissions, backup/reset warnings, and corruption handling before live activation?",
       ],
     },
     {

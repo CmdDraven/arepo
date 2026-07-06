@@ -112,11 +112,15 @@ AREPO should own CSRF validation for future cookie-authenticated unsafe AREPO
 API routes. An unmounted AREPO-owned CSRF request adapter proof now validates
 safe versus unsafe method classification, CSRF token/session binding,
 supplemental Origin/Referer checks, and sanitized test-only denial/allow
-results for those future unsafe route shapes. Remaining blockers include a
+results for those future unsafe route shapes. A Better Auth session-token
+storage policy now accepts the stored `session.token` model with conditions
+inside sensitive AREPO app data outside vault roots, with vault sync/export
+exclusion, fail-closed corruption behavior, reset/re-pairing semantics, and
+backup/restore warnings. Remaining blockers include a
 public/supported pairing-to-session path with pairing-driven cookie issuance,
-deterministic expiry proof, stored session-token policy, AREPO scope metadata,
-and live CSRF integration. No Better Auth handler is mounted and live browser
-auth remains inactive.
+deterministic expiry proof, AREPO scope metadata, output sanitization, and live
+CSRF integration. No Better Auth handler is mounted and live browser auth
+remains inactive.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

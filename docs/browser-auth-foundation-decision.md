@@ -95,8 +95,12 @@ shape.
 - Session storage can live in AREPO app data, preferably with a deliberate
   local SQLite strategy. The isolated app-data proof now confirms Better Auth
   can run migrations and persist sessions in `app-data/auth/better-auth.sqlite`
-  through Node's built-in `node:sqlite`; AREPO still needs schema ownership,
-  backup/reset, corruption handling, and stored session-token policy decisions.
+  through Node's built-in `node:sqlite`. The
+  [Better Auth Session Token Storage Policy](better-auth-session-token-storage-policy.md)
+  accepts Better Auth's `session.token` storage model with conditions: the auth
+  database is sensitive generated app state, must live outside vault roots, must
+  be excluded from vault sync/export, and reset/corruption/backup behavior must
+  be explicit.
 - Cookie names, `HttpOnly`, `SameSite`, `Secure`, `Path`, clearing behavior,
   and trusted origins can match AREPO policy.
 - Local pairing can create or attach a browser session without normal
@@ -142,9 +146,8 @@ shape.
 
 ## Next Slice
 
-Run a storage-policy decision slice for Better Auth's stored `session.token`
-model. The AREPO-owned CSRF adapter proof now exists and remains unmounted, so
-the next blocker is whether Better Auth's session token storage is acceptable
-inside AREPO app data and what hardening, backup, reset, and corruption-handling
-policy must surround it. The slice must remain outside live server paths and
-must not mount browser auth.
+Run a deterministic expiry proof through the accepted Better Auth session
+boundary. The storage policy is now accepted with conditions, so the next
+blocker is proving expired sessions fail predictably through the same
+Request/Response or app-data session path AREPO would wrap later. The slice must
+remain outside live server paths and must not mount browser auth.

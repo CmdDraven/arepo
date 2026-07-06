@@ -91,7 +91,7 @@ test("Better Auth compatibility makes unknowns blockers and proof work explicit"
     assert.ok(finding.openQuestions.length > 0, `${finding.requirementId} lacks questions`);
     assert.equal(finding.proofRequiredBeforeLiveActivation, true);
   }
-  assert.ok(plan.summary.blockerCodes.includes("arepo-owned-csrf-adapter-proof-needed"));
+  assert.ok(plan.summary.blockerCodes.includes("arepo-owned-csrf-live-integration-blocked"));
   assert.ok(plan.summary.blockerCodes.includes("pairing-to-better-auth-session-unproven"));
   assert.equal(plan.summary.incompatibleCount, 0);
   assert.equal(plan.summary.unknownCount > 0, true);

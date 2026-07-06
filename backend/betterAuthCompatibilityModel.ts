@@ -259,10 +259,10 @@ const findingByRequirement = new Map<
       status: "compatible",
       delegatedTo: "arepo",
       summary:
-        "Better Auth can own its auth endpoint protections; AREPO should own CSRF validation for arbitrary unsafe AREPO API routes.",
-      blockerCodes: ["arepo-owned-csrf-adapter-proof-needed"],
+        "Better Auth can own its auth endpoint protections; AREPO owns CSRF validation for arbitrary unsafe AREPO API routes.",
+      blockerCodes: ["arepo-owned-csrf-live-integration-blocked"],
       openQuestions: [
-        "Where should AREPO mount the future CSRF guard relative to browser-session auth and route authorization?",
+        "How should the unmounted CSRF adapter proof be adapted to the eventual cookie-backed route pipeline?",
       ],
       proofRequiredBeforeLiveActivation: true,
     },
