@@ -109,7 +109,7 @@ export type BetterAuthSessionScopeMetadataProofResult = {
   };
   remainingBlockers: readonly [
     "production-arepo-better-auth-plugin-needed",
-    "internal-adapter-risk-decision-needed",
+    "internal-adapter-wrapper-implementation-needed",
     "arepo-sidecar-authorization-store-needed",
     "session-scope-metadata-schema-needed",
     "renewal-update-age-policy-needed",
@@ -301,7 +301,7 @@ export async function runIsolatedBetterAuthSessionScopeMetadataProof(): Promise<
     },
     remainingBlockers: [
       "production-arepo-better-auth-plugin-needed",
-      "internal-adapter-risk-decision-needed",
+      "internal-adapter-wrapper-implementation-needed",
       "arepo-sidecar-authorization-store-needed",
       "session-scope-metadata-schema-needed",
       "renewal-update-age-policy-needed",

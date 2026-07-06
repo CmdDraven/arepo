@@ -124,7 +124,7 @@ export type BetterAuthPairingCookieBoundaryProofResult = {
   };
   remainingBlockers: readonly [
     "production-arepo-better-auth-plugin-needed",
-    "internal-adapter-risk-decision-needed",
+    "internal-adapter-wrapper-implementation-needed",
     "arepo-sidecar-authorization-store-needed",
     "renewal-update-age-policy-needed",
     "expired-session-pruning-policy-needed",
@@ -443,7 +443,7 @@ export async function runIsolatedBetterAuthPairingCookieBoundaryProof(): Promise
     },
     remainingBlockers: [
       "production-arepo-better-auth-plugin-needed",
-      "internal-adapter-risk-decision-needed",
+      "internal-adapter-wrapper-implementation-needed",
       "arepo-sidecar-authorization-store-needed",
       "renewal-update-age-policy-needed",
       "expired-session-pruning-policy-needed",
@@ -551,7 +551,7 @@ function buildFindings(
         "A Better Auth plugin endpoint can model AREPO pairing completion, create/reuse a local subject user, create a session, and call the public setSessionCookie helper.",
       blockerCodes: [
         "production-arepo-better-auth-plugin-needed",
-        "internal-adapter-risk-decision-needed",
+        "internal-adapter-wrapper-implementation-needed",
       ],
       openQuestions: [
         "Should AREPO accept plugin endpoint use of ctx.context.internalAdapter, as Better Auth official plugins do, for production?",

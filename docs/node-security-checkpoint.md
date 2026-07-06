@@ -107,7 +107,7 @@ The proof uses Better Auth's internal adapter plus exported signing.
 `backend/betterAuthPairingCookieBoundaryProof.ts` then proves a public Better
 Auth plugin endpoint can emit the signed `arepo_session` cookie through Better
 Auth response behavior after AREPO pairing acceptance, while still requiring a
-production AREPO plugin and explicit internal-adapter risk decision before
+production AREPO plugin and internal-adapter wrapper implementation before
 activation.
 `backend/betterAuthArepoPluginBoundaryProof.ts` now expands that into a
 production-shaped but unmounted AREPO plugin-boundary proof. It verifies that
@@ -119,6 +119,13 @@ AREPO-owned sidecar authorization references with sanitized device labels,
 records CSRF sequencing points, emits sanitized audit-like events, and confirms
 signed-cookie lookup, sign-out, revoke-current, revoke-all, expiry, and direct
 raw token rejection in isolation.
+`backend/betterAuthInternalAdapterRiskDecision.ts` now records the explicit
+decision for that remaining risk: AREPO accepts `ctx.context.internalAdapter`
+only as official-plugin-pattern internal access behind a narrow wrapper inside
+the future Better Auth plugin boundary. Direct token signing, raw token
+exposure, arbitrary adapter calls, route authorization decisions inside Better
+Auth plugin code, and vault/node permission storage in cookies or Better Auth
+metadata remain forbidden.
 `backend/betterAuthRouteRequestAdapterProof.ts` now proves that AREPO
 routeRequest-style method/path/query/header/body input can be converted to a
 standard `Request`, Better Auth `Response` output can be wrapped with redacted
@@ -321,7 +328,7 @@ Implemented components include:
   routes. The AREPO-owned CSRF request adapter proof records the future
   unmounted request validation shape. The Better Auth session-token storage
   policy accepts app-data storage with conditions. Remaining blockers include
-  internal-adapter risk decision, production AREPO Better Auth plugin
+  internal-adapter wrapper implementation, production AREPO Better Auth plugin
   implementation, AREPO sidecar authorization store implementation,
   renewal/pruning/backup policy, output sanitization, and live CSRF
   integration.

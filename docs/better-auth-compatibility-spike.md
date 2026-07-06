@@ -65,8 +65,14 @@ Isolated proofs:
   creates sidecar authorization references only after test-only allowance,
   emits sanitized audit-like events, records CSRF sequencing points, observes
   only redacted cookie metadata, and classifies `ctx.context.internalAdapter`
-  as official-plugin-pattern internal access that still needs an explicit
-  production risk decision.
+  as official-plugin-pattern internal access that still needs a production
+  wrapper implementation.
+- `backend/betterAuthInternalAdapterRiskDecision.ts` records that AREPO accepts
+  `ctx.context.internalAdapter` only as official-plugin-pattern internal access
+  behind a narrow wrapper inside the future Better Auth plugin boundary. Direct
+  token signing, raw token exposure, route authorization decisions, arbitrary
+  adapter calls, and vault/node permission storage in Better Auth cookies or
+  metadata remain forbidden.
 - No Better Auth handler is mounted in `backend/server.ts`.
 - No live route emits Better Auth cookies or accepts Better Auth cookies as
   credentials.
@@ -106,7 +112,9 @@ session-scope metadata proof selects a hybrid model that keeps authorization
 state AREPO-owned and treats Better Auth user/session ids as references only.
 The production-shaped AREPO plugin-boundary proof now models activation-gate
 ordering, sidecar authorization references, CSRF sequencing, and sanitized
-audit output in isolation.
+audit output in isolation. The internal-adapter risk decision accepts the
+Better Auth plugin-context adapter pattern with conditions, but production
+still needs the wrapper implementation and upgrade policy.
 Live activation is still blocked until the remaining proofs and mitigations are
 complete.
 
@@ -265,15 +273,28 @@ Passed:
   sign-out/revoke-current/revoke-all/expiry behavior, records CSRF sequencing
   points, and keeps all cookie/session material redacted.
 
+Accepted with conditions:
+
+- `ctx.context.internalAdapter` may be used only inside the future Better Auth
+  plugin boundary through a narrow AREPO wrapper.
+- The wrapper may find/create the local subject user, create a session for an
+  accepted AREPO pairing flow, return redacted Better Auth user/session
+  references, and support focused regression checks for lookup, revocation, and
+  expiry.
+- The wrapper must never return raw session tokens, raw cookies, auth headers,
+  cookie headers, `Set-Cookie` values, route authorization decisions, or
+  frontend-provided permission state.
+- Better Auth upgrades must be pinned, reviewed, and tested before browser auth
+  activation.
+
 Still unresolved:
 
 - Production AREPO Better Auth plugin implementation. The production-shaped
   proof remains isolated and unmounted; live activation still needs the real
   plugin, persisted sidecar authorization, CSRF integration, audit/status
   wrappers, and inactive-boundary coverage.
-- Explicit decision on Better Auth plugin endpoint use of
-  `ctx.context.internalAdapter`. Better Auth official plugins use this pattern,
-  but AREPO should document the acceptance before production mounting.
+- Internal-adapter wrapper implementation. The risk is accepted with
+  conditions, but no production wrapper is mounted or implemented yet.
 - Implementation of the accepted app-data storage mitigations for Better Auth's
   `session.token` column.
 - Renewal/update-age values, explicit expired-session pruning policy, and
@@ -289,7 +310,7 @@ Still unresolved:
 ## Adoption Blockers
 
 - `production-arepo-better-auth-plugin-needed`
-- `internal-adapter-risk-decision-needed`
+- `internal-adapter-wrapper-implementation-needed`
 - `arepo-sidecar-authorization-store-needed`
 - `better-auth-session-token-storage-mitigations-needed`
 - `session-renewal-policy-needed`
@@ -304,9 +325,8 @@ Still unresolved:
 
 Later isolated security work should test, outside `server.ts`:
 
-- Decide whether AREPO accepts Better Auth plugin endpoint use of
-  `ctx.context.internalAdapter`, and define the wrapper/upgrade policy if it is
-  accepted.
+- Implement the accepted internal-adapter wrapper in an isolated proof before
+  any disabled-live mounting work.
 - Define renewal/update-age values and expired-session pruning policy.
 - Revoke the current session and revoke all sessions for the local
   operator/principal through the accepted adapter path.
@@ -338,11 +358,9 @@ Later isolated security work should test, outside `server.ts`:
 
 ## Recommended Next Slice
 
-Run an internal-adapter risk decision slice. The production-shaped plugin proof
-works in isolation, but it still depends on Better Auth's
-`ctx.context.internalAdapter` inside the plugin endpoint. The next slice should
-decide whether AREPO accepts that official-plugin-pattern internal access,
-define a narrow wrapper and upgrade policy if accepted, and keep the
-`express-session` backup open if rejected. It must remain documentation/model
-work only and must not mount Better Auth, emit live cookies, or accept cookie
-credentials in live authorization.
+Run a renewal/update-age policy slice. The internal-adapter risk is now
+accepted with conditions, but browser-session freshness policy is still
+unsettled. The next slice should decide Better Auth session lifetime,
+`updateAge`/renewal behavior, whether renewal rotates authority, and which
+renewal events AREPO must audit, while keeping Better Auth unmounted and live
+browser auth inactive.

@@ -151,7 +151,7 @@ test("AREPO Better Auth plugin-boundary proof classifies internal-adapter risk",
   assert.equal(proof.internalAdapterRisk.wrapperCanIsolateRisk, true);
   assert.equal(proof.internalAdapterRisk.activationBlockedUntilAcceptedOrReplaced, true);
   assert.equal(proof.internalAdapterRisk.expressSessionBackupShouldRemainOpenIfRejected, true);
-  assert.ok(proof.remainingBlockers.includes("internal-adapter-risk-decision-needed"));
+  assert.ok(proof.remainingBlockers.includes("internal-adapter-wrapper-implementation-needed"));
 });
 
 test("AREPO Better Auth plugin-boundary proof emits sanitized audit-like events", async () => {

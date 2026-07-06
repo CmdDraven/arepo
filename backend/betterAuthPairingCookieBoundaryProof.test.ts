@@ -60,7 +60,7 @@ test("Better Auth pairing-cookie boundary proof records plugin boundary decision
   assert.equal(proof.boundarySurvey.internalSigningUsed, false);
   assert.equal(proof.boundarySurvey.exportedButUndocumentedApiUsed, false);
   assert.ok(proof.remainingBlockers.includes("production-arepo-better-auth-plugin-needed"));
-  assert.ok(proof.remainingBlockers.includes("internal-adapter-risk-decision-needed"));
+  assert.ok(proof.remainingBlockers.includes("internal-adapter-wrapper-implementation-needed"));
 });
 
 test("Better Auth pairing-cookie boundary proof avoids normal login surfaces", async () => {

@@ -130,12 +130,16 @@ plugin-boundary proof now adds activation-gate ordering, route-contract
 checking, sidecar authorization references, CSRF sequencing points, sanitized
 audit-like events, signed-cookie lookup, sign-out, revoke-current, revoke-all,
 expiry, and direct raw token rejection inside the unmounted proof boundary. An
+internal-adapter risk decision now accepts `ctx.context.internalAdapter` only as
+official-plugin-pattern internal access behind a future narrow AREPO wrapper,
+while keeping direct token signing, raw token exposure, arbitrary adapter calls,
+and route authorization inside Better Auth plugin code forbidden. An
 isolated session-scope metadata proof now selects the hybrid model:
 Better Auth owns session/cookie mechanics, while AREPO owns local operator
 identity, device-label policy, route authorization, and vault/node permission
 posture in sidecar app-data state keyed by Better Auth user/session references.
-Remaining work includes an internal-adapter risk decision, production AREPO
-Better Auth plugin implementation, persisted sidecar state,
+Remaining work includes internal-adapter wrapper implementation, production
+AREPO Better Auth plugin implementation, persisted sidecar state,
 renewal/pruning/backup policy, output sanitization wrappers, and live CSRF
 integration. No Better Auth handler is mounted and live browser auth remains
 inactive.

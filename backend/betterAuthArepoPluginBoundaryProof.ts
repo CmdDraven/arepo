@@ -181,7 +181,7 @@ export type BetterAuthArepoPluginBoundaryProofResult = {
     getSessionAfterExpiry: BetterAuthWrappedResponse;
   };
   remainingBlockers: readonly [
-    "internal-adapter-risk-decision-needed",
+    "internal-adapter-wrapper-implementation-needed",
     "production-arepo-better-auth-plugin-needed",
     "arepo-sidecar-authorization-store-needed",
     "renewal-update-age-policy-needed",
@@ -711,7 +711,7 @@ export async function runIsolatedBetterAuthArepoPluginBoundaryProof(): Promise<B
       getSessionAfterExpiry: getSessionAfterExpiryWrapped,
     },
     remainingBlockers: [
-      "internal-adapter-risk-decision-needed",
+      "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
       "renewal-update-age-policy-needed",
@@ -1031,7 +1031,7 @@ function buildFindings(
       status: "needs-risk-decision",
       summary:
         "The plugin endpoint uses ctx.context.internalAdapter, matching Better Auth plugin patterns, but activation remains blocked until AREPO accepts or replaces that risk.",
-      blockerCodes: ["internal-adapter-risk-decision-needed"],
+      blockerCodes: ["internal-adapter-wrapper-implementation-needed"],
       openQuestions: [
         "Should AREPO isolate ctx.context.internalAdapter behind one wrapper or revisit express-session if the risk is unacceptable?",
       ],

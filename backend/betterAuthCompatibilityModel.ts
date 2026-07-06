@@ -43,7 +43,7 @@ export type BetterAuthCompatibilityPlan = {
     blockerCodes: readonly string[];
     openQuestions: readonly string[];
   };
-  nextSlice: "internal-adapter-risk-decision";
+  nextSlice: "renewal-update-age-policy";
 };
 
 const findingByRequirement = new Map<
@@ -125,10 +125,10 @@ const findingByRequirement = new Map<
         "Cookie names and secure-cookie behavior are configurable; a production-shaped isolated Better Auth plugin proof can emit the signed session cookie after AREPO pairing acceptance.",
       blockerCodes: [
         "production-arepo-better-auth-plugin-needed",
-        "internal-adapter-risk-decision-needed",
+        "internal-adapter-wrapper-implementation-needed",
       ],
       openQuestions: [
-        "Should AREPO accept the Better Auth plugin internalAdapter pattern before implementing the production plugin?",
+        "How should AREPO implement and test the narrow internalAdapter wrapper before mounting?",
       ],
       proofRequiredBeforeLiveActivation: true,
     },
@@ -223,11 +223,11 @@ const findingByRequirement = new Map<
         "AREPO pairing can create a Better Auth user/session, sidecar authorization reference, and signed cookie through a production-shaped isolated Better Auth plugin endpoint, but production plugin hardening remains.",
       blockerCodes: [
         "production-arepo-better-auth-plugin-needed",
-        "internal-adapter-risk-decision-needed",
+        "internal-adapter-wrapper-implementation-needed",
         "arepo-sidecar-authorization-store-needed",
       ],
       openQuestions: [
-        "Should AREPO accept plugin endpoint use of Better Auth's internal adapter context, matching Better Auth official plugin patterns?",
+        "How should the accepted internalAdapter wrapper be packaged inside the production plugin boundary?",
         "What persisted sidecar authorization schema should production use?",
       ],
       proofRequiredBeforeLiveActivation: true,
@@ -353,7 +353,7 @@ export function planBetterAuthCompatibility(): BetterAuthCompatibilityPlan {
     requirementCount: browserAuthFoundationRequirements.length,
     findings,
     summary,
-    nextSlice: "internal-adapter-risk-decision",
+    nextSlice: "renewal-update-age-policy",
   };
 }
 

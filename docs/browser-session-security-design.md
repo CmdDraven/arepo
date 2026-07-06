@@ -55,6 +55,12 @@ authorization reference through the plugin boundary; signed-cookie lookup,
 sign-out, revoke-current, revoke-all, and expiry still work; and audit output,
 cookie metadata, and sidecar diagnostics stay redacted. This proof remains
 unmounted and does not enable live browser auth.
+The internal-adapter risk decision accepts `ctx.context.internalAdapter` only
+as official-plugin-pattern internal access behind a future narrow AREPO
+wrapper. That wrapper must live inside the Better Auth plugin boundary, expose
+only named pairing/session operations, return only redacted references, and
+keep route authorization, vault/node permission posture, sidecar policy, audit
+policy, and CSRF policy AREPO-owned.
 The session-scope metadata proof selects a hybrid model: Better Auth owns
 session/cookie mechanics, while AREPO owns local operator subject policy,
 device-label policy, route authorization, audit redaction, and vault/node
@@ -717,12 +723,12 @@ The current scaffold remains inert for browser sessions:
     boundary, and session-scope metadata proofs isolated from live server paths.
     They may validate local SQLite storage, internal pairing-to-session
     behavior, pairing-created signed-cookie lookup, plugin-boundary cookie
-    emission, sidecar authorization reference posture, CSRF sequencing,
-    sanitized audit-like events, session lookup, revoke-current, revoke-all,
-    metadata reference posture, and sanitized response observations, but they
-    must not mount Better Auth, issue live cookies, accept cookies, parse
-    cookies for live authorization, validate live CSRF, or change bearer-token
-    protected mode.
+    emission, sidecar authorization reference posture, internal-adapter wrapper
+    decision posture, CSRF sequencing, sanitized audit-like events, session
+    lookup, revoke-current, revoke-all, metadata reference posture, and
+    sanitized response observations, but they must not mount Better Auth, issue
+    live cookies, accept cookies, parse cookies for live authorization, validate
+    live CSRF, or change bearer-token protected mode.
 22. Keep the Better Auth routeRequest adapter proof isolated from live server
     paths. It may validate standard `Request` conversion, sanitized
     `Response` wrapping, signed cookie issuance/clearing observation, and

@@ -118,6 +118,12 @@ shape.
   references, sanitized device labels, sanitized audit-like events, CSRF
   sequencing points, signed-cookie lookup, sign-out, revoke-current,
   revoke-all, and expiry checks inside the unmounted proof boundary.
+- `ctx.context.internalAdapter` is accepted with conditions only as
+  official-plugin-pattern internal access inside a future Better Auth plugin
+  boundary. The [Better Auth Internal Adapter Risk Decision](better-auth-internal-adapter-risk-decision.md)
+  requires a narrow AREPO wrapper, forbids direct token signing and raw token
+  exposure, keeps route authorization AREPO-owned, and keeps `express-session`
+  open as the backup if the risk becomes unacceptable.
 - Revoke-current and revoke-all semantics are possible without exposing session
   token material. The isolated proof exercised these through Better Auth
   internals; the production adapter path remains unproven.
@@ -167,11 +173,10 @@ shape.
 
 ## Next Slice
 
-Run an internal-adapter risk decision slice. Storage policy, deterministic
-expiry, CSRF ownership, routeRequest adaptation, pairing-created signed-cookie
-lookup, session-scope metadata, and production-shaped plugin-boundary behavior
-now have isolated answers. The remaining high-risk decision is whether AREPO
-accepts Better Auth plugin endpoint use of `ctx.context.internalAdapter`,
-matching Better Auth official plugin patterns, or keeps the `express-session`
-backup path open. The slice must remain outside live server paths and must not
-mount browser auth.
+Run a renewal/update-age policy slice. Storage policy, deterministic expiry,
+CSRF ownership, routeRequest adaptation, pairing-created signed-cookie lookup,
+session-scope metadata, production-shaped plugin-boundary behavior, and the
+internal-adapter risk decision now have isolated answers. The next blocker is
+session freshness policy: Better Auth lifetime, `updateAge`, renewal behavior,
+audit expectations, and whether renewal changes authority. The slice must
+remain outside live server paths and must not mount browser auth.
