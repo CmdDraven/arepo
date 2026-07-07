@@ -108,7 +108,6 @@ browser auth. These blockers remain:
 - production AREPO Better Auth pairing plugin implementation
 - internal-adapter wrapper implementation for plugin endpoint session issuance
 - AREPO-owned sidecar authorization store implementation
-- backup/restore session-state policy
 - live AREPO-owned CSRF integration behind activation gates
 - Better Auth output/hook sanitization wrappers for audit and status
 - deliberate mounting behind activation gate, route contracts, and
@@ -124,6 +123,7 @@ backend/betterAuthSessionTokenStoragePolicy.ts
 
 It reports `accepted-with-conditions`, required mitigations, reset/corruption
 behavior, backup/restore warnings, localhost versus self-host posture, and
-remaining activation blockers. It does not import Better Auth, mount routes,
-issue cookies, accept cookies, parse cookies for authorization, validate live
-CSRF, or change bearer-token protected mode.
+remaining activation blockers. The backup/restore session-state policy now
+requires auth-state epoch handling before live activation. It does not import
+Better Auth, mount routes, issue cookies, accept cookies, parse cookies for
+authorization, validate live CSRF, or change bearer-token protected mode.

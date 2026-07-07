@@ -112,7 +112,6 @@ export type BetterAuthSessionScopeMetadataProofResult = {
     "internal-adapter-wrapper-implementation-needed",
     "arepo-sidecar-authorization-store-needed",
     "session-scope-metadata-schema-needed",
-    "backup-restore-session-state-policy-needed",
     "arepo-owned-csrf-live-integration-blocked",
   ];
   findings: readonly BetterAuthSessionScopeMetadataFinding[];
@@ -302,7 +301,6 @@ export async function runIsolatedBetterAuthSessionScopeMetadataProof(): Promise<
       "internal-adapter-wrapper-implementation-needed",
       "arepo-sidecar-authorization-store-needed",
       "session-scope-metadata-schema-needed",
-      "backup-restore-session-state-policy-needed",
       "arepo-owned-csrf-live-integration-blocked",
     ],
   } satisfies Omit<BetterAuthSessionScopeMetadataProofResult, "findings">;

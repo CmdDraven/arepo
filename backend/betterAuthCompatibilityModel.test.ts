@@ -75,7 +75,7 @@ test("Better Auth compatibility covers every AREPO browser-auth requirement", ()
   assert.equal(plan.parsesCookiesForLiveAuthorization, false);
   assert.equal(plan.validatesCsrfInLiveAuthorization, false);
   assert.equal(plan.changesBearerTokenProtectedMode, false);
-  assert.equal(plan.nextSlice, "backup-restore-session-state-policy");
+  assert.equal(plan.nextSlice, "internal-adapter-wrapper-implementation-proof");
   assertNoSecretMaterial(plan);
 });
 

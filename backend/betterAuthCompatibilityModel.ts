@@ -43,7 +43,7 @@ export type BetterAuthCompatibilityPlan = {
     blockerCodes: readonly string[];
     openQuestions: readonly string[];
   };
-  nextSlice: "backup-restore-session-state-policy";
+  nextSlice: "internal-adapter-wrapper-implementation-proof";
 };
 
 const findingByRequirement = new Map<
@@ -139,11 +139,9 @@ const findingByRequirement = new Map<
       status: "compatible",
       delegatedTo: "better-auth",
       summary:
-        "Better Auth exposes session expiry, active-session filtering, signed-cookie expiry rejection, bounded updateAge renewal, and an accepted AREPO sidecar pruning policy.",
-      blockerCodes: ["backup-restore-session-state-policy-needed"],
-      openQuestions: [
-        "How should backup and restore of auth DB and sidecar state handle old or mismatched session authority?",
-      ],
+        "Better Auth exposes session expiry, active-session filtering, signed-cookie expiry rejection, bounded updateAge renewal, accepted AREPO sidecar pruning, and accepted fail-closed backup/restore policy.",
+      blockerCodes: [],
+      openQuestions: [],
       proofRequiredBeforeLiveActivation: true,
     },
   ],
@@ -349,7 +347,7 @@ export function planBetterAuthCompatibility(): BetterAuthCompatibilityPlan {
     requirementCount: browserAuthFoundationRequirements.length,
     findings,
     summary,
-    nextSlice: "backup-restore-session-state-policy",
+    nextSlice: "internal-adapter-wrapper-implementation-proof",
   };
 }
 

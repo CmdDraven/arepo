@@ -47,7 +47,7 @@ Startup pruning may run later if it is bounded, deterministic, and audited.
 Manual operator pruning should be supported later. Session lookup, logout, and
 revoke paths may classify sidecar state when the future disabled/live path
 exists. Scheduled background pruning is deferred until the backup/restore
-policy and app lifecycle model are settled.
+policy and app lifecycle model are implemented.
 
 Automatic pruning must never create authority or silently repair mismatched
 state into an active session.
@@ -79,8 +79,7 @@ future authorized full status view may expose aggregate counts only.
 
 - Internal-adapter wrapper implementation.
 - Production AREPO Better Auth plugin implementation.
-- AREPO-owned sidecar authorization store implementation.
-- Backup/restore session-state policy.
+- AREPO-owned sidecar authorization store and auth-state epoch implementation.
 - Live AREPO-owned CSRF integration behind activation gates.
 - Better Auth output/hook sanitization wrappers for audit and status.
 - Deliberate disabled-live mounting design behind activation gates and

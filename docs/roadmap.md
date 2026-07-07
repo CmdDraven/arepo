@@ -140,15 +140,18 @@ authorization authoritative, and forbids unsafe request renewal before CSRF. An
 expired-session pruning policy now accepts sidecar-only pruning: Better Auth
 remains authoritative for session validity and expiry, AREPO marks sidecar
 state expired or stale, fails closed on missing or mismatched records, and
-retains only redacted tombstones for audit. An
+retains only redacted tombstones for audit. A backup/restore session-state
+policy now requires auth-state epoch binding for sidecar references, treats
+restored or mismatched state as suspicious, and requires reset or re-pairing by
+default. An
 isolated session-scope metadata proof now selects the hybrid model:
 Better Auth owns session/cookie mechanics, while AREPO owns local operator
 identity, device-label policy, route authorization, and vault/node permission
 posture in sidecar app-data state keyed by Better Auth user/session references.
 Remaining work includes internal-adapter wrapper implementation, production
 AREPO Better Auth plugin implementation, persisted sidecar state,
-backup/restore session-state policy, output sanitization wrappers, and live
-CSRF integration.
+auth-state epoch implementation, output sanitization wrappers, and live CSRF
+integration.
 No Better Auth handler is mounted and live browser auth remains inactive.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat

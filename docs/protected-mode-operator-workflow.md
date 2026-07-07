@@ -307,9 +307,9 @@ sensitive generated app state; deleting it should revoke all future browser
 sessions, and restoring old backups may restore old session state unless AREPO
 forces reset or re-pairing.
 The deterministic expiry proof does not create live browser sessions either. It
-records that expiry can be tested without slow sleeps. Renewal/update-age and
-expired-session pruning now have planning decisions, while backup/restore
-policy still needs activation work.
+records that expiry can be tested without slow sleeps. Renewal/update-age,
+expired-session pruning, and backup/restore session-state now have planning
+decisions, while implementation work remains blocked from live routes.
 The pairing-cookie proof does not create live browser sessions either. It
 records that a pairing-created signed cookie can work only inside isolated
 tests through Better Auth's internal adapter plus exported signing, while a
@@ -336,6 +336,10 @@ only. It keeps Better Auth authoritative for session validity and expiry,
 keeps AREPO sidecar authorization authoritative for route permissions, marks
 expired or mismatched sidecar state stale or expired, and fails closed without
 creating authority.
+The Better Auth backup/restore session-state policy is also planning
+infrastructure only. It requires future auth-state epoch binding for sidecar
+references, treats restored or mismatched auth state as suspicious, and
+requires reset or re-pairing by default without enabling live browser sessions.
 The session-scope metadata proof is also isolated. It records that future
 browser-session authorization should use AREPO-owned sidecar state keyed by
 Better Auth user/session references, not raw Better Auth session objects or

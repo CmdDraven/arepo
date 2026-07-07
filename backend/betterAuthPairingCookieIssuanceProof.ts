@@ -117,7 +117,6 @@ export type BetterAuthPairingCookieIssuanceProofResult = {
   remainingBlockers: readonly [
     "supported-pairing-cookie-response-boundary-needed",
     "session-scope-metadata-design-needed",
-    "backup-restore-session-state-policy-needed",
     "arepo-owned-csrf-live-integration-blocked",
   ];
   findings: readonly BetterAuthPairingCookieIssuanceFinding[];
@@ -301,7 +300,6 @@ export async function runIsolatedBetterAuthPairingCookieIssuanceProof(): Promise
     remainingBlockers: [
       "supported-pairing-cookie-response-boundary-needed",
       "session-scope-metadata-design-needed",
-      "backup-restore-session-state-policy-needed",
       "arepo-owned-csrf-live-integration-blocked",
     ],
   } satisfies Omit<BetterAuthPairingCookieIssuanceProofResult, "findings">;

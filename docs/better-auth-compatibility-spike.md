@@ -308,8 +308,9 @@ Still unresolved:
   conditions, but no production wrapper is mounted or implemented yet.
 - Implementation of the accepted app-data storage mitigations for Better Auth's
   `session.token` column.
-- Expired-session pruning is now accepted with conditions; backup/restore
-  session-state policy still needs a separate decision before live activation.
+- Expired-session pruning and backup/restore session-state policy are now
+  accepted with conditions; implementation still needs sidecar state and an
+  auth-state epoch before live activation.
 - AREPO-owned sidecar authorization store implementation. The metadata proof
   selects this model but does not create the production sidecar schema.
 - Live integration of AREPO-owned CSRF validation into the future cookie-backed
@@ -324,7 +325,6 @@ Still unresolved:
 - `internal-adapter-wrapper-implementation-needed`
 - `arepo-sidecar-authorization-store-needed`
 - `better-auth-session-token-storage-mitigations-needed`
-- `backup-restore-session-state-policy-needed`
 - `arepo-owned-csrf-live-integration-blocked`
 - `better-auth-output-sanitization-wrapper-needed`
 - `coexistence-routing-proof-needed`
@@ -336,8 +336,8 @@ Later isolated security work should test, outside `server.ts`:
 
 - Implement the accepted internal-adapter wrapper in an isolated proof before
   any disabled-live mounting work.
-- Define backup/restore session-state policy for old or mismatched auth DB and
-  sidecar state.
+- Implement the accepted internal-adapter wrapper in an isolated proof before
+  any disabled-live mounting work.
 - Revoke the current session and revoke all sessions for the local
   operator/principal through the accepted adapter path.
 - Implement the accepted Better Auth `session.token` app-data storage
@@ -368,7 +368,8 @@ Later isolated security work should test, outside `server.ts`:
 
 ## Recommended Next Slice
 
-Run a backup/restore session-state policy slice. Expired-session pruning is
-now accepted with conditions, so the next session-state risk is how restored
-Better Auth auth DB state and restored AREPO sidecar state can resurrect or
-mismatch authority. Keep Better Auth unmounted and live browser auth inactive.
+Run an internal-adapter wrapper implementation proof. Backup/restore
+session-state policy is now accepted with conditions, so the next highest-risk
+implementation boundary is the narrow wrapper around Better Auth
+`internalAdapter` inside the plugin endpoint. Keep Better Auth unmounted and
+live browser auth inactive.

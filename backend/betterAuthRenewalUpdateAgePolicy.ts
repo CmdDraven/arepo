@@ -9,7 +9,6 @@ export type BetterAuthRenewalUpdateAgeRemainingBlocker =
   | "internal-adapter-wrapper-implementation-needed"
   | "production-arepo-better-auth-plugin-needed"
   | "arepo-sidecar-authorization-store-needed"
-  | "backup-restore-session-state-policy-needed"
   | "arepo-owned-csrf-live-integration-blocked"
   | "better-auth-output-sanitization-wrapper-needed"
   | "activation-gate-mounting-still-forbidden";
@@ -96,7 +95,7 @@ export type BetterAuthRenewalUpdateAgePolicy = {
     sidecarAuthorizationStoreImplemented: false;
     csrfIntegrationImplemented: false;
     expiredSessionPruningPolicyAccepted: true;
-    backupRestorePolicyAccepted: false;
+    backupRestorePolicyAccepted: true;
     disabledLiveMountingDesignAccepted: false;
   };
   remainingActivationBlockers: readonly BetterAuthRenewalUpdateAgeRemainingBlocker[];
@@ -184,14 +183,13 @@ export function planBetterAuthRenewalUpdateAgePolicy(): BetterAuthRenewalUpdateA
       sidecarAuthorizationStoreImplemented: false,
       csrfIntegrationImplemented: false,
       expiredSessionPruningPolicyAccepted: true,
-      backupRestorePolicyAccepted: false,
+      backupRestorePolicyAccepted: true,
       disabledLiveMountingDesignAccepted: false,
     },
     remainingActivationBlockers: [
       "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
-      "backup-restore-session-state-policy-needed",
       "arepo-owned-csrf-live-integration-blocked",
       "better-auth-output-sanitization-wrapper-needed",
       "activation-gate-mounting-still-forbidden",

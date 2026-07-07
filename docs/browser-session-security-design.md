@@ -72,6 +72,11 @@ mark sidecar references expired or stale, retain only redacted tombstones when
 needed for audit, fail closed on missing or mismatched state, and avoid direct
 Better Auth table cleanup unless a supported Better Auth cleanup API is
 explicitly adopted later.
+The backup/restore session-state policy requires AREPO-owned auth-state epoch
+handling before live activation. Restored auth DB state, restored sidecar
+state, mismatched epochs, duplicated references, missing records, and
+suspicious restore outcomes fail closed and require reset or re-pairing by
+default.
 The session-scope metadata proof selects a hybrid model: Better Auth owns
 session/cookie mechanics, while AREPO owns local operator subject policy,
 device-label policy, route authorization, audit redaction, and vault/node
@@ -356,10 +361,11 @@ boundary. The deterministic proof forces one isolated session's expiry into the
 past through the internal adapter, confirms active-session lookup excludes it,
 and confirms the signed-cookie `get-session` handler returns null and emits
 redacted cookie-clearing metadata. The proof does not rely on slow sleeps and
-does not enable live cookies. AREPO now accepts bounded renewal/update-age as
-freshness only and sidecar-only expired-session pruning with conditions, but
-still needs backup/restore session-state rules before browser sessions can be
-activated.
+does not enable live cookies. AREPO now accepts bounded renewal/update-age,
+sidecar-only expired-session pruning, and fail-closed backup/restore
+session-state policy with conditions, but still needs the internal-adapter
+wrapper, sidecar store, live CSRF integration, and disabled-live mounting
+design before browser sessions can be activated.
 
 ## Authorization Integration
 

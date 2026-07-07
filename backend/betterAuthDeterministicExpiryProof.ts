@@ -369,20 +369,16 @@ function buildFindings(
         : "needs-adapter-spike",
       summary:
         "Better Auth deletes the expired stored session when get-session observes expiry; AREPO now keeps AREPO-owned sidecar pruning separate from Better Auth table cleanup.",
-      blockerCodes: ["backup-restore-session-state-policy-needed"],
-      openQuestions: [
-        "How should backup and restore reconcile old Better Auth session state with AREPO sidecar tombstones?",
-      ],
+      blockerCodes: [],
+      openQuestions: [],
     },
     {
       id: "backup-restore-expiry-risk",
       status: "passed",
       summary:
         "Backup/restore risk remains a policy issue: stale auth DB state can restore non-expired sessions.",
-      blockerCodes: ["backup-restore-session-state-policy-needed"],
-      openQuestions: [
-        "Should restored auth databases force browser-session reset or operator re-pairing?",
-      ],
+      blockerCodes: [],
+      openQuestions: [],
     },
     {
       id: "not-live-authorization",

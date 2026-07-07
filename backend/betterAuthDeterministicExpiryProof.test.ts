@@ -132,16 +132,8 @@ test("Better Auth deterministic expiry proof findings are explicit", async () =>
   assert.equal(findings.get("renewal-update-age-recorded")?.status, "passed");
   assert.equal(findings.get("logout-revoke-distinct-from-expiry")?.status, "passed");
   assert.equal(findings.get("expired-session-cleanup")?.status, "passed");
-  assert.ok(
-    findings
-      .get("expired-session-cleanup")
-      ?.blockerCodes.includes("backup-restore-session-state-policy-needed"),
-  );
-  assert.ok(
-    findings
-      .get("backup-restore-expiry-risk")
-      ?.blockerCodes.includes("backup-restore-session-state-policy-needed"),
-  );
+  assert.equal(findings.get("expired-session-cleanup")?.blockerCodes.length, 0);
+  assert.equal(findings.get("backup-restore-expiry-risk")?.blockerCodes.length, 0);
   assert.equal(findings.get("not-live-authorization")?.status, "passed");
 });
 

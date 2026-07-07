@@ -137,6 +137,12 @@ expired-session pruning decision: Better Auth remains authoritative for session
 validity and expiry, AREPO sidecar authorization remains authoritative for
 route authorization, AREPO should prune or tombstone only sidecar state, and
 missing, expired, mismatched, restored, or suspicious states fail closed.
+`backend/betterAuthBackupRestoreSessionStatePolicy.ts` now records the
+backup/restore session-state decision: Better Auth auth DB state and AREPO
+sidecar authorization state are sensitive generated app state, restored or
+mismatched state fails closed, sidecar references must bind to a future
+AREPO-owned auth-state epoch, and reset or re-pairing is required by default
+after suspicious restore.
 `backend/betterAuthRouteRequestAdapterProof.ts` now proves that AREPO
 routeRequest-style method/path/query/header/body input can be converted to a
 standard `Request`, Better Auth `Response` output can be wrapped with redacted
@@ -340,9 +346,8 @@ Implemented components include:
   unmounted request validation shape. The Better Auth session-token storage
   policy accepts app-data storage with conditions. Remaining blockers include
   internal-adapter wrapper implementation, production AREPO Better Auth plugin
-  implementation, AREPO sidecar authorization store implementation,
-  backup/restore session-state policy, output sanitization, and live CSRF
-  integration.
+  implementation, AREPO sidecar authorization store/auth-state epoch
+  implementation, output sanitization, and live CSRF integration.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It
   defines requirement codes for creation, verification, rotation, renewal, and
