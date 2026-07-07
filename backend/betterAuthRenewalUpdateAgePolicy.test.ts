@@ -133,7 +133,6 @@ test("Better Auth renewal update-age policy keeps remaining blockers explicit", 
     "internal-adapter-wrapper-implementation-needed",
     "production-arepo-better-auth-plugin-needed",
     "arepo-sidecar-authorization-store-needed",
-    "expired-session-pruning-policy-needed",
     "backup-restore-session-state-policy-needed",
     "arepo-owned-csrf-live-integration-blocked",
     "better-auth-output-sanitization-wrapper-needed",
@@ -142,7 +141,7 @@ test("Better Auth renewal update-age policy keeps remaining blockers explicit", 
   assert.equal(policy.activationRequirements.internalAdapterWrapperImplemented, false);
   assert.equal(policy.activationRequirements.sidecarAuthorizationStoreImplemented, false);
   assert.equal(policy.activationRequirements.csrfIntegrationImplemented, false);
-  assert.equal(policy.activationRequirements.expiredSessionPruningPolicyAccepted, false);
+  assert.equal(policy.activationRequirements.expiredSessionPruningPolicyAccepted, true);
   assert.equal(policy.activationRequirements.backupRestorePolicyAccepted, false);
   assert.equal(policy.activationRequirements.disabledLiveMountingDesignAccepted, false);
 });

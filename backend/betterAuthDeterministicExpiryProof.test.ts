@@ -135,7 +135,7 @@ test("Better Auth deterministic expiry proof findings are explicit", async () =>
   assert.ok(
     findings
       .get("expired-session-cleanup")
-      ?.blockerCodes.includes("expired-session-pruning-policy-needed"),
+      ?.blockerCodes.includes("backup-restore-session-state-policy-needed"),
   );
   assert.ok(
     findings

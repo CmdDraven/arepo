@@ -66,6 +66,12 @@ of 30 minutes and Better Auth `updateAge` of 5 minutes. Renewal is freshness
 only, never new authorization. It must be blocked when AREPO sidecar
 authorization is missing, revoked, stale, or mismatched, and unsafe
 cookie-backed requests must not renew before AREPO-owned CSRF validation.
+The expired-session pruning policy accepts sidecar-only pruning with Better
+Auth remaining authoritative for session validity and expiry. AREPO should
+mark sidecar references expired or stale, retain only redacted tombstones when
+needed for audit, fail closed on missing or mismatched state, and avoid direct
+Better Auth table cleanup unless a supported Better Auth cleanup API is
+explicitly adopted later.
 The session-scope metadata proof selects a hybrid model: Better Auth owns
 session/cookie mechanics, while AREPO owns local operator subject policy,
 device-label policy, route authorization, audit redaction, and vault/node
@@ -351,8 +357,9 @@ past through the internal adapter, confirms active-session lookup excludes it,
 and confirms the signed-cookie `get-session` handler returns null and emits
 redacted cookie-clearing metadata. The proof does not rely on slow sleeps and
 does not enable live cookies. AREPO now accepts bounded renewal/update-age as
-freshness only, but still needs expired-session pruning policy and
-backup/restore session-state rules before browser sessions can be activated.
+freshness only and sidecar-only expired-session pruning with conditions, but
+still needs backup/restore session-state rules before browser sessions can be
+activated.
 
 ## Authorization Integration
 

@@ -126,7 +126,6 @@ export type BetterAuthPairingCookieBoundaryProofResult = {
     "production-arepo-better-auth-plugin-needed",
     "internal-adapter-wrapper-implementation-needed",
     "arepo-sidecar-authorization-store-needed",
-    "expired-session-pruning-policy-needed",
     "backup-restore-session-state-policy-needed",
     "arepo-owned-csrf-live-integration-blocked",
   ];
@@ -444,7 +443,6 @@ export async function runIsolatedBetterAuthPairingCookieBoundaryProof(): Promise
       "production-arepo-better-auth-plugin-needed",
       "internal-adapter-wrapper-implementation-needed",
       "arepo-sidecar-authorization-store-needed",
-      "expired-session-pruning-policy-needed",
       "backup-restore-session-state-policy-needed",
       "arepo-owned-csrf-live-integration-blocked",
     ],

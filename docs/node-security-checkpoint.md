@@ -132,6 +132,11 @@ max age and 5-minute Better Auth `updateAge`; renewal is freshness only, never
 new authorization; sidecar authorization remains authoritative; unsafe
 cookie-backed requests must not renew before AREPO-owned CSRF validation; and
 revoke-current, revoke-all, and expiry override renewal.
+`backend/betterAuthExpiredSessionPruningPolicy.ts` now records the
+expired-session pruning decision: Better Auth remains authoritative for session
+validity and expiry, AREPO sidecar authorization remains authoritative for
+route authorization, AREPO should prune or tombstone only sidecar state, and
+missing, expired, mismatched, restored, or suspicious states fail closed.
 `backend/betterAuthRouteRequestAdapterProof.ts` now proves that AREPO
 routeRequest-style method/path/query/header/body input can be converted to a
 standard `Request`, Better Auth `Response` output can be wrapped with redacted
@@ -336,7 +341,7 @@ Implemented components include:
   policy accepts app-data storage with conditions. Remaining blockers include
   internal-adapter wrapper implementation, production AREPO Better Auth plugin
   implementation, AREPO sidecar authorization store implementation,
-  pruning/backup policy, output sanitization, and live CSRF
+  backup/restore session-state policy, output sanitization, and live CSRF
   integration.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It

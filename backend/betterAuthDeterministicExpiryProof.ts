@@ -368,10 +368,10 @@ function buildFindings(
         ? "passed"
         : "needs-adapter-spike",
       summary:
-        "Better Auth deletes the expired stored session when get-session observes expiry; AREPO should still define pruning policy.",
-      blockerCodes: ["expired-session-pruning-policy-needed"],
+        "Better Auth deletes the expired stored session when get-session observes expiry; AREPO now keeps AREPO-owned sidecar pruning separate from Better Auth table cleanup.",
+      blockerCodes: ["backup-restore-session-state-policy-needed"],
       openQuestions: [
-        "Should AREPO run explicit expired-session cleanup during startup or maintenance?",
+        "How should backup and restore reconcile old Better Auth session state with AREPO sidecar tombstones?",
       ],
     },
     {

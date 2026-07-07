@@ -43,7 +43,7 @@ export type BetterAuthCompatibilityPlan = {
     blockerCodes: readonly string[];
     openQuestions: readonly string[];
   };
-  nextSlice: "expired-session-pruning-policy";
+  nextSlice: "backup-restore-session-state-policy";
 };
 
 const findingByRequirement = new Map<
@@ -139,13 +139,10 @@ const findingByRequirement = new Map<
       status: "compatible",
       delegatedTo: "better-auth",
       summary:
-        "Better Auth exposes session expiry, active-session filtering, signed-cookie expiry rejection, and AREPO now accepts bounded updateAge renewal as freshness only.",
-      blockerCodes: [
-        "expired-session-pruning-policy-needed",
-        "backup-restore-session-state-policy-needed",
-      ],
+        "Better Auth exposes session expiry, active-session filtering, signed-cookie expiry rejection, bounded updateAge renewal, and an accepted AREPO sidecar pruning policy.",
+      blockerCodes: ["backup-restore-session-state-policy-needed"],
       openQuestions: [
-        "Should AREPO run explicit expired-session cleanup during startup or maintenance?",
+        "How should backup and restore of auth DB and sidecar state handle old or mismatched session authority?",
       ],
       proofRequiredBeforeLiveActivation: true,
     },
@@ -352,7 +349,7 @@ export function planBetterAuthCompatibility(): BetterAuthCompatibilityPlan {
     requirementCount: browserAuthFoundationRequirements.length,
     findings,
     summary,
-    nextSlice: "expired-session-pruning-policy",
+    nextSlice: "backup-restore-session-state-policy",
   };
 }
 

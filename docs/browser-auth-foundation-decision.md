@@ -141,9 +141,10 @@ shape.
 - Deterministic expiry must be proven through an accepted request/session
   adapter. The isolated deterministic expiry proof now confirms active-session
   filtering in app data and signed-cookie `get-session` rejection after an
-  isolated expiry override, without slow wall-clock waits. AREPO still needs
-  renewal/update-age values, expired-session pruning policy, and backup/restore
-  session-state policy before activation.
+  isolated expiry override, without slow wall-clock waits. AREPO now has
+  accepted-with-conditions renewal/update-age and expired-session pruning
+  policies, but still needs backup/restore session-state policy before
+  activation.
 - Raw token cookie injection remains rejected in the isolated proof. Signed
   cookie issuance and clearing are observable through Better Auth's normal
   handler routes; pairing-driven signed-cookie lookup is proven only through an
@@ -179,10 +180,11 @@ shape.
 
 ## Next Slice
 
-Run an expired-session pruning policy slice. Storage policy, deterministic
-expiry, CSRF ownership, routeRequest adaptation, pairing-created signed-cookie
-lookup, session-scope metadata, production-shaped plugin-boundary behavior,
-internal-adapter risk, and renewal/update-age now have isolated answers. The
-next blocker is cleanup policy for expired Better Auth sessions and AREPO
-sidecar references. The slice must remain outside live server paths and must
-not mount browser auth.
+Run a backup/restore session-state policy slice. Storage policy,
+deterministic expiry, CSRF ownership, routeRequest adaptation,
+pairing-created signed-cookie lookup, session-scope metadata,
+production-shaped plugin-boundary behavior, internal-adapter risk,
+renewal/update-age, and expired-session pruning now have isolated answers. The
+next blocker is how restored Better Auth auth DB state and restored AREPO
+sidecar state interact with session authority. The slice must remain outside
+live server paths and must not mount browser auth.

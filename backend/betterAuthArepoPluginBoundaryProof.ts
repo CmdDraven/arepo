@@ -184,7 +184,6 @@ export type BetterAuthArepoPluginBoundaryProofResult = {
     "internal-adapter-wrapper-implementation-needed",
     "production-arepo-better-auth-plugin-needed",
     "arepo-sidecar-authorization-store-needed",
-    "expired-session-pruning-policy-needed",
     "backup-restore-session-state-policy-needed",
     "arepo-owned-csrf-live-integration-blocked",
   ];
@@ -713,7 +712,6 @@ export async function runIsolatedBetterAuthArepoPluginBoundaryProof(): Promise<B
       "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
-      "expired-session-pruning-policy-needed",
       "backup-restore-session-state-policy-needed",
       "arepo-owned-csrf-live-integration-blocked",
     ],
