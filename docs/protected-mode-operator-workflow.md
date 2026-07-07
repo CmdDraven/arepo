@@ -326,6 +326,14 @@ The Better Auth internal-adapter risk decision is planning infrastructure only.
 It accepts plugin-context `internalAdapter` access with wrapper, upgrade-review,
 and regression-test conditions; it does not mount Better Auth or create browser
 sessions.
+The Better Auth internal-adapter wrapper now exists as disabled-live
+infrastructure only. It exposes named pairing/session operations and redacted
+references, but it is not imported into live server paths and does not create
+live browser sessions.
+The disabled-live browser-auth route adapter skeleton also exists, but remains
+unmounted. It returns sanitized inactive results with the activation gate
+closed and does not call Better Auth handlers, the wrapper, cookie issuance,
+CSRF validation, pairing issuance, or live authorization.
 The Better Auth renewal/update-age policy is also planning infrastructure only.
 It sets future browser-session max age to 30 minutes and Better Auth
 `updateAge` to 5 minutes, treats renewal as freshness only, requires sidecar

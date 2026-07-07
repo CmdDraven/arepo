@@ -501,6 +501,27 @@ export type BrowserSessionAuthRuntimeStatus = {
     authenticatesRequests: false;
     networkExposureSafe: false;
   };
+  disabledLiveAdapter: {
+    status: "disabled-live-inert";
+    implementation: "disabled-live-route-adapter-skeleton";
+    browserAuthEnabled: false;
+    activationGateClosed: true;
+    mountedInServer: false;
+    wiredIntoAuthorization: false;
+    wiredIntoRoutes: false;
+    betterAuthHandlerMounted: false;
+    internalAdapterWrapperLive: false;
+    issuesCookies: false;
+    acceptsCookies: false;
+    parsesCookiesForAuthorization: false;
+    validatesCsrf: false;
+    createsBrowserSessions: false;
+    consumesPairingCodes: false;
+    authenticatesRequests: false;
+    bearerProtectedModeUnchanged: true;
+    routeCount: number;
+    networkExposureSafe: false;
+  };
   lifecycleCoordinator: {
     status: "inactive";
     implementation: "in-memory-test-primitive";

@@ -181,7 +181,6 @@ export type BetterAuthArepoPluginBoundaryProofResult = {
     getSessionAfterExpiry: BetterAuthWrappedResponse;
   };
   remainingBlockers: readonly [
-    "internal-adapter-wrapper-implementation-needed",
     "production-arepo-better-auth-plugin-needed",
     "arepo-sidecar-authorization-store-needed",
     "arepo-owned-csrf-live-integration-blocked",
@@ -708,7 +707,6 @@ export async function runIsolatedBetterAuthArepoPluginBoundaryProof(): Promise<B
       getSessionAfterExpiry: getSessionAfterExpiryWrapped,
     },
     remainingBlockers: [
-      "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
       "arepo-owned-csrf-live-integration-blocked",
@@ -1022,13 +1020,11 @@ function buildFindings(
     },
     {
       id: "internal-adapter-risk",
-      status: "needs-risk-decision",
+      status: "accepted-in-isolated-proof",
       summary:
-        "The plugin endpoint uses ctx.context.internalAdapter, matching Better Auth plugin patterns, but activation remains blocked until AREPO accepts or replaces that risk.",
-      blockerCodes: ["internal-adapter-wrapper-implementation-needed"],
-      openQuestions: [
-        "Should AREPO isolate ctx.context.internalAdapter behind one wrapper or revisit express-session if the risk is unacceptable?",
-      ],
+        "The plugin endpoint uses ctx.context.internalAdapter, matching Better Auth plugin patterns, and AREPO now has a narrow disabled-live wrapper boundary for that access.",
+      blockerCodes: [],
+      openQuestions: ["How should the wrapper be connected inside the disabled-live plugin path?"],
     },
     {
       id: "not-live-authorization",

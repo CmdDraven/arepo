@@ -151,7 +151,12 @@ test("AREPO Better Auth plugin-boundary proof classifies internal-adapter risk",
   assert.equal(proof.internalAdapterRisk.wrapperCanIsolateRisk, true);
   assert.equal(proof.internalAdapterRisk.activationBlockedUntilAcceptedOrReplaced, true);
   assert.equal(proof.internalAdapterRisk.expressSessionBackupShouldRemainOpenIfRejected, true);
-  assert.ok(proof.remainingBlockers.includes("internal-adapter-wrapper-implementation-needed"));
+  assert.equal(
+    JSON.stringify(proof.remainingBlockers).includes(
+      "internal-adapter-wrapper-implementation-needed",
+    ),
+    false,
+  );
 });
 
 test("AREPO Better Auth plugin-boundary proof emits sanitized audit-like events", async () => {
@@ -187,7 +192,7 @@ test("AREPO Better Auth plugin-boundary proof findings are explicit", async () =
   assert.equal(findings.get("sidecar-authorization")?.status, "accepted-in-isolated-proof");
   assert.equal(findings.get("csrf-sequencing")?.status, "needs-live-integration-later");
   assert.equal(findings.get("audit-redaction")?.status, "accepted-in-isolated-proof");
-  assert.equal(findings.get("internal-adapter-risk")?.status, "needs-risk-decision");
+  assert.equal(findings.get("internal-adapter-risk")?.status, "accepted-in-isolated-proof");
   assert.equal(findings.get("not-live-authorization")?.status, "passed");
 });
 

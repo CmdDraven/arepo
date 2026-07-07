@@ -56,11 +56,17 @@ sign-out, revoke-current, revoke-all, and expiry still work; and audit output,
 cookie metadata, and sidecar diagnostics stay redacted. This proof remains
 unmounted and does not enable live browser auth.
 The internal-adapter risk decision accepts `ctx.context.internalAdapter` only
-as official-plugin-pattern internal access behind a future narrow AREPO
-wrapper. That wrapper must live inside the Better Auth plugin boundary, expose
-only named pairing/session operations, return only redacted references, and
-keep route authorization, vault/node permission posture, sidecar policy, audit
-policy, and CSRF policy AREPO-owned.
+as official-plugin-pattern internal access behind a narrow AREPO wrapper. The
+disabled-live wrapper now exists, must live inside the Better Auth plugin
+boundary when connected, exposes only named pairing/session operations, returns
+only redacted references, and keeps route authorization, vault/node permission
+posture, sidecar policy, audit policy, and CSRF policy AREPO-owned.
+The disabled-live route adapter skeleton now exists as the future production
+route integration point. It is not mounted in `server.ts`, evaluates the
+activation gate, returns sanitized inactive responses while gates are closed,
+and does not call Better Auth handlers, the wrapper, session creation,
+`setSessionCookie`, cookie parsing, CSRF validation, pairing issuance, or live
+authorization.
 The renewal/update-age policy accepts a bounded future browser-session max age
 of 30 minutes and Better Auth `updateAge` of 5 minutes. Renewal is freshness
 only, never new authorization. It must be blocked when AREPO sidecar
@@ -364,8 +370,9 @@ redacted cookie-clearing metadata. The proof does not rely on slow sleeps and
 does not enable live cookies. AREPO now accepts bounded renewal/update-age,
 sidecar-only expired-session pruning, and fail-closed backup/restore
 session-state policy with conditions, but still needs the internal-adapter
-wrapper, sidecar store, live CSRF integration, and disabled-live mounting
-design before browser sessions can be activated.
+wrapper to be connected inside a disabled plugin path, sidecar store, live
+CSRF integration, and disabled-live mounting proof before browser sessions can
+be activated.
 
 ## Authorization Integration
 

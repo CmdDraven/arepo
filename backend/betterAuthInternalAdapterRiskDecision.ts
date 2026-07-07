@@ -50,7 +50,6 @@ export type BetterAuthInternalAdapterMitigation =
   | "express-session-backup-remains-open";
 
 export type BetterAuthInternalAdapterRemainingBlocker =
-  | "internal-adapter-wrapper-implementation-needed"
   | "production-arepo-better-auth-plugin-needed"
   | "arepo-sidecar-authorization-store-needed"
   | "arepo-owned-csrf-live-integration-blocked"
@@ -253,7 +252,6 @@ export function planBetterAuthInternalAdapterRiskDecision(): BetterAuthInternalA
       "session-revocation-primitives",
     ],
     remainingActivationBlockers: [
-      "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
       "arepo-owned-csrf-live-integration-blocked",

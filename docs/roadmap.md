@@ -148,11 +148,12 @@ isolated session-scope metadata proof now selects the hybrid model:
 Better Auth owns session/cookie mechanics, while AREPO owns local operator
 identity, device-label policy, route authorization, and vault/node permission
 posture in sidecar app-data state keyed by Better Auth user/session references.
-Remaining work includes internal-adapter wrapper implementation, production
-AREPO Better Auth plugin implementation, persisted sidecar state,
-auth-state epoch implementation, output sanitization wrappers, and live CSRF
-integration.
-No Better Auth handler is mounted and live browser auth remains inactive.
+The disabled-live internal-adapter wrapper and inert route adapter skeleton
+now exist, but are not mounted into live route execution. Remaining work
+includes disabled-live route mounting proof, production AREPO Better Auth
+plugin implementation, persisted sidecar state, auth-state epoch
+implementation, output sanitization wrappers, and live CSRF integration. No
+Better Auth handler is mounted and live browser auth remains inactive.
 
 Federation must not be implemented before this checkpoint. AREPO must not treat
 network presence as trust. Phase 4 has not completed browser login, browser

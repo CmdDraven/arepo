@@ -73,6 +73,13 @@ Isolated proofs:
   token signing, raw token exposure, route authorization decisions, arbitrary
   adapter calls, and vault/node permission storage in Better Auth cookies or
   metadata remain forbidden.
+- `backend/betterAuthInternalAdapterWrapper.ts` now provides the disabled-live
+  narrow wrapper boundary. It exposes only named pairing/session operations,
+  returns redacted references, and remains unmounted from live server/auth
+  paths.
+- `backend/browserAuthDisabledLiveAdapter.ts` now provides the inert
+  disabled-live route adapter skeleton. It checks the activation gate and
+  returns sanitized inactive results while remaining unmounted.
 - `backend/betterAuthRenewalUpdateAgePolicy.ts` records the bounded
   renewal/update-age decision: future browser sessions use a 30-minute max age
   and 5-minute Better Auth `updateAge`; renewal is freshness only, never new
@@ -322,7 +329,6 @@ Still unresolved:
 ## Adoption Blockers
 
 - `production-arepo-better-auth-plugin-needed`
-- `internal-adapter-wrapper-implementation-needed`
 - `arepo-sidecar-authorization-store-needed`
 - `better-auth-session-token-storage-mitigations-needed`
 - `arepo-owned-csrf-live-integration-blocked`
@@ -334,10 +340,8 @@ Still unresolved:
 
 Later isolated security work should test, outside `server.ts`:
 
-- Implement the accepted internal-adapter wrapper in an isolated proof before
-  any disabled-live mounting work.
-- Implement the accepted internal-adapter wrapper in an isolated proof before
-  any disabled-live mounting work.
+- Prove disabled-live route mounting can preserve the existing inactive route
+  behavior before connecting the skeleton to `server.ts`.
 - Revoke the current session and revoke all sessions for the local
   operator/principal through the accepted adapter path.
 - Implement the accepted Better Auth `session.token` app-data storage
@@ -345,8 +349,8 @@ Later isolated security work should test, outside `server.ts`:
 - Implement the AREPO-owned sidecar authorization state that maps Better Auth
   references to local operator and route/vault permission posture.
 - Adapt the AREPO-owned CSRF request adapter proof into a disabled future route
-  pipeline only after storage policy, sidecar authorization, and activation gates are
-  settled.
+  pipeline only after storage policy, sidecar authorization, and activation
+  gates are settled.
 - Confirm no raw session token, cookie value, bearer token, authorization
   header, hash, salt, or verifier internals appear in sanitized wrappers.
 - Confirm Better Auth remains unmounted and forbidden from live authorization
@@ -368,8 +372,9 @@ Later isolated security work should test, outside `server.ts`:
 
 ## Recommended Next Slice
 
-Run an internal-adapter wrapper implementation proof. Backup/restore
-session-state policy is now accepted with conditions, so the next highest-risk
-implementation boundary is the narrow wrapper around Better Auth
-`internalAdapter` inside the plugin endpoint. Keep Better Auth unmounted and
-live browser auth inactive.
+Run a disabled-live route mounting proof. The internal-adapter wrapper and
+inert disabled-live adapter skeleton now exist, so the next highest-risk
+integration boundary is proving that `server.ts` can delegate the existing
+browser-auth stubs to the inert adapter without changing responses, emitting
+cookies, or accepting cookie credentials. Keep Better Auth active handlers
+unmounted and live browser auth inactive.

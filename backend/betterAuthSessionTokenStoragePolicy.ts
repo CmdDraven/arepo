@@ -27,7 +27,6 @@ export type BetterAuthSessionTokenStorageMitigation = {
 };
 
 export type BetterAuthSessionTokenStorageBlockerCode =
-  | "internal-adapter-wrapper-implementation-needed"
   | "production-arepo-better-auth-plugin-needed"
   | "arepo-sidecar-authorization-store-needed"
   | "arepo-owned-csrf-live-integration-blocked"
@@ -208,7 +207,6 @@ export function planBetterAuthSessionTokenStoragePolicy(): BetterAuthSessionToke
       },
     ],
     remainingActivationBlockers: [
-      "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
       "arepo-owned-csrf-live-integration-blocked",

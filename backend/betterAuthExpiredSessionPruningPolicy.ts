@@ -6,7 +6,6 @@ export const BETTER_AUTH_EXPIRED_SESSION_PRUNING_POLICY_LIVE_BROWSER_AUTH_ENABLE
 export type BetterAuthExpiredSessionPruningPolicyStatus = "accepted-with-conditions";
 
 export type BetterAuthExpiredSessionPruningRemainingBlocker =
-  | "internal-adapter-wrapper-implementation-needed"
   | "production-arepo-better-auth-plugin-needed"
   | "arepo-sidecar-authorization-store-needed"
   | "arepo-owned-csrf-live-integration-blocked"
@@ -203,7 +202,6 @@ export function planBetterAuthExpiredSessionPruningPolicy(): BetterAuthExpiredSe
       disabledLiveMountingDesignAccepted: false,
     },
     remainingActivationBlockers: [
-      "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
       "arepo-owned-csrf-live-integration-blocked",

@@ -107,8 +107,7 @@ The proof uses Better Auth's internal adapter plus exported signing.
 `backend/betterAuthPairingCookieBoundaryProof.ts` then proves a public Better
 Auth plugin endpoint can emit the signed `arepo_session` cookie through Better
 Auth response behavior after AREPO pairing acceptance, while still requiring a
-production AREPO plugin and internal-adapter wrapper implementation before
-activation.
+production AREPO plugin before activation.
 `backend/betterAuthArepoPluginBoundaryProof.ts` now expands that into a
 production-shaped but unmounted AREPO plugin-boundary proof. It verifies that
 the activation gate blocks before Better Auth session creation,
@@ -123,6 +122,19 @@ raw token rejection in isolation.
 decision for that remaining risk: AREPO accepts `ctx.context.internalAdapter`
 only as official-plugin-pattern internal access behind a narrow wrapper inside
 the future Better Auth plugin boundary. Direct token signing, raw token
+exposure, arbitrary internal adapter calls, and route authorization inside
+Better Auth plugin code remain forbidden.
+`backend/betterAuthInternalAdapterWrapper.ts` now provides that narrow
+disabled-live wrapper boundary. It exposes only named pairing/session
+operations, returns redacted Better Auth user/session references, never returns
+raw session tokens or cookies, never performs route authorization, and remains
+unmounted from live server/auth/frontend paths.
+`backend/browserAuthDisabledLiveAdapter.ts` now provides the inert
+disabled-live route adapter skeleton. It represents the future route
+integration point, evaluates the activation gate, returns sanitized inactive
+responses while the gate is closed, and does not import Better Auth handlers,
+the wrapper, cookie serialization, lifecycle coordination, or live request
+authorization.
 exposure, arbitrary adapter calls, route authorization decisions inside Better
 Auth plugin code, and vault/node permission storage in cookies or Better Auth
 metadata remain forbidden.
@@ -345,7 +357,7 @@ Implemented components include:
   routes. The AREPO-owned CSRF request adapter proof records the future
   unmounted request validation shape. The Better Auth session-token storage
   policy accepts app-data storage with conditions. Remaining blockers include
-  internal-adapter wrapper implementation, production AREPO Better Auth plugin
+  disabled-live route mounting proof, production AREPO Better Auth plugin
   implementation, AREPO sidecar authorization store/auth-state epoch
   implementation, output sanitization, and live CSRF integration.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle

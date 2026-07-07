@@ -106,7 +106,6 @@ This policy removes the storage-policy decision blocker, but it does not enable
 browser auth. These blockers remain:
 
 - production AREPO Better Auth pairing plugin implementation
-- internal-adapter wrapper implementation for plugin endpoint session issuance
 - AREPO-owned sidecar authorization store implementation
 - live AREPO-owned CSRF integration behind activation gates
 - Better Auth output/hook sanitization wrappers for audit and status

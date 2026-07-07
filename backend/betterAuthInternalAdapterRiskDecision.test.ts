@@ -153,7 +153,6 @@ test("Better Auth internal-adapter decision keeps remaining blockers explicit", 
   const decision = planBetterAuthInternalAdapterRiskDecision();
 
   assert.deepEqual(decision.remainingActivationBlockers, [
-    "internal-adapter-wrapper-implementation-needed",
     "production-arepo-better-auth-plugin-needed",
     "arepo-sidecar-authorization-store-needed",
     "arepo-owned-csrf-live-integration-blocked",

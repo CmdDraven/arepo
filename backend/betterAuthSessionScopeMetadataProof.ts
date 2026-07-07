@@ -109,7 +109,6 @@ export type BetterAuthSessionScopeMetadataProofResult = {
   };
   remainingBlockers: readonly [
     "production-arepo-better-auth-plugin-needed",
-    "internal-adapter-wrapper-implementation-needed",
     "arepo-sidecar-authorization-store-needed",
     "session-scope-metadata-schema-needed",
     "arepo-owned-csrf-live-integration-blocked",
@@ -298,7 +297,6 @@ export async function runIsolatedBetterAuthSessionScopeMetadataProof(): Promise<
     },
     remainingBlockers: [
       "production-arepo-better-auth-plugin-needed",
-      "internal-adapter-wrapper-implementation-needed",
       "arepo-sidecar-authorization-store-needed",
       "session-scope-metadata-schema-needed",
       "arepo-owned-csrf-live-integration-blocked",

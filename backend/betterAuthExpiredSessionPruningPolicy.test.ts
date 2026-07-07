@@ -167,7 +167,6 @@ test("Better Auth pruning policy keeps remaining blockers explicit", () => {
   const policy = planBetterAuthExpiredSessionPruningPolicy();
 
   assert.deepEqual(policy.remainingActivationBlockers, [
-    "internal-adapter-wrapper-implementation-needed",
     "production-arepo-better-auth-plugin-needed",
     "arepo-sidecar-authorization-store-needed",
     "arepo-owned-csrf-live-integration-blocked",

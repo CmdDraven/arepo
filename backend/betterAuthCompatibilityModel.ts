@@ -43,7 +43,7 @@ export type BetterAuthCompatibilityPlan = {
     blockerCodes: readonly string[];
     openQuestions: readonly string[];
   };
-  nextSlice: "internal-adapter-wrapper-implementation-proof";
+  nextSlice: "disabled-live-route-mounting-proof";
 };
 
 const findingByRequirement = new Map<
@@ -122,13 +122,10 @@ const findingByRequirement = new Map<
       status: "likely-compatible",
       delegatedTo: "better-auth",
       summary:
-        "Cookie names and secure-cookie behavior are configurable; a production-shaped isolated Better Auth plugin proof can emit the signed session cookie after AREPO pairing acceptance.",
-      blockerCodes: [
-        "production-arepo-better-auth-plugin-needed",
-        "internal-adapter-wrapper-implementation-needed",
-      ],
+        "Cookie names and secure-cookie behavior are configurable; a production-shaped isolated Better Auth plugin proof can emit the signed session cookie after AREPO pairing acceptance, and AREPO now has a narrow disabled-live internalAdapter wrapper.",
+      blockerCodes: ["production-arepo-better-auth-plugin-needed"],
       openQuestions: [
-        "How should AREPO implement and test the narrow internalAdapter wrapper before mounting?",
+        "How should the disabled-live route adapter be mounted without changing behavior?",
       ],
       proofRequiredBeforeLiveActivation: true,
     },
@@ -217,7 +214,6 @@ const findingByRequirement = new Map<
         "AREPO pairing can create a Better Auth user/session, sidecar authorization reference, and signed cookie through a production-shaped isolated Better Auth plugin endpoint, but production plugin hardening remains.",
       blockerCodes: [
         "production-arepo-better-auth-plugin-needed",
-        "internal-adapter-wrapper-implementation-needed",
         "arepo-sidecar-authorization-store-needed",
       ],
       openQuestions: [
@@ -347,7 +343,7 @@ export function planBetterAuthCompatibility(): BetterAuthCompatibilityPlan {
     requirementCount: browserAuthFoundationRequirements.length,
     findings,
     summary,
-    nextSlice: "internal-adapter-wrapper-implementation-proof",
+    nextSlice: "disabled-live-route-mounting-proof",
   };
 }
 

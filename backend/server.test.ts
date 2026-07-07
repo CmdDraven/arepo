@@ -308,6 +308,19 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.browserSessionAuth.routeHarness.issuesBrowserSessions, false);
   assert.equal(status.browserSessionAuth.routeHarness.issuesCsrfTokens, false);
   assert.equal(status.browserSessionAuth.routeHarness.authenticatesRequests, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.status, "disabled-live-inert");
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.browserAuthEnabled, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.activationGateClosed, true);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.mountedInServer, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.wiredIntoAuthorization, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.wiredIntoRoutes, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.betterAuthHandlerMounted, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.issuesCookies, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.acceptsCookies, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.validatesCsrf, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.createsBrowserSessions, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.authenticatesRequests, false);
+  assert.equal(status.browserSessionAuth.disabledLiveAdapter.bearerProtectedModeUnchanged, true);
   assert.equal(status.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     status.browserSessionAuth.lifecycleCoordinator.implementation,

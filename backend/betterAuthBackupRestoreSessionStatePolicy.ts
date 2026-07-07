@@ -6,7 +6,6 @@ export const BETTER_AUTH_BACKUP_RESTORE_SESSION_STATE_POLICY_LIVE_BROWSER_AUTH_E
 export type BetterAuthBackupRestoreSessionStatePolicyStatus = "accepted-with-conditions";
 
 export type BetterAuthBackupRestoreRemainingBlocker =
-  | "internal-adapter-wrapper-implementation-needed"
   | "production-arepo-better-auth-plugin-needed"
   | "arepo-sidecar-authorization-store-needed"
   | "arepo-owned-csrf-live-integration-blocked"
@@ -219,7 +218,6 @@ export function planBetterAuthBackupRestoreSessionStatePolicy(): BetterAuthBacku
       disabledLiveMountingDesignAccepted: false,
     },
     remainingActivationBlockers: [
-      "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
       "arepo-owned-csrf-live-integration-blocked",

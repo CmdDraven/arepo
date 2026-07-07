@@ -110,11 +110,9 @@ authorization state, and CSRF policy for AREPO API routes.
 
 ## Remaining Blockers
 
-- Internal-adapter wrapper implementation.
 - Production AREPO Better Auth plugin implementation.
 - AREPO-owned sidecar authorization store implementation.
-- Backup/restore session-state policy.
 - Live AREPO-owned CSRF integration behind activation gates.
 - Better Auth output/hook sanitization wrappers for audit and status.
-- Deliberate disabled-live mounting design behind activation gates and
+- Deliberate disabled-live route mounting proof behind activation gates and
   inactive-boundary tests.

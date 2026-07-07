@@ -130,7 +130,6 @@ test("Better Auth renewal update-age policy keeps remaining blockers explicit", 
   const policy = planBetterAuthRenewalUpdateAgePolicy();
 
   assert.deepEqual(policy.remainingActivationBlockers, [
-    "internal-adapter-wrapper-implementation-needed",
     "production-arepo-better-auth-plugin-needed",
     "arepo-sidecar-authorization-store-needed",
     "arepo-owned-csrf-live-integration-blocked",

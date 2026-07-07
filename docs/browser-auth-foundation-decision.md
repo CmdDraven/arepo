@@ -143,8 +143,9 @@ shape.
   filtering in app data and signed-cookie `get-session` rejection after an
   isolated expiry override, without slow wall-clock waits. AREPO now has
   accepted-with-conditions renewal/update-age, expired-session pruning, and
-  backup/restore session-state policies, but still needs the internal-adapter
-  wrapper, sidecar store, live CSRF integration, and disabled-live mounting
+  backup/restore session-state policies plus a disabled-live internal-adapter
+  wrapper and inert route adapter skeleton, but still needs safe disabled-live
+  route mounting proof, sidecar store, live CSRF integration, and activation
   design before activation.
 - Raw token cookie injection remains rejected in the isolated proof. Signed
   cookie issuance and clearing are observable through Better Auth's normal
@@ -181,12 +182,12 @@ shape.
 
 ## Next Slice
 
-Run an internal-adapter wrapper implementation proof. Storage policy,
-deterministic expiry, CSRF ownership, routeRequest adaptation,
-pairing-created signed-cookie lookup, session-scope metadata,
-production-shaped plugin-boundary behavior, internal-adapter risk,
-renewal/update-age, expired-session pruning, and backup/restore policy now
-have isolated answers. The next blocker is implementing the narrow accepted
-wrapper around Better Auth `internalAdapter` inside an unmounted proof
-boundary. The slice must remain outside live server paths and must not mount
-browser auth.
+Run a disabled-live route mounting proof. Storage policy, deterministic
+expiry, CSRF ownership, routeRequest adaptation, pairing-created signed-cookie
+lookup, session-scope metadata, production-shaped plugin-boundary behavior,
+internal-adapter risk, renewal/update-age, expired-session pruning,
+backup/restore policy, the internal-adapter wrapper, and the inert
+disabled-live adapter skeleton now have answers. The next blocker is proving
+the existing inactive browser-auth stubs can delegate to the inert adapter
+without changing live behavior. The slice must not mount active Better Auth or
+make browser auth authoritative.

@@ -147,6 +147,19 @@ test("default disabled auth reports not ready for enforcement without store fail
   assert.equal(readiness.browserSessionAuth.routeHarness.issuesBrowserSessions, false);
   assert.equal(readiness.browserSessionAuth.routeHarness.issuesCsrfTokens, false);
   assert.equal(readiness.browserSessionAuth.routeHarness.authenticatesRequests, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.status, "disabled-live-inert");
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.browserAuthEnabled, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.activationGateClosed, true);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.mountedInServer, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.wiredIntoAuthorization, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.wiredIntoRoutes, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.betterAuthHandlerMounted, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.issuesCookies, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.acceptsCookies, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.validatesCsrf, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.createsBrowserSessions, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.authenticatesRequests, false);
+  assert.equal(readiness.browserSessionAuth.disabledLiveAdapter.bearerProtectedModeUnchanged, true);
   assert.equal(readiness.browserSessionAuth.lifecycleCoordinator.status, "inactive");
   assert.equal(
     readiness.browserSessionAuth.lifecycleCoordinator.implementation,

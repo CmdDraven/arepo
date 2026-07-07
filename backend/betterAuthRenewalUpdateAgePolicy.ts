@@ -6,7 +6,6 @@ export const BETTER_AUTH_RENEWAL_UPDATE_AGE_POLICY_LIVE_BROWSER_AUTH_ENABLED = f
 export type BetterAuthRenewalUpdateAgePolicyStatus = "accepted-with-conditions";
 
 export type BetterAuthRenewalUpdateAgeRemainingBlocker =
-  | "internal-adapter-wrapper-implementation-needed"
   | "production-arepo-better-auth-plugin-needed"
   | "arepo-sidecar-authorization-store-needed"
   | "arepo-owned-csrf-live-integration-blocked"
@@ -187,7 +186,6 @@ export function planBetterAuthRenewalUpdateAgePolicy(): BetterAuthRenewalUpdateA
       disabledLiveMountingDesignAccepted: false,
     },
     remainingActivationBlockers: [
-      "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
       "arepo-owned-csrf-live-integration-blocked",
