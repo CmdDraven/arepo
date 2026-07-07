@@ -61,6 +61,11 @@ wrapper. That wrapper must live inside the Better Auth plugin boundary, expose
 only named pairing/session operations, return only redacted references, and
 keep route authorization, vault/node permission posture, sidecar policy, audit
 policy, and CSRF policy AREPO-owned.
+The renewal/update-age policy accepts a bounded future browser-session max age
+of 30 minutes and Better Auth `updateAge` of 5 minutes. Renewal is freshness
+only, never new authorization. It must be blocked when AREPO sidecar
+authorization is missing, revoked, stale, or mismatched, and unsafe
+cookie-backed requests must not renew before AREPO-owned CSRF validation.
 The session-scope metadata proof selects a hybrid model: Better Auth owns
 session/cookie mechanics, while AREPO owns local operator subject policy,
 device-label policy, route authorization, audit redaction, and vault/node
@@ -345,9 +350,9 @@ boundary. The deterministic proof forces one isolated session's expiry into the
 past through the internal adapter, confirms active-session lookup excludes it,
 and confirms the signed-cookie `get-session` handler returns null and emits
 redacted cookie-clearing metadata. The proof does not rely on slow sleeps and
-does not enable live cookies. AREPO still needs renewal/update-age policy,
-expired-session pruning policy, and backup/restore session-state rules before
-browser sessions can be activated.
+does not enable live cookies. AREPO now accepts bounded renewal/update-age as
+freshness only, but still needs expired-session pruning policy and
+backup/restore session-state rules before browser sessions can be activated.
 
 ## Authorization Integration
 

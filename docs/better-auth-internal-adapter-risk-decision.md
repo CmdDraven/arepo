@@ -113,7 +113,6 @@ authorization state, and CSRF policy for AREPO API routes.
 - Internal-adapter wrapper implementation.
 - Production AREPO Better Auth plugin implementation.
 - AREPO-owned sidecar authorization store implementation.
-- Renewal/update-age policy.
 - Expired-session pruning policy.
 - Backup/restore session-state policy.
 - Live AREPO-owned CSRF integration behind activation gates.

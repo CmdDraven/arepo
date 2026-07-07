@@ -126,6 +126,12 @@ the future Better Auth plugin boundary. Direct token signing, raw token
 exposure, arbitrary adapter calls, route authorization decisions inside Better
 Auth plugin code, and vault/node permission storage in cookies or Better Auth
 metadata remain forbidden.
+`backend/betterAuthRenewalUpdateAgePolicy.ts` now records the
+renewal/update-age decision: future browser sessions use a bounded 30-minute
+max age and 5-minute Better Auth `updateAge`; renewal is freshness only, never
+new authorization; sidecar authorization remains authoritative; unsafe
+cookie-backed requests must not renew before AREPO-owned CSRF validation; and
+revoke-current, revoke-all, and expiry override renewal.
 `backend/betterAuthRouteRequestAdapterProof.ts` now proves that AREPO
 routeRequest-style method/path/query/header/body input can be converted to a
 standard `Request`, Better Auth `Response` output can be wrapped with redacted
@@ -330,7 +336,7 @@ Implemented components include:
   policy accepts app-data storage with conditions. Remaining blockers include
   internal-adapter wrapper implementation, production AREPO Better Auth plugin
   implementation, AREPO sidecar authorization store implementation,
-  renewal/pruning/backup policy, output sanitization, and live CSRF
+  pruning/backup policy, output sanitization, and live CSRF
   integration.
 - `backend/credentialSessionLifecyclePlanner.ts`: unmounted future lifecycle
   planner for credential, token, browser-session, and revocation operations. It

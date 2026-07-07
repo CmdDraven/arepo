@@ -73,6 +73,11 @@ Isolated proofs:
   token signing, raw token exposure, route authorization decisions, arbitrary
   adapter calls, and vault/node permission storage in Better Auth cookies or
   metadata remain forbidden.
+- `backend/betterAuthRenewalUpdateAgePolicy.ts` records the bounded
+  renewal/update-age decision: future browser sessions use a 30-minute max age
+  and 5-minute Better Auth `updateAge`; renewal is freshness only, never new
+  authorization, and must be blocked when AREPO sidecar authorization is
+  missing, revoked, stale, or mismatched.
 - No Better Auth handler is mounted in `backend/server.ts`.
 - No live route emits Better Auth cookies or accepts Better Auth cookies as
   credentials.
@@ -114,7 +119,9 @@ The production-shaped AREPO plugin-boundary proof now models activation-gate
 ordering, sidecar authorization references, CSRF sequencing, and sanitized
 audit output in isolation. The internal-adapter risk decision accepts the
 Better Auth plugin-context adapter pattern with conditions, but production
-still needs the wrapper implementation and upgrade policy.
+still needs the wrapper implementation and upgrade policy. The renewal/update-
+age policy accepts bounded freshness renewal while keeping AREPO-owned sidecar
+authorization authoritative.
 Live activation is still blocked until the remaining proofs and mitigations are
 complete.
 
@@ -286,6 +293,10 @@ Accepted with conditions:
   frontend-provided permission state.
 - Better Auth upgrades must be pinned, reviewed, and tested before browser auth
   activation.
+- Renewal uses a 30-minute session max age and 5-minute `updateAge`, extends
+  freshness only, and never grants authorization.
+- Renewal must not run before CSRF validation on unsafe cookie-backed AREPO
+  requests.
 
 Still unresolved:
 
@@ -297,8 +308,8 @@ Still unresolved:
   conditions, but no production wrapper is mounted or implemented yet.
 - Implementation of the accepted app-data storage mitigations for Better Auth's
   `session.token` column.
-- Renewal/update-age values, explicit expired-session pruning policy, and
-  backup/restore session-state policy before live activation.
+- Explicit expired-session pruning policy and backup/restore session-state
+  policy before live activation.
 - AREPO-owned sidecar authorization store implementation. The metadata proof
   selects this model but does not create the production sidecar schema.
 - Live integration of AREPO-owned CSRF validation into the future cookie-backed
@@ -313,7 +324,6 @@ Still unresolved:
 - `internal-adapter-wrapper-implementation-needed`
 - `arepo-sidecar-authorization-store-needed`
 - `better-auth-session-token-storage-mitigations-needed`
-- `session-renewal-policy-needed`
 - `expired-session-pruning-policy-needed`
 - `backup-restore-session-state-policy-needed`
 - `arepo-owned-csrf-live-integration-blocked`
@@ -327,7 +337,7 @@ Later isolated security work should test, outside `server.ts`:
 
 - Implement the accepted internal-adapter wrapper in an isolated proof before
   any disabled-live mounting work.
-- Define renewal/update-age values and expired-session pruning policy.
+- Define expired-session pruning policy.
 - Revoke the current session and revoke all sessions for the local
   operator/principal through the accepted adapter path.
 - Implement the accepted Better Auth `session.token` app-data storage
@@ -358,9 +368,8 @@ Later isolated security work should test, outside `server.ts`:
 
 ## Recommended Next Slice
 
-Run a renewal/update-age policy slice. The internal-adapter risk is now
-accepted with conditions, but browser-session freshness policy is still
-unsettled. The next slice should decide Better Auth session lifetime,
-`updateAge`/renewal behavior, whether renewal rotates authority, and which
-renewal events AREPO must audit, while keeping Better Auth unmounted and live
-browser auth inactive.
+Run an expired-session pruning policy slice. Renewal/update-age is now accepted
+with conditions, so the next session-state risk is how expired Better Auth
+sessions and sidecar references are cleaned up, when cleanup runs, how it is
+audited, and how it interacts with backup/restore. Keep Better Auth unmounted
+and live browser auth inactive.

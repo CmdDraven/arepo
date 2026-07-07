@@ -43,7 +43,7 @@ export type BetterAuthCompatibilityPlan = {
     blockerCodes: readonly string[];
     openQuestions: readonly string[];
   };
-  nextSlice: "renewal-update-age-policy";
+  nextSlice: "expired-session-pruning-policy";
 };
 
 const findingByRequirement = new Map<
@@ -139,14 +139,12 @@ const findingByRequirement = new Map<
       status: "compatible",
       delegatedTo: "better-auth",
       summary:
-        "Better Auth exposes session expiry, active-session filtering, and signed-cookie expiry rejection through isolated proof boundaries.",
+        "Better Auth exposes session expiry, active-session filtering, signed-cookie expiry rejection, and AREPO now accepts bounded updateAge renewal as freshness only.",
       blockerCodes: [
-        "session-renewal-policy-needed",
         "expired-session-pruning-policy-needed",
         "backup-restore-session-state-policy-needed",
       ],
       openQuestions: [
-        "What expiry/updateAge values match AREPO local-first expectations?",
         "Should AREPO run explicit expired-session cleanup during startup or maintenance?",
       ],
       proofRequiredBeforeLiveActivation: true,
@@ -155,11 +153,12 @@ const findingByRequirement = new Map<
   [
     "session-rotation",
     {
-      status: "unknown",
+      status: "compatible",
       delegatedTo: "shared",
-      summary: "Renewal/freshness exists, but AREPO still needs a rotation policy decision.",
-      blockerCodes: ["session-rotation-policy-unresolved"],
-      openQuestions: ["Does AREPO require token rotation, session renewal, or both?"],
+      summary:
+        "AREPO treats bounded Better Auth updateAge renewal as freshness only, not new authorization or token rotation authority.",
+      blockerCodes: [],
+      openQuestions: [],
       proofRequiredBeforeLiveActivation: true,
     },
   ],
@@ -353,7 +352,7 @@ export function planBetterAuthCompatibility(): BetterAuthCompatibilityPlan {
     requirementCount: browserAuthFoundationRequirements.length,
     findings,
     summary,
-    nextSlice: "renewal-update-age-policy",
+    nextSlice: "expired-session-pruning-policy",
   };
 }
 

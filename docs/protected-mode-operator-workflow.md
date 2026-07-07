@@ -325,6 +325,11 @@ The Better Auth internal-adapter risk decision is planning infrastructure only.
 It accepts plugin-context `internalAdapter` access with wrapper, upgrade-review,
 and regression-test conditions; it does not mount Better Auth or create browser
 sessions.
+The Better Auth renewal/update-age policy is also planning infrastructure only.
+It sets future browser-session max age to 30 minutes and Better Auth
+`updateAge` to 5 minutes, treats renewal as freshness only, requires sidecar
+authorization to remain valid, and forbids unsafe request renewal before
+AREPO-owned CSRF validation.
 The session-scope metadata proof is also isolated. It records that future
 browser-session authorization should use AREPO-owned sidecar state keyed by
 Better Auth user/session references, not raw Better Auth session objects or

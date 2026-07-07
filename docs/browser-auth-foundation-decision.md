@@ -124,6 +124,12 @@ shape.
   requires a narrow AREPO wrapper, forbids direct token signing and raw token
   exposure, keeps route authorization AREPO-owned, and keeps `express-session`
   open as the backup if the risk becomes unacceptable.
+- Renewal/update-age policy is accepted with conditions. The
+  [Better Auth Renewal And Update-Age Policy](better-auth-renewal-update-age-policy.md)
+  sets a 30-minute future browser-session max age and 5-minute `updateAge`,
+  treats renewal as freshness only, blocks renewal on missing/revoked/stale or
+  mismatched AREPO sidecar authorization, and forbids unsafe request renewal
+  before CSRF validation.
 - Revoke-current and revoke-all semantics are possible without exposing session
   token material. The isolated proof exercised these through Better Auth
   internals; the production adapter path remains unproven.
@@ -173,10 +179,10 @@ shape.
 
 ## Next Slice
 
-Run a renewal/update-age policy slice. Storage policy, deterministic expiry,
-CSRF ownership, routeRequest adaptation, pairing-created signed-cookie lookup,
-session-scope metadata, production-shaped plugin-boundary behavior, and the
-internal-adapter risk decision now have isolated answers. The next blocker is
-session freshness policy: Better Auth lifetime, `updateAge`, renewal behavior,
-audit expectations, and whether renewal changes authority. The slice must
-remain outside live server paths and must not mount browser auth.
+Run an expired-session pruning policy slice. Storage policy, deterministic
+expiry, CSRF ownership, routeRequest adaptation, pairing-created signed-cookie
+lookup, session-scope metadata, production-shaped plugin-boundary behavior,
+internal-adapter risk, and renewal/update-age now have isolated answers. The
+next blocker is cleanup policy for expired Better Auth sessions and AREPO
+sidecar references. The slice must remain outside live server paths and must
+not mount browser auth.

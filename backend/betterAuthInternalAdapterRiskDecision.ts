@@ -53,7 +53,6 @@ export type BetterAuthInternalAdapterRemainingBlocker =
   | "internal-adapter-wrapper-implementation-needed"
   | "production-arepo-better-auth-plugin-needed"
   | "arepo-sidecar-authorization-store-needed"
-  | "renewal-update-age-policy-needed"
   | "expired-session-pruning-policy-needed"
   | "backup-restore-session-state-policy-needed"
   | "arepo-owned-csrf-live-integration-blocked"
@@ -259,7 +258,6 @@ export function planBetterAuthInternalAdapterRiskDecision(): BetterAuthInternalA
       "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
-      "renewal-update-age-policy-needed",
       "expired-session-pruning-policy-needed",
       "backup-restore-session-state-policy-needed",
       "arepo-owned-csrf-live-integration-blocked",

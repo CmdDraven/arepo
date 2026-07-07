@@ -288,14 +288,14 @@ AREPO-owned:
 
 ## Safest Next Slice
 
-Run a renewal/update-age policy slice. AREPO now has an unmounted CSRF request
-adapter proof, a session-token storage policy decision, deterministic expiry
-proof, pairing-created signed-cookie proof, session-scope metadata proof,
+Run an expired-session pruning policy slice. AREPO now has an unmounted CSRF
+request adapter proof, a session-token storage policy decision, deterministic
+expiry proof, pairing-created signed-cookie proof, session-scope metadata proof,
 public plugin endpoint boundary proof, production-shaped unmounted AREPO Better
-Auth plugin-boundary proof, and accepted-with-conditions internal-adapter risk
-decision. The next highest-risk question is how long browser sessions live,
-whether Better Auth renewal/updateAge refreshes authority, which events AREPO
-must audit, and how renewal interacts with revocation and future CSRF.
+Auth plugin-boundary proof, accepted-with-conditions internal-adapter risk
+decision, and bounded renewal/update-age policy. The next highest-risk question
+is how expired Better Auth sessions and AREPO sidecar references should be
+cleaned up, audited, and reconciled before any disabled-live mounting design.
 
 Keep acceptance criteria unchanged: no live route mounting, no live
 `Set-Cookie`, no cookie credential acceptance, no frontend storage, no

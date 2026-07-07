@@ -30,7 +30,6 @@ export type BetterAuthSessionTokenStorageBlockerCode =
   | "internal-adapter-wrapper-implementation-needed"
   | "production-arepo-better-auth-plugin-needed"
   | "arepo-sidecar-authorization-store-needed"
-  | "renewal-update-age-policy-needed"
   | "expired-session-pruning-policy-needed"
   | "backup-restore-session-state-policy-needed"
   | "arepo-owned-csrf-live-integration-blocked"
@@ -214,7 +213,6 @@ export function planBetterAuthSessionTokenStoragePolicy(): BetterAuthSessionToke
       "internal-adapter-wrapper-implementation-needed",
       "production-arepo-better-auth-plugin-needed",
       "arepo-sidecar-authorization-store-needed",
-      "renewal-update-age-policy-needed",
       "expired-session-pruning-policy-needed",
       "backup-restore-session-state-policy-needed",
       "arepo-owned-csrf-live-integration-blocked",
@@ -225,7 +223,7 @@ export function planBetterAuthSessionTokenStoragePolicy(): BetterAuthSessionToke
       "Better Auth session storage is sensitive generated app data, not user-authored vault content.",
       "Copying or syncing the auth database can expose or restore browser-session authority.",
       "Deleting the auth database should revoke all browser sessions and require re-pairing.",
-      "Browser sessions remain blocked until internal-adapter risk, production plugin, sidecar state, renewal, pruning, backup, CSRF, and mounting decisions are complete.",
+      "Browser sessions remain blocked until internal-adapter wrapper, production plugin, sidecar state, pruning, backup, CSRF, and mounting decisions are complete.",
     ],
   };
 }
