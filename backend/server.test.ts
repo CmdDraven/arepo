@@ -577,7 +577,8 @@ test("protected mode enforces bearer credentials and vault route permissions", a
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
   const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
-  await fs.writeFile(path.join(rootPath, "note.md"), "# Protected\n", "utf8");
+  const sourceBody = "# Protected\n\nsource-body-secret\n";
+  await fs.writeFile(path.join(rootPath, "note.md"), sourceBody, "utf8");
   const vault = testVault(rootPath);
 
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
@@ -585,6 +586,27 @@ test("protected mode enforces bearer credentials and vault route permissions", a
     vaultId: vault.id,
     vaultPermissions: ["readIndex"],
   });
+
+  const indexRoutes = [
+    `/api/vaults/${vault.id}/index`,
+    `/api/vaults/${vault.id}/index/filters?filter=tags`,
+    `/api/vaults/${vault.id}/index/search?q=Protected`,
+    `/api/vaults/${vault.id}/index/inspect?path=note.md`,
+  ];
+  for (const indexRoute of indexRoutes) {
+    const indexed = await routeRequest(
+      request("GET", indexRoute, undefined, {
+        authorization: `Bearer ${protectedBearerToken}`,
+      }),
+      cwd,
+    );
+    assert.equal(indexed.status, 200);
+    assert.equal(JSON.stringify(indexed.body).includes("source-body-secret"), false);
+    if (indexRoute.endsWith("/index")) {
+      const indexResponse = indexed.body as VaultIndexResponse;
+      assert.equal(Object.hasOwn(indexResponse.index.notes["note.md"] ?? {}, "body"), false);
+    }
+  }
 
   const route = `/api/vaults/${vault.id}/file?path=note.md`;
   const missing = await routeRequest(request("GET", route), cwd);
@@ -619,7 +641,7 @@ test("protected mode enforces bearer credentials and vault route permissions", a
     cwd,
   );
   assert.equal(allowed.status, 200);
-  assert.equal((allowed.body as { content: string }).content, "# Protected\n");
+  assert.equal((allowed.body as { content: string }).content, sourceBody);
 
   const paths = resolveAuthStoragePaths(appDataDir);
   const audit = await readAuthAuditEvents(paths.auditEvents);

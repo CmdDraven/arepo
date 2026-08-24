@@ -1,20 +1,25 @@
-import type { VaultIndex, ValidationIssue } from "../src/lib/vault/indexer.js";
+import type {
+  NodeInfo,
+  VaultFile,
+  VaultIndexResponse,
+  VaultInfo,
+  VaultPermission,
+} from "../src/lib/vault/contracts.js";
+import type { ValidationIssue } from "../src/lib/vault/indexer.js";
 
-export type NodeMode = "local" | "remote";
-
-export type VaultPermission = {
-  readIndex: boolean;
-  readContent: boolean;
-  writeContent: boolean;
-  deleteFiles: boolean;
-};
-
-export type VaultIndexScope = {
-  markdown: {
-    minDepth: number;
-    maxDepth: number | null;
-  };
-};
+export type {
+  NodeInfo,
+  NodeMode,
+  OperationResult,
+  VaultFile,
+  VaultFileListResponse,
+  VaultFileResponse,
+  VaultFileWriteResponse,
+  VaultIndexResponse,
+  VaultIndexScope,
+  VaultInfo,
+  VaultPermission,
+} from "../src/lib/vault/contracts.js";
 
 export type AuthMode = "disabled" | "protected";
 export type AuthRequestedMode = AuthMode | "protected";
@@ -674,22 +679,6 @@ export type BrowserSessionAuthRuntimeStatus = {
   };
 };
 
-export type VaultInfo = {
-  id: string;
-  displayName: string;
-  rootPath: string;
-  permissions: VaultPermission;
-  vaultIndexScope?: VaultIndexScope;
-};
-
-export type NodeInfo = {
-  nodeId: string;
-  displayName: string;
-  mode: NodeMode;
-  apiVersion: 1;
-  vaults: VaultInfo[];
-};
-
 export type LocalNodeHealth = {
   ok: true;
   node: Omit<NodeInfo, "vaults">;
@@ -739,12 +728,6 @@ export type LocalNodeVaultRuntimeSummary = {
   error?: string;
 };
 
-export type VaultFile = {
-  path: string;
-  size: number;
-  mtimeMs: number;
-};
-
 export type IndexFreshness = "fresh" | "stale" | "rebuilding" | "error";
 
 export type WatchedFileStatus = {
@@ -787,19 +770,11 @@ export type VaultStorageSummary = {
   };
 };
 
-export type OperationResult<T = unknown> =
-  { ok: true; data?: T } | { ok: false; error: string; code?: string };
-
 export type VaultConfigFile = {
   node: Omit<NodeInfo, "vaults">;
   auth: AuthConfig;
   appDataDir?: string;
   vaults: VaultInfo[];
-};
-
-export type VaultIndexResponse = {
-  index: VaultIndex;
-  issues: ValidationIssue[];
 };
 
 export type IndexFilterKind =

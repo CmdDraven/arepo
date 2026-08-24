@@ -281,17 +281,22 @@ paths, `..`, empty segments, duplicate slashes, symlink path traversal, and path
 that resolve outside the configured vault root. Note file operations require
 `.md`.
 
-File saves write to a temporary file in the same directory and then rename it
-into place. The UI does not mark a file saved until the backend confirms the
-write. Saves include the file hash/mtime seen by the UI; if the file changed on
-disk, the backend rejects the write and the UI keeps the editor dirty.
+File saves write and sync a uniquely named temporary file in the same directory,
+rename it into place, and clean up the temporary file if the operation fails.
+Writes to one path are serialized so concurrent saves cannot both consume the
+same optimistic precondition. The UI does not mark a file saved until the
+backend confirms the write. Saves include the file hash/mtime seen by the UI;
+if the file changed on disk, the backend rejects the write and the UI keeps the
+editor dirty.
 
 ## Indexing
 
 The backend reads Markdown files from disk and rebuilds the generated machine
 index from source files. The index includes paths, titles, frontmatter ids,
 tags, headings, anchors, wikilinks, outgoing links, backlinks, broken links,
-orphan notes, duplicate ids, and duplicate anchors.
+orphan notes, duplicate ids, and duplicate anchors. It deliberately excludes
+full Markdown bodies. A credential with `readIndex` can retrieve structural
+index data but cannot recover source content through index endpoints.
 
 When a vault is added, AREPO builds the machine index automatically. Manual
 reindexing only forces a rebuild from the current Markdown files.
@@ -306,7 +311,8 @@ configured app data directory:
 These files are disposable caches. They may be deleted and rebuilt from the
 Markdown vault. Markdown files remain the source of truth. AREPO must not
 depend on a user-created `index.md` file to make graph, backlinks, validation,
-or search work.
+or search work. The cache format is versioned; incompatible snapshots are
+replaced when the current structural index is rebuilt.
 
 The frontend still owns preview rendering and graph layout, but note content
 and the index now come from the local backend.
@@ -320,6 +326,10 @@ The UI also includes backend-owned, non-semantic index search over structural
 fields such as file paths, titles, frontmatter IDs, tags, headings, anchors,
 outgoing link targets, and backlinks. It is not AI search, vector search, or
 full document body search.
+
+The Tree's browser-local text search can match note bodies only after the
+frontend has fetched those files through the content-read endpoint. That path
+requires `readContent`; it does not obtain bodies from the structural index.
 
 The Inspect panel can show read-only file-level machine-index details for a
 selected note or structural filter result, including headings, anchors, outgoing

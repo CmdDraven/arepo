@@ -1,33 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildIndex, type VaultIndex, type ValidationIssue } from "./indexer";
+import type {
+  NodeInfo,
+  OperationResult,
+  VaultFileListResponse,
+  VaultFileResponse,
+  VaultFileWriteResponse,
+  VaultIndexResponse,
+  VaultIndexScope,
+  VaultInfo,
+  VaultPermission,
+} from "./contracts";
 import { indexedFoldersFromNotePaths } from "./tree";
+
+export type { VaultIndexScope, VaultInfo, VaultPermission } from "./contracts";
 
 const LAST_VAULT_KEY = "vault:lastVaultId";
 
 type FilesMap = Record<string, string>;
 type FileMetaMap = Record<string, { mtimeMs: number; size: number; hash: string }>;
-
-export type VaultPermission = {
-  readIndex: boolean;
-  readContent: boolean;
-  writeContent: boolean;
-  deleteFiles: boolean;
-};
-
-export type VaultIndexScope = {
-  markdown: {
-    minDepth: number;
-    maxDepth: number | null;
-  };
-};
-
-export type VaultInfo = {
-  id: string;
-  displayName: string;
-  rootPath: string;
-  permissions: VaultPermission;
-  vaultIndexScope?: VaultIndexScope;
-};
 
 export type GeneratedDataAction = "keep" | "discard";
 
@@ -41,33 +32,10 @@ export type RemoveVaultResponse = {
   };
 };
 
-export type NodeInfo = {
-  nodeId: string;
-  displayName: string;
-  mode: "local" | "remote";
-  apiVersion: 1;
-  vaults: VaultInfo[];
-};
-
-type FileListResponse = {
-  files: { path: string; size: number; mtimeMs: number }[];
-  folders: string[];
-};
-
-export type FileResponse = {
-  path: string;
-  content: string;
-  mtimeMs: number;
-  size: number;
-  hash: string;
-};
-
-type FileWriteResponse = Omit<FileResponse, "content">;
-
-type IndexResponse = {
-  index: VaultIndex;
-  issues: ValidationIssue[];
-};
+type FileListResponse = VaultFileListResponse;
+export type FileResponse = VaultFileResponse;
+type FileWriteResponse = VaultFileWriteResponse;
+type IndexResponse = VaultIndexResponse;
 
 export type VaultRuntimeStatus = {
   vaultId: string;
@@ -99,9 +67,6 @@ export type HealthResponse = {
     apiVersion: 1;
   };
 };
-
-type OperationResult<T = unknown> =
-  { ok: true; data?: T } | { ok: false; error: string; code?: string };
 
 export type VaultStore = {
   files: FilesMap;
@@ -322,17 +287,12 @@ export function useVault(): VaultStore {
             }),
           },
         );
-        if (response.ok && response.data) {
-          setFiles((prev) => ({ ...prev, [response.data.path]: content }));
-          setFileMeta((prev) => ({
-            ...prev,
-            [response.data.path]: {
-              mtimeMs: response.data.mtimeMs,
-              size: response.data.size,
-              hash: response.data.hash,
-            },
-          }));
-        }
+        const data = operationData(response);
+        setFiles((prev) => ({ ...prev, [data.path]: content }));
+        setFileMeta((prev) => ({
+          ...prev,
+          [data.path]: { mtimeMs: data.mtimeMs, size: data.size, hash: data.hash },
+        }));
       }),
     [fileMeta, mutate],
   );
@@ -354,17 +314,12 @@ export function useVault(): VaultStore {
             }),
           },
         );
-        if (response.ok && response.data) {
-          setFiles((prev) => ({ ...prev, [response.data.path]: content }));
-          setFileMeta((prev) => ({
-            ...prev,
-            [response.data.path]: {
-              mtimeMs: response.data.mtimeMs,
-              size: response.data.size,
-              hash: response.data.hash,
-            },
-          }));
-        }
+        const data = operationData(response);
+        setFiles((prev) => ({ ...prev, [data.path]: content }));
+        setFileMeta((prev) => ({
+          ...prev,
+          [data.path]: { mtimeMs: data.mtimeMs, size: data.size, hash: data.hash },
+        }));
       }),
     [mutate],
   );
@@ -437,10 +392,9 @@ export function useVault(): VaultStore {
           `/api/vaults/${encodeURIComponent(vault.id)}/reindex`,
           { method: "POST" },
         );
-        if (response.ok && response.data) {
-          setIndex(response.data.index);
-          setIssues(response.data.issues);
-        }
+        const data = operationData(response);
+        setIndex(data.index);
+        setIssues(data.issues);
       }),
     [mutate],
   );
@@ -453,9 +407,10 @@ export function useVault(): VaultStore {
           `/api/vaults/${encodeURIComponent(vaultId)}/reindex`,
           { method: "POST" },
         );
-        if (activeVault?.id === vaultId && response.ok && response.data) {
-          setIndex(response.data.index);
-          setIssues(response.data.issues);
+        const data = operationData(response);
+        if (activeVault?.id === vaultId) {
+          setIndex(data.index);
+          setIssues(data.issues);
           await loadVault(vaultId);
         }
         return true;
@@ -478,11 +433,11 @@ export function useVault(): VaultStore {
             body: JSON.stringify({ vaultIndexScope: scope }),
           },
         );
-        if (!response.ok || !response.data) throw new Error("Index scope update failed");
+        const data = operationData(response);
         await loadNode();
         if (activeVault?.id === vaultId) {
-          setIndex(response.data.index.index);
-          setIssues(response.data.index.issues);
+          setIndex(data.index.index);
+          setIssues(data.index.issues);
           await loadVault(vaultId);
         }
         return true;
@@ -578,9 +533,9 @@ export function useVault(): VaultStore {
           method: "POST",
           body: JSON.stringify({ rootPath, displayName, permissions }),
         });
-        if (!response.ok || !response.data) throw new Error("Vault creation failed");
+        const data = operationData(response);
         await loadNode();
-        setActiveVaultId(response.data.vault.id);
+        setActiveVaultId(data.vault.id);
         return true;
       } catch (err) {
         setMutationError(errorMessage(err));
@@ -601,10 +556,10 @@ export function useVault(): VaultStore {
             body: JSON.stringify({ generatedDataAction }),
           },
         );
-        if (!response.ok || !response.data) throw new Error("Vault removal failed");
+        const data = operationData(response);
         await loadNode();
         if (activeVaultId === vaultId) {
-          const nextVaultId = response.data.remainingVaults[0]?.id ?? null;
+          const nextVaultId = data.remainingVaults[0]?.id ?? null;
           setActiveVaultId(nextVaultId);
           if (typeof window !== "undefined") {
             if (nextVaultId) {
@@ -614,7 +569,7 @@ export function useVault(): VaultStore {
             }
           }
         }
-        return response.data;
+        return data;
       } catch (err) {
         setMutationError(errorMessage(err));
         return null;
@@ -674,6 +629,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   return data as T;
+}
+
+function operationData<T>(result: OperationResult<T>): T {
+  if (!result.ok) throw new Error(result.error);
+  return result.data;
 }
 
 function errorMessage(error: unknown): string {

@@ -13,6 +13,7 @@ function emptyIndex(): VaultIndexResponse {
       bySlug: {},
       duplicateSlugs: {},
       byId: {},
+      duplicateIds: {},
       excludedBySlug: {},
       duplicateExcludedSlugs: {},
       excludedPaths: [],
@@ -45,7 +46,6 @@ function mappingIndex(): VaultIndexResponse {
             { target: "Missing", raw: "Missing" },
           ],
           tags: ["project", "shared"],
-          body: "This body-only-secret text should not be searched by index helpers.",
         },
         "Folder/Beta.md": {
           path: "Folder/Beta.md",
@@ -56,7 +56,6 @@ function mappingIndex(): VaultIndexResponse {
           anchors: ["beta-note"],
           wikilinks: [{ target: "Alpha", raw: "Alpha" }],
           tags: ["project", "beta"],
-          body: "Beta body content.",
         },
         "Folder/Gamma.md": {
           path: "Folder/Gamma.md",
@@ -67,7 +66,6 @@ function mappingIndex(): VaultIndexResponse {
           anchors: ["gamma-note"],
           wikilinks: [],
           tags: ["zeta"],
-          body: "Gamma body content.",
         },
       },
       bySlug: {
@@ -76,10 +74,8 @@ function mappingIndex(): VaultIndexResponse {
         gamma: "Folder/Gamma.md",
       },
       duplicateSlugs: {},
-      byId: {
-        "same-id": "Alpha.md",
-        "gamma-id": "Folder/Gamma.md",
-      },
+      byId: { "gamma-id": "Folder/Gamma.md" },
+      duplicateIds: { "same-id": ["Alpha.md", "Folder/Beta.md"] },
       excludedBySlug: {},
       duplicateExcludedSlugs: {},
       excludedPaths: [],
@@ -336,7 +332,6 @@ test("mapping helpers operate on supplied rebuildable index data rather than app
     anchors: ["scratch-runtime-note"],
     wikilinks: [],
     tags: ["runtime"],
-    body: "This note exists only in the supplied in-memory machine index.",
   };
   data.index.outgoingLinks["Scratch.md"] = [];
   data.index.orphanNotes.push("Scratch.md");

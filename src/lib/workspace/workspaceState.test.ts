@@ -12,8 +12,8 @@ import {
 } from "./workspaceState.ts";
 
 test("tree UI state instances do not share local search or filter state", () => {
-  const sidebar = createTreeUiState(false);
-  const center = createTreeUiState(true);
+  const sidebar = createTreeUiState<"broken-links" | "tags">(false);
+  const center = createTreeUiState<"broken-links" | "tags">(true);
 
   sidebar.query = "sidebar-only";
   sidebar.indexSearchQuery = "path query";

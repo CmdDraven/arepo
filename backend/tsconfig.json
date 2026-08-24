@@ -16,6 +16,7 @@
   "include": [
     "./**/*.ts",
     "../src/lib/vault/frontmatter.ts",
+    "../src/lib/vault/contracts.ts",
     "../src/lib/vault/diff.ts",
     "../src/lib/vault/indexer.ts",
     "../src/lib/vault/render.ts",

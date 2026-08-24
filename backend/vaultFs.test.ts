@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { buildVaultIndex, createVaultFile, readVaultFile, writeVaultFile } from "./vaultFs.js";
+import {
+  atomicWriteFile,
+  buildVaultIndex,
+  createVaultFile,
+  readVaultFile,
+  writeVaultFile,
+} from "./vaultFs.js";
 import { renderMarkdown } from "../src/lib/vault/render.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
 import type { VaultInfo } from "./types.js";
@@ -50,6 +56,43 @@ test("rejects stale writes when the file changed on disk", async () => {
   );
 });
 
+test("serializes optimistic writes so only one writer can consume a file version", async () => {
+  const vault = await makeVault();
+  await createVaultFile(vault, "a.md", "# Original\n");
+  const before = await readVaultFile(vault, "a.md");
+
+  const results = await Promise.allSettled([
+    writeVaultFile(vault, "a.md", "# Writer A\n", {
+      expectedHash: before.hash,
+      expectedMtimeMs: before.mtimeMs,
+    }),
+    writeVaultFile(vault, "a.md", "# Writer B\n", {
+      expectedHash: before.hash,
+      expectedMtimeMs: before.mtimeMs,
+    }),
+  ]);
+
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+  const rejected = results.find((result) => result.status === "rejected");
+  assert.equal(rejected?.status, "rejected");
+  if (rejected?.status === "rejected") assert.match(String(rejected.reason), /changed on disk/);
+  assert.match((await readVaultFile(vault, "a.md")).content, /^# Writer [AB]\n$/);
+});
+
+test("atomic writes clean temporary files when the final rename fails", async () => {
+  const vault = await makeVault();
+  const target = path.join(vault.rootPath, "occupied.md");
+  await fs.mkdir(target);
+
+  await assert.rejects(() => atomicWriteFile(target, "# Cannot replace a directory\n"));
+
+  const entries = await fs.readdir(vault.rootPath);
+  assert.equal(
+    entries.some((entry) => entry.startsWith(".occupied.md.") && entry.endsWith(".tmp")),
+    false,
+  );
+});
+
 test("rejects files outside the vault root", async () => {
   const vault = await makeVault();
   await assert.rejects(() => readVaultFile(vault, "../x.md"), /cannot be/);
@@ -72,6 +115,20 @@ test("backend index reports duplicate ids, duplicate anchors, broken links, and 
   assert.ok(issues.some((issue) => issue.kind === "duplicate-id"));
   assert.ok(issues.some((issue) => issue.kind === "duplicate-anchor"));
   assert.ok(issues.some((issue) => issue.kind === "broken-wikilink"));
+});
+
+test("structural indexes exclude source bodies", async () => {
+  const vault = await makeVault();
+  await createVaultFile(
+    vault,
+    "secret.md",
+    "---\nid: secret\ntitle: Secret\n---\n# Secret\n\nbody-only-token\n",
+  );
+
+  const result = await buildVaultIndex(vault);
+
+  assert.equal(Object.hasOwn(result.index.notes["secret.md"] ?? {}, "body"), false);
+  assert.equal(JSON.stringify(result).includes("body-only-token"), false);
 });
 
 test("backend index ignores wikilinks in fenced and inline code", async () => {
@@ -362,6 +419,30 @@ test("id links resolve before unique filename stems", async () => {
   const { index } = await buildVaultIndex(vault);
   assert.equal(index.outgoingLinks["Source.md"]?.[0]?.targetPath, "ById.md");
   assert.equal(index.backlinks["ById.md"]?.[0]?.fromPath, "Source.md");
+});
+
+test("frontmatter id links distinguish unique, missing, and duplicate targets", async () => {
+  const vault = await makeVault();
+  await createVaultFile(
+    vault,
+    "Source.md",
+    "---\nid: source\ntitle: Source\n---\n# Source\n\n[[unique-id]]\n[[duplicate-id]]\n[[missing-id]]\n",
+  );
+  await createVaultFile(vault, "Unique.md", "---\nid: unique-id\ntitle: Unique\n---\n# Unique\n");
+  await createVaultFile(vault, "A.md", "---\nid: duplicate-id\ntitle: A\n---\n# A\n");
+  await createVaultFile(vault, "B.md", "---\nid: duplicate-id\ntitle: B\n---\n# B\n");
+
+  const { index, issues } = await buildVaultIndex(vault);
+  const links = index.outgoingLinks["Source.md"] ?? [];
+
+  assert.equal(links[0]?.status, "resolved");
+  assert.equal(links[0]?.targetPath, "Unique.md");
+  assert.equal(links[1]?.status, "ambiguous");
+  assert.deepEqual(links[1]?.targetPaths, ["A.md", "B.md"]);
+  assert.equal(links[2]?.status, "missing");
+  assert.equal(index.byId["duplicate-id"], undefined);
+  assert.deepEqual(index.duplicateIds["duplicate-id"], ["A.md", "B.md"]);
+  assert.ok(issues.some((issue) => issue.kind === "ambiguous-link"));
 });
 
 test("ambiguous filename stems create validation errors", async () => {

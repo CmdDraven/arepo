@@ -33,7 +33,6 @@ export type NoteIndex = {
   anchors: string[];
   wikilinks: WikiLink[];
   tags: string[];
-  body: string;
 };
 
 export type VaultIndex = {
@@ -41,6 +40,7 @@ export type VaultIndex = {
   bySlug: Record<string, string>; // slug -> path
   duplicateSlugs: Record<string, string[]>;
   byId: Record<string, string>; // frontmatter id -> path
+  duplicateIds: Record<string, string[]>;
   excludedBySlug: Record<string, string>;
   duplicateExcludedSlugs: Record<string, string[]>;
   excludedPaths: string[];
@@ -174,8 +174,7 @@ export function indexNote(path: string, content: string): NoteIndex {
     headings,
     anchors: headings.map((h) => h.anchor),
     wikilinks,
-    tags: Array.isArray(frontmatter.tags) ? (frontmatter.tags as string[]).map(String) : [],
-    body,
+    tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : [],
   };
 }
 
@@ -211,6 +210,7 @@ export function buildIndex(
   const bySlug: Record<string, string> = {};
   const slugPaths: Record<string, string[]> = {};
   const byId: Record<string, string> = {};
+  const idPaths: Record<string, string[]> = {};
   const excludedPaths = (options.excludedPaths ?? [])
     .filter((path) => path.toLowerCase().endsWith(".md"))
     .sort((a, b) => a.localeCompare(b));
@@ -224,14 +224,19 @@ export function buildIndex(
     notes[path] = note;
     (slugPaths[note.slug] ||= []).push(path);
     const id = note.frontmatter.id;
-    if (typeof id === "string" && id && !(id in byId)) {
-      byId[id] = path;
+    if (typeof id === "string" && id) {
+      (idPaths[id] ||= []).push(path);
     }
   }
   const duplicateSlugs: Record<string, string[]> = {};
   for (const [slug, paths] of Object.entries(slugPaths)) {
     if (paths.length === 1 && paths[0]) bySlug[slug] = paths[0];
     else duplicateSlugs[slug] = paths;
+  }
+  const duplicateIds: Record<string, string[]> = {};
+  for (const [id, paths] of Object.entries(idPaths)) {
+    if (paths.length === 1 && paths[0]) byId[id] = paths[0];
+    else duplicateIds[id] = paths;
   }
   const excludedBySlug: Record<string, string> = {};
   const duplicateExcludedSlugs: Record<string, string[]> = {};
@@ -245,7 +250,7 @@ export function buildIndex(
   for (const note of Object.values(notes)) {
     for (const wl of note.wikilinks) {
       const resolution = resolveWikiLink(
-        { notes, bySlug, duplicateSlugs, byId, excludedPaths, excludedBySlug },
+        { notes, bySlug, duplicateSlugs, byId, duplicateIds, excludedPaths, excludedBySlug },
         wl,
       );
       const targetPath = resolution.status === "resolved" ? resolution.targetPath : undefined;
@@ -295,6 +300,7 @@ export function buildIndex(
     bySlug,
     duplicateSlugs,
     byId,
+    duplicateIds,
     excludedBySlug,
     duplicateExcludedSlugs,
     excludedPaths,
@@ -308,7 +314,13 @@ export function buildIndex(
 export function resolveWikiLink(
   index: Pick<
     VaultIndex,
-    "notes" | "bySlug" | "duplicateSlugs" | "byId" | "excludedPaths" | "excludedBySlug"
+    | "notes"
+    | "bySlug"
+    | "duplicateSlugs"
+    | "byId"
+    | "duplicateIds"
+    | "excludedPaths"
+    | "excludedBySlug"
   >,
   link: WikiLink,
 ): WikiLinkResolution {
@@ -327,6 +339,8 @@ export function resolveWikiLink(
   }
   const byId = index.byId[target];
   if (byId) return { status: "resolved", targetPath: byId };
+  const ambiguousId = index.duplicateIds[target];
+  if (ambiguousId?.length) return { status: "ambiguous", targetPaths: ambiguousId };
   const bySlug = index.bySlug[target];
   if (bySlug) return { status: "resolved", targetPath: bySlug };
   const ambiguous = index.duplicateSlugs[target];

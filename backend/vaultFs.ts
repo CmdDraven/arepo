@@ -19,6 +19,8 @@ type WritePrecondition = {
   expectedHash?: unknown;
 };
 
+const fileWriteLocks = new Map<string, Promise<void>>();
+
 export async function listMarkdownFiles(vault: VaultInfo): Promise<VaultFile[]> {
   const root = await realVaultRoot(vault);
   const out: VaultFile[] = [];
@@ -75,10 +77,12 @@ export async function writeVaultFile(
   if (typeof content !== "string") throw new Error("content must be a string");
   const vaultPath = normalizeVaultPath(rawPath, "file");
   const absolutePath = await resolveWritableVaultPath(vault, vaultPath);
-  await assertUnchangedIfExpected(absolutePath, precondition);
-  await atomicWriteFile(absolutePath, content);
-  const stat = await fs.lstat(absolutePath);
-  return { path: vaultPath, mtimeMs: stat.mtimeMs, size: stat.size, hash: hashContent(content) };
+  return withFileWriteLock(absolutePath, async () => {
+    await assertUnchangedIfExpected(absolutePath, precondition);
+    await atomicWriteFileUnlocked(absolutePath, content);
+    const stat = await fs.lstat(absolutePath);
+    return { path: vaultPath, mtimeMs: stat.mtimeMs, size: stat.size, hash: hashContent(content) };
+  });
 }
 
 export async function createVaultFile(
@@ -165,13 +169,37 @@ export async function buildVaultIndex(vault: VaultInfo): Promise<VaultIndexRespo
 }
 
 export async function atomicWriteFile(absolutePath: string, content: string): Promise<void> {
+  return withFileWriteLock(absolutePath, () => atomicWriteFileUnlocked(absolutePath, content));
+}
+
+async function atomicWriteFileUnlocked(absolutePath: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  const directory = path.dirname(absolutePath);
   const tmp = path.join(
-    path.dirname(absolutePath),
-    `.${path.basename(absolutePath)}.${process.pid}.${Date.now()}.tmp`,
+    directory,
+    `.${path.basename(absolutePath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
   );
-  await fs.writeFile(tmp, content, "utf8");
-  await fs.rename(tmp, absolutePath);
+  const existingMode = await fs
+    .stat(absolutePath)
+    .then((stat) => stat.mode)
+    .catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return 0o666;
+      throw error;
+    });
+  try {
+    const handle = await fs.open(tmp, "wx", existingMode);
+    try {
+      await handle.writeFile(content, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await fs.rename(tmp, absolutePath);
+    await syncDirectory(directory);
+  } catch (error) {
+    await fs.unlink(tmp).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function walk(
@@ -295,4 +323,34 @@ async function assertUnchangedIfExpected(
 
 function hashContent(content: string): string {
   return crypto.createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+async function syncDirectory(directory: string): Promise<void> {
+  const handle = await fs.open(directory, "r");
+  try {
+    await handle.sync();
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EINVAL" && code !== "ENOTSUP") throw error;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function withFileWriteLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = fileWriteLocks.get(key) ?? Promise.resolve();
+  let releaseCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const queued = previous.catch(() => undefined).then(() => current);
+  fileWriteLocks.set(key, queued);
+  await previous.catch(() => undefined);
+
+  try {
+    return await work();
+  } finally {
+    releaseCurrent();
+    if (fileWriteLocks.get(key) === queued) fileWriteLocks.delete(key);
+  }
 }

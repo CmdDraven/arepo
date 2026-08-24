@@ -10,7 +10,7 @@ import type { VaultInfo } from "./types.js";
 async function makeVault(): Promise<{ cwd: string; vault: VaultInfo }> {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-index-cache-cwd-"));
   const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-index-cache-vault-"));
-  await writeFile(rootPath, "note.md", "# Note\n\n[[other]]\n");
+  await writeFile(rootPath, "note.md", "# Note\n\nbody-only-cache-secret\n\n[[other]]\n");
   await writeFile(rootPath, "other.md", "# Other\n");
   return {
     cwd,
@@ -41,10 +41,21 @@ test("machine index cache writes tolerate concurrent writes to the same vault", 
   await Promise.all(Array.from({ length: 40 }, () => writeMachineIndex(vault, data, cwd)));
 
   const cacheFile = await machineIndexPath(vault, cwd);
-  const stored = JSON.parse(await fs.readFile(cacheFile, "utf8")) as { kind: string };
+  const raw = await fs.readFile(cacheFile, "utf8");
+  const stored = JSON.parse(raw) as {
+    kind: string;
+    version: number;
+    data: { index: { notes: Record<string, Record<string, unknown>> } };
+  };
   const cacheDirFiles = await fs.readdir(path.dirname(cacheFile));
 
   assert.equal(stored.kind, "arepo.machineIndex");
+  assert.equal(stored.version, 2);
+  assert.equal(raw.includes("body-only-cache-secret"), false);
+  assert.equal(
+    Object.values(stored.data.index.notes).some((note) => Object.hasOwn(note, "body")),
+    false,
+  );
   assert.equal(cacheDirFiles.filter((file) => file.endsWith(".tmp")).length, 0);
 });
 

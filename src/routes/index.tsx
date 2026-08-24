@@ -920,7 +920,7 @@ function VaultApp() {
       if (!q) return null;
       return Object.values(index.notes).reduce<LocalSearchResult[]>((results, note) => {
         const inName = note.path.toLowerCase().includes(q);
-        const inBody = note.body.toLowerCase().includes(q);
+        const inBody = (files[note.path] ?? "").toLowerCase().includes(q);
         const inTags = note.tags.some((tag) => tag.toLowerCase().includes(q));
         if (inName || inBody || inTags) {
           results.push({ note, inName, inBody, inTags });
@@ -928,7 +928,7 @@ function VaultApp() {
         return results;
       }, []);
     },
-    [index],
+    [files, index],
   );
 
   const sidebarResults = useMemo(
@@ -2057,9 +2057,15 @@ function VaultInspector({
   onReindex: () => void;
   onOpenSettings: () => void;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
   return (
     <div className="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain">
-      <Section icon={<Database className="size-3.5" />} title="Vault Inspector">
+      <Section
+        icon={<Database className="size-3.5" />}
+        title="Vault Inspector"
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((value) => !value)}
+      >
         {vault ? (
           <div className="space-y-3 text-xs">
             <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
@@ -2944,6 +2950,12 @@ function DiffLine({
       <span className="inline-block w-10 pr-3 select-none text-right opacity-50">{lineNumber}</span>
       <span>{text ?? ""}</span>
     </span>
+  );
+}
+
+function DiffGap() {
+  return (
+    <span className="block min-h-[1.5em] px-2 py-0.5 text-center text-muted-foreground">⋯</span>
   );
 }
 

@@ -5,12 +5,13 @@ import { getAppDataDir } from "./config.js";
 import { buildVaultIndex } from "./vaultFs.js";
 import type { VaultIndexResponse, VaultInfo } from "./types.js";
 
-const MACHINE_INDEX_VERSION = 1;
+const MACHINE_INDEX_VERSION = 2;
+const OWNED_MACHINE_INDEX_VERSIONS = new Set([1, MACHINE_INDEX_VERSION]);
 const indexWriteLocks = new Map<string, Promise<void>>();
 
 export type StoredMachineIndex = {
   kind: "arepo.machineIndex";
-  version: 1;
+  version: 2;
   generatedAt: string;
   vault: {
     id: string;
@@ -130,7 +131,7 @@ export async function removeMachineIndexIfOwned(
   const expectedRootHash = await vaultRootHash(vault);
   if (
     stored.kind !== "arepo.machineIndex" ||
-    stored.version !== MACHINE_INDEX_VERSION ||
+    !OWNED_MACHINE_INDEX_VERSIONS.has(stored.version ?? -1) ||
     stored.vault?.id !== vault.id ||
     stored.vault?.rootPathHash !== expectedRootHash
   ) {
