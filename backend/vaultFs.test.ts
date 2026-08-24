@@ -45,7 +45,7 @@ test("reads and writes files inside the vault root", async (t) => {
   assert.equal(written.hash, after.hash);
 });
 
-test("discovers and reads supported UTF-8 text files with explicit kinds", async (t) => {
+test("discovers and reads supported UTF-8 source files with explicit kinds", async (t) => {
   const vault = await makeVault(t);
   await fs.writeFile(
     path.join(vault.rootPath, "z.txt"),
@@ -54,20 +54,54 @@ test("discovers and reads supported UTF-8 text files with explicit kinds", async
   );
   await fs.writeFile(path.join(vault.rootPath, "A.TXT"), "UPPER\n", "utf8");
   await fs.writeFile(path.join(vault.rootPath, "note.md"), "# Note\n", "utf8");
+  await fs.writeFile(
+    path.join(vault.rootPath, "conversation.arepo-chat.json"),
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"conv"},"messages":[]}\n',
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(vault.rootPath, "session.AREPO-CHAT.JSON"),
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"upper"},"messages":[]}\n',
+    "utf8",
+  );
   await fs.writeFile(path.join(vault.rootPath, "ignored.json"), "{}\n", "utf8");
+  await fs.writeFile(path.join(vault.rootPath, "ignored.chat.json"), "{}\n", "utf8");
 
   const files = await listSupportedTextFiles(vault);
   assert.deepEqual(
     files.map(({ path: filePath, kind }) => ({ path: filePath, kind })),
     [
       { path: "A.TXT", kind: "plain-text" },
+      { path: "conversation.arepo-chat.json", kind: "chat-json" },
       { path: "note.md", kind: "markdown" },
+      { path: "session.AREPO-CHAT.JSON", kind: "chat-json" },
       { path: "z.txt", kind: "plain-text" },
     ],
   );
   const plain = await readVaultFile(vault, "z.txt");
   assert.equal(plain.kind, "plain-text");
   assert.equal(plain.content, "Zażółć gęślą jaźń — こんにちは\n");
+  const chat = await readVaultFile(vault, "conversation.arepo-chat.json");
+  assert.equal(chat.kind, "chat-json");
+  assert.match(chat.content, /arepo-chat-export/);
+});
+
+test("supported discovery ignores symlinked chat sources", async (t) => {
+  const vault = await makeVault(t);
+  const outside = await makeTestTempDir(t, "arepo-chat-outside-");
+  const outsideFile = path.join(outside, "outside.arepo-chat.json");
+  await fs.writeFile(outsideFile, "{}\n", "utf8");
+  try {
+    await fs.symlink(outsideFile, path.join(vault.rootPath, "linked.arepo-chat.json"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EPERM") {
+      t.skip("symlinks unavailable");
+      return;
+    }
+    throw error;
+  }
+
+  assert.deepEqual(await listSupportedTextFiles(vault), []);
 });
 
 test("plain-text files cannot be created, written, renamed, or deleted", async (t) => {
@@ -85,6 +119,23 @@ test("plain-text files cannot be created, written, renamed, or deleted", async (
     await fs.readFile(path.join(vault.rootPath, "read-only.txt"), "utf8"),
     "disk content\n",
   );
+});
+
+test("chat sources cannot be created, written, renamed, or deleted", async (t) => {
+  const vault = await makeVault(t);
+  const sourcePath = path.join(vault.rootPath, "conversation.arepo-chat.json");
+  const source =
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"conv"},"messages":[]}\n';
+  await fs.writeFile(sourcePath, source, "utf8");
+
+  await assert.rejects(() => createVaultFile(vault, "new.arepo-chat.json", source), /\.md/);
+  await assert.rejects(() => writeVaultFile(vault, "conversation.arepo-chat.json", source), /\.md/);
+  await assert.rejects(
+    () => renameVaultPath(vault, "conversation.arepo-chat.json", "renamed.arepo-chat.json", "file"),
+    /\.md/,
+  );
+  await assert.rejects(() => deleteVaultFile(vault, "conversation.arepo-chat.json"), /\.md/);
+  assert.equal(await fs.readFile(sourcePath, "utf8"), source);
 });
 
 test("rejects stale writes when the file changed on disk", async (t) => {
@@ -190,6 +241,34 @@ test("Markdown indexing ignores plain-text files and their contents", async (t) 
   assert.deepEqual(Object.keys(result.index.notes), ["note.md"]);
   assert.equal(JSON.stringify(result).includes("plain-only-secret"), false);
   assert.equal(JSON.stringify(result).includes("missing-from-plain"), false);
+});
+
+test("Markdown indexing ignores chat sources and message contents", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(vault, "note.md", "---\nid: note\ntitle: Note\n---\n# Note\n");
+  await fs.writeFile(
+    path.join(vault.rootPath, "conversation.arepo-chat.json"),
+    JSON.stringify({
+      format: "arepo-chat-export",
+      version: 1,
+      conversation: { id: "conv", title: "chat-index-secret" },
+      messages: [
+        {
+          id: "msg",
+          author: "Alice",
+          timestamp: "2026-08-24T10:00:00Z",
+          text: "chat-body-secret [[not-a-markdown-link]]",
+        },
+      ],
+    }),
+    "utf8",
+  );
+
+  const result = await buildVaultIndex(vault);
+  assert.deepEqual(Object.keys(result.index.notes), ["note.md"]);
+  assert.equal(JSON.stringify(result).includes("chat-index-secret"), false);
+  assert.equal(JSON.stringify(result).includes("chat-body-secret"), false);
+  assert.equal(JSON.stringify(result).includes("not-a-markdown-link"), false);
 });
 
 test("backend index ignores wikilinks in fenced and inline code", async (t) => {

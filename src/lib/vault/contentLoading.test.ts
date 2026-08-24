@@ -11,6 +11,7 @@ import {
   settleVaultContents,
   type FileContentStateMap,
 } from "./contentLoading.ts";
+import { parseChatExportV1 } from "./chatExport.ts";
 import { globalErrorForLoadFailure } from "./loadFailure.ts";
 import type {
   VaultFile,
@@ -128,6 +129,73 @@ test("a failed single-file reload is sanitized and leaves unrelated state intact
   assert.equal(JSON.stringify(after).includes("/private/example/secret.txt"), false);
   assert.equal(globalErrorForLoadFailure("source-content", sensitiveError), null);
   assert.equal(contentForLocalSearch(after["b.txt"]), null);
+});
+
+test("valid chat content survives a failed neighboring source and remains vault-scoped", async () => {
+  const listed = fileList([
+    file("conversation.arepo-chat.json", "chat-json"),
+    file("unreadable.txt", "plain-text"),
+  ]);
+  const source =
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"conv"},"messages":[]}';
+  const settled = await settleVaultContents(
+    prepareVaultLoad("vault-chat", listed, indexResponse({})),
+    listed.files,
+    async (entry) => {
+      if (entry.path === "unreadable.txt") throw new Error("private failure");
+      return response(entry, source);
+    },
+  );
+
+  assert.deepEqual(settled.fileContents["conversation.arepo-chat.json"], {
+    status: "loaded",
+    content: source,
+  });
+  assert.equal(settled.fileContents["unreadable.txt"]?.status, "failed");
+  assert.equal(isCurrentVaultData(settled.vaultId, "vault-chat"), true);
+  assert.equal(isCurrentVaultData(settled.vaultId, "other-vault"), false);
+});
+
+test("an unreadable chat source is isolated and sanitized like every source body", async () => {
+  const listed = fileList([
+    file("note.md", "markdown"),
+    file("unreadable.arepo-chat.json", "chat-json"),
+  ]);
+  const sensitiveError = new Error("EACCES: open '/private/example/conversation.arepo-chat.json'");
+  const settled = await settleVaultContents(
+    prepareVaultLoad("vault-chat-failure", listed, indexResponse({ "note.md": "# Note\n" })),
+    listed.files,
+    async (entry) => {
+      if (entry.kind === "chat-json") {
+        throw sensitiveError;
+      }
+      return response(entry, "# Note\n");
+    },
+  );
+
+  assert.deepEqual(settled.fileContents["unreadable.arepo-chat.json"], {
+    status: "failed",
+    error: CONTENT_LOAD_FAILURE,
+  });
+  assert.deepEqual(settled.fileContents["note.md"], {
+    status: "loaded",
+    content: "# Note\n",
+  });
+  assert.equal(JSON.stringify(settled).includes("/private/example"), false);
+  assert.equal(globalErrorForLoadFailure("source-content", sensitiveError), null);
+});
+
+test("an empty chat body is loaded content but remains distinct from a valid empty conversation", async () => {
+  const chatFile = file("empty.arepo-chat.json", "chat-json");
+  const loaded = await settleFileContent(chatFile, async (entry) => response(entry, ""));
+  const validEmpty = parseChatExportV1(
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"conv-empty"},"messages":[]}',
+  );
+
+  assert.deepEqual(loaded.state, { status: "loaded", content: "" });
+  assert.equal(parseChatExportV1("").ok, false);
+  assert.equal(validEmpty.ok, true);
+  if (validEmpty.ok) assert.deepEqual(validEmpty.data.messages, []);
 });
 
 function file(path: string, kind: VaultFile["kind"]): VaultFile {

@@ -579,8 +579,11 @@ test("protected mode enforces bearer credentials and vault route permissions", a
   const rootPath = await makeTestTempDir(t, "arepo-root-");
   const sourceBody = "# Protected\n\nsource-body-secret\n";
   const plainBody = "protected plain text — こんにちは\n";
+  const chatBody =
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"protected-chat-secret"},"messages":[]}\n';
   await fs.writeFile(path.join(rootPath, "note.md"), sourceBody, "utf8");
   await fs.writeFile(path.join(rootPath, "plain.txt"), plainBody, "utf8");
+  await fs.writeFile(path.join(rootPath, "conversation.arepo-chat.json"), chatBody, "utf8");
   const vault = testVault(rootPath);
 
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
@@ -608,7 +611,9 @@ test("protected mode enforces bearer credentials and vault route permissions", a
       const indexResponse = indexed.body as VaultIndexResponse;
       assert.equal(Object.hasOwn(indexResponse.index.notes["note.md"] ?? {}, "body"), false);
       assert.equal(Object.hasOwn(indexResponse.index.notes, "plain.txt"), false);
+      assert.equal(Object.hasOwn(indexResponse.index.notes, "conversation.arepo-chat.json"), false);
       assert.equal(JSON.stringify(indexResponse).includes(plainBody.trim()), false);
+      assert.equal(JSON.stringify(indexResponse).includes("protected-chat-secret"), false);
     }
   }
   const plainStructuralSearch = await routeRequest(
@@ -631,11 +636,13 @@ test("protected mode enforces bearer credentials and vault route permissions", a
       ({ path: filePath, kind }) => ({ path: filePath, kind }),
     ),
     [
+      { path: "conversation.arepo-chat.json", kind: "chat-json" },
       { path: "note.md", kind: "markdown" },
       { path: "plain.txt", kind: "plain-text" },
     ],
   );
   assert.equal(JSON.stringify(listed.body).includes(plainBody.trim()), false);
+  assert.equal(JSON.stringify(listed.body).includes("protected-chat-secret"), false);
 
   const route = `/api/vaults/${vault.id}/file?path=note.md`;
   const missing = await routeRequest(request("GET", route), cwd);
@@ -658,6 +665,15 @@ test("protected mode enforces bearer credentials and vault route permissions", a
   );
   assert.equal(unauthorized.status, 403);
   assert.equal((unauthorized.body as { code: string }).code, "requires-authorization");
+
+  const unauthorizedChat = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/file?path=conversation.arepo-chat.json`, undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(unauthorizedChat.status, 403);
+  assert.equal(JSON.stringify(unauthorizedChat.body).includes("protected-chat-secret"), false);
   const unauthorizedPlain = await routeRequest(
     request("GET", `/api/vaults/${vault.id}/file?path=plain.txt`, undefined, {
       authorization: `Bearer ${protectedBearerToken}`,
@@ -1580,6 +1596,127 @@ test("file mutation endpoints reject plain-text targets", async (t) => {
   await assert.rejects(() => fs.access(path.join(rootPath, "new.txt")));
 });
 
+test("chat source metadata omits bodies while the content endpoint returns canonical JSON", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  const chatBody = JSON.stringify({
+    format: "arepo-chat-export",
+    version: 1,
+    conversation: { id: "conv-auth", title: "chat-title-secret" },
+    messages: [
+      {
+        id: "msg-auth",
+        author: "Alice",
+        timestamp: "2026-08-24T10:00:00Z",
+        text: "chat-body-secret [[not-indexed]]",
+      },
+    ],
+  });
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
+  await fs.writeFile(path.join(rootPath, "conversation.arepo-chat.json"), chatBody, "utf8");
+  const readable = testVault(rootPath, "chat-readable");
+  await writeConfig(cwd, appDataDir, { vaults: [readable] });
+
+  const listed = await routeRequest(request("GET", `/api/vaults/${readable.id}/files`), cwd);
+  assert.equal(listed.status, 200);
+  assert.deepEqual(
+    (listed.body as { files: { path: string; kind: string }[] }).files.map(
+      ({ path: filePath, kind }) => ({ path: filePath, kind }),
+    ),
+    [
+      { path: "conversation.arepo-chat.json", kind: "chat-json" },
+      { path: "note.md", kind: "markdown" },
+    ],
+  );
+  assert.equal(JSON.stringify(listed.body).includes("chat-body-secret"), false);
+
+  const read = await routeRequest(
+    request("GET", `/api/vaults/${readable.id}/file?path=conversation.arepo-chat.json`),
+    cwd,
+  );
+  assert.equal(read.status, 200);
+  assert.equal((read.body as { kind: string; content: string }).kind, "chat-json");
+  assert.equal((read.body as { content: string }).content, chatBody);
+
+  const indexRoutes = [
+    `/api/vaults/${readable.id}/index`,
+    `/api/vaults/${readable.id}/index/filters?filter=tags`,
+    `/api/vaults/${readable.id}/index/search?q=unrelated-query`,
+    `/api/vaults/${readable.id}/index/inspect?path=note.md`,
+  ];
+  for (const route of indexRoutes) {
+    const response = await routeRequest(request("GET", route), cwd);
+    assert.equal(response.status, 200, route);
+    const serialized = JSON.stringify(response.body);
+    assert.equal(serialized.includes("chat-title-secret"), false, route);
+    assert.equal(serialized.includes("chat-body-secret"), false, route);
+    assert.equal(serialized.includes("not-indexed"), false, route);
+  }
+  const chatStructuralSearch = await routeRequest(
+    request("GET", `/api/vaults/${readable.id}/index/search?q=conversation.arepo-chat.json`),
+    cwd,
+  );
+  assert.deepEqual((chatStructuralSearch.body as IndexSearchResponse).results, []);
+});
+
+test("file mutation endpoints reject chat-json targets", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  const source =
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"conv"},"messages":[]}\n';
+  await fs.writeFile(path.join(rootPath, "conversation.arepo-chat.json"), source, "utf8");
+  const vault: VaultInfo = {
+    ...testVault(rootPath, "chat-mutations"),
+    permissions: {
+      readIndex: true,
+      readContent: true,
+      writeContent: true,
+      deleteFiles: true,
+    },
+  };
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+
+  const responses = await Promise.all([
+    routeRequest(
+      request("PUT", `/api/vaults/${vault.id}/file?path=conversation.arepo-chat.json`, {
+        content: source,
+      }),
+      cwd,
+    ),
+    routeRequest(
+      request("POST", `/api/vaults/${vault.id}/file`, {
+        path: "new.arepo-chat.json",
+        content: source,
+      }),
+      cwd,
+    ),
+    routeRequest(
+      request("POST", `/api/vaults/${vault.id}/rename`, {
+        fromPath: "conversation.arepo-chat.json",
+        toPath: "renamed.arepo-chat.json",
+        kind: "file",
+      }),
+      cwd,
+    ),
+    routeRequest(
+      request("DELETE", `/api/vaults/${vault.id}/file?path=conversation.arepo-chat.json`),
+      cwd,
+    ),
+  ]);
+
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [400, 400, 400, 400],
+  );
+  assert.equal(
+    await fs.readFile(path.join(rootPath, "conversation.arepo-chat.json"), "utf8"),
+    source,
+  );
+  await assert.rejects(() => fs.access(path.join(rootPath, "new.arepo-chat.json")));
+});
+
 test("vault index scope update persists config and rebuilds the machine index", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const rootPath = await makeTestTempDir(t, "arepo-vault-");
@@ -2137,6 +2274,89 @@ test("plain-text watcher changes stay visible without staling or rebuilding the 
   assert.ok(statusBody(settled).changedPaths.includes("plain.txt"));
   assert.equal(await fs.readFile(cachePath, "utf8"), cacheBefore);
   assert.equal((await fs.stat(cachePath)).mtimeMs, cacheStatBefore.mtimeMs);
+});
+
+test("chat-only watcher changes refresh source status without rebuilding Markdown", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  await writeConfig(cwd, appDataDir);
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
+  const chatPath = path.join(rootPath, "conversation.arepo-chat.json");
+  const ordinaryJsonPath = path.join(rootPath, "ignored.json");
+  await fs.writeFile(
+    chatPath,
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"before"},"messages":[]}\n',
+    "utf8",
+  );
+  await fs.writeFile(ordinaryJsonPath, '{"ignored":"before"}\n', "utf8");
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  const initialIndex = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  assert.equal(initialIndex.status, 200);
+  const cachePath = await machineIndexPath(vault, cwd);
+  const cacheBefore = await fs.readFile(cachePath, "utf8");
+  const cacheStatBefore = await fs.stat(cachePath);
+
+  await fs.writeFile(
+    chatPath,
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"after"},"messages":[]}\n',
+    "utf8",
+  );
+  await fs.writeFile(ordinaryJsonPath, '{"ignored":"after and larger"}\n', "utf8");
+  const changed = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/status?path=conversation.arepo-chat.json`),
+    cwd,
+  );
+  assert.equal(changed.status, 200);
+  const changedStatus = statusBody(changed);
+  assert.equal(changedStatus.indexStatus, "fresh");
+  assert.ok(changedStatus.changedPaths.includes("conversation.arepo-chat.json"));
+  assert.equal(changedStatus.changedPaths.includes("ignored.json"), false);
+  assert.equal(changedStatus.file?.exists, true);
+
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  const settled = await routeRequest(request("GET", `/api/vaults/${vault.id}/status`), cwd);
+  assert.equal(statusBody(settled).indexStatus, "fresh");
+  assert.ok(statusBody(settled).changedPaths.includes("conversation.arepo-chat.json"));
+  assert.equal(await fs.readFile(cachePath, "utf8"), cacheBefore);
+  assert.equal((await fs.stat(cachePath)).mtimeMs, cacheStatBefore.mtimeMs);
+});
+
+test("mixed Markdown and chat changes rebuild only because Markdown changed", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  await writeConfig(cwd, appDataDir);
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Before\n", "utf8");
+  await fs.writeFile(
+    path.join(rootPath, "conversation.arepo-chat.json"),
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"before"},"messages":[]}\n',
+    "utf8",
+  );
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  await fs.writeFile(path.join(rootPath, "note.md"), "# After\n", "utf8");
+  await fs.writeFile(
+    path.join(rootPath, "conversation.arepo-chat.json"),
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"after"},"messages":[]}\n',
+    "utf8",
+  );
+
+  const changed = await routeRequest(request("GET", `/api/vaults/${vault.id}/status`), cwd);
+  assert.equal(statusBody(changed).indexStatus, "stale");
+  assert.ok(statusBody(changed).changedPaths.includes("note.md"));
+  assert.ok(statusBody(changed).changedPaths.includes("conversation.arepo-chat.json"));
+
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  const rebuilt = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  const rebuiltIndex = rebuilt.body as VaultIndexResponse;
+  assert.equal(rebuiltIndex.index.notes["note.md"]?.title, "After");
+  assert.equal(Object.hasOwn(rebuiltIndex.index.notes, "conversation.arepo-chat.json"), false);
 });
 
 test("mixed Markdown and plain-text watcher changes rebuild only the Markdown index", async (t) => {

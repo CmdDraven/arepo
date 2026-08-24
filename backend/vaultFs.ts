@@ -351,12 +351,13 @@ export function vaultFileKind(filePath: string): VaultFileKind | null {
   const lower = filePath.toLowerCase();
   if (lower.endsWith(".md")) return "markdown";
   if (lower.endsWith(".txt")) return "plain-text";
+  if (lower.endsWith(".arepo-chat.json")) return "chat-json";
   return null;
 }
 
 function requiredVaultFileKind(filePath: string): VaultFileKind {
   const kind = vaultFileKind(filePath);
-  if (!kind) throw new Error("Unsupported readable text file extension");
+  if (!kind) throw new Error("Unsupported readable source file suffix");
   return kind;
 }
 

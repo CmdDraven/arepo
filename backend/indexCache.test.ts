@@ -14,6 +14,11 @@ async function makeVault(t: TestContext): Promise<{ cwd: string; vault: VaultInf
   await writeFile(rootPath, "note.md", "# Note\n\nbody-only-cache-secret\n\n[[other]]\n");
   await writeFile(rootPath, "other.md", "# Other\n");
   await writeFile(rootPath, "plain.txt", "plain-text-cache-secret [[not-indexed]]\n");
+  await writeFile(
+    rootPath,
+    "conversation.arepo-chat.json",
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"chat-cache-secret"},"messages":[]}\n',
+  );
   return {
     cwd,
     vault: {
@@ -55,7 +60,9 @@ test("machine index cache writes tolerate concurrent writes to the same vault", 
   assert.equal(stored.version, 2);
   assert.equal(raw.includes("body-only-cache-secret"), false);
   assert.equal(raw.includes("plain-text-cache-secret"), false);
+  assert.equal(raw.includes("chat-cache-secret"), false);
   assert.equal(Object.hasOwn(stored.data.index.notes, "plain.txt"), false);
+  assert.equal(Object.hasOwn(stored.data.index.notes, "conversation.arepo-chat.json"), false);
   assert.equal(
     Object.values(stored.data.index.notes).some((note) => Object.hasOwn(note, "body")),
     false,

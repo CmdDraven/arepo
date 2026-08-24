@@ -570,6 +570,79 @@ Run this on a desktop-width browser window.
     appear in index, graph, backlinks, or validation data.
 11. Remove the temporary file directly on disk when finished.
 
+### 9B. Read-only AREPO chat-export V1 experiment
+
+Create `conversation.arepo-chat.json` directly in the test vault with this valid
+fixture:
+
+```json
+{
+  "format": "arepo-chat-export",
+  "version": 1,
+  "conversation": {
+    "id": "conv-manual-001",
+    "title": "Nebula launch review"
+  },
+  "messages": [
+    {
+      "id": "msg-manual-001",
+      "author": "Alice",
+      "timestamp": "2026-08-24T10:00:00Z",
+      "text": "The distinctive cobalt-orbit proposal is ready."
+    },
+    {
+      "id": "msg-manual-002",
+      "author": "Bob",
+      "timestamp": "2026-08-24T11:15:00+01:00",
+      "text": "I will verify the launch checklist."
+    },
+    {
+      "id": "msg-manual-003",
+      "author": "Chloé",
+      "timestamp": "2026-08-24T12:30:00+01:00",
+      "text": "Approval recorded under aurora-signal."
+    }
+  ]
+}
+```
+
+Expected results:
+
+1. The file appears in Tree with a `CHAT` marker and opens in a structured,
+   read-only conversation view.
+2. Conversation ID, title, three messages, source order, message IDs, authors,
+   exact timestamp strings, and message text are visible. No JSON editor, Save,
+   Rename, Preview, or Save As action is offered.
+3. Local searches for `Nebula launch review`, `conv-manual-001`, `Chloé`,
+   `cobalt-orbit`, `aurora-signal`, and `msg-manual-002` find the source file.
+4. Rebuilding the Markdown index produces no chat graph node, link, backlink,
+   heading, tag, frontmatter, validation issue, or structural search result.
+5. Edit the file externally. The view reloads without marking the Markdown
+   index stale.
+
+Exercise each invalid fixture separately under a distinct
+`*.arepo-chat.json` filename:
+
+```text
+malformed.arepo-chat.json
+{"format": "arepo-chat-export"
+
+unsupported-version.arepo-chat.json
+{"format":"arepo-chat-export","version":2,"conversation":{"id":"conv"},"messages":[]}
+
+duplicate-id.arepo-chat.json
+{"format":"arepo-chat-export","version":1,"conversation":{"id":"conv"},"messages":[{"id":"same","author":"A","timestamp":"2026-08-24T10:00:00Z","text":"one"},{"id":"same","author":"B","timestamp":"2026-08-24T11:00:00Z","text":"two"}]}
+
+timezone-less.arepo-chat.json
+{"format":"arepo-chat-export","version":1,"conversation":{"id":"conv"},"messages":[{"id":"msg","author":"A","timestamp":"2026-08-24T10:00:00","text":"no timezone"}]}
+```
+
+Each invalid source must remain in Tree and filename/path search, show a bounded
+structured-validation state, and contribute no message-body search text. Change
+one invalid file back to valid V1 JSON and confirm the structured view recovers.
+Ordinary `data.json`, `messages.json`, and `whatever.chat.json` files must remain
+undiscovered. Remove the temporary fixtures directly on disk when finished.
+
 ## 10. Rebuild Machine Index
 
 1. Open the Vaults or Settings screen.

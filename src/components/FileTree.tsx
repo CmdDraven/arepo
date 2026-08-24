@@ -4,6 +4,7 @@ import {
   ChevronDown,
   FileText,
   FileType2,
+  MessagesSquare,
   Folder,
   FolderOpen,
   Plus,
@@ -168,7 +169,9 @@ function Node({
       style={{ paddingLeft: depth * 12 + 22 }}
       onClick={() => onSelect(node.path)}
     >
-      {node.fileKind === "plain-text" ? (
+      {node.fileKind === "chat-json" ? (
+        <MessagesSquare className="size-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
+      ) : node.fileKind === "plain-text" ? (
         <FileType2 className="size-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
       ) : (
         <FileText className="size-3.5 shrink-0 text-muted-foreground" />
@@ -177,6 +180,11 @@ function Node({
       {node.fileKind === "plain-text" && (
         <span className="rounded bg-sky-500/10 px-1 text-[9px] font-medium text-sky-700 dark:text-sky-300">
           TXT
+        </span>
+      )}
+      {node.fileKind === "chat-json" && (
+        <span className="rounded bg-violet-500/10 px-1 text-[9px] font-medium text-violet-700 dark:text-violet-300">
+          CHAT
         </span>
       )}
       {isDirty && <span className="size-1.5 rounded-full bg-amber-500" title="Unsaved changes" />}

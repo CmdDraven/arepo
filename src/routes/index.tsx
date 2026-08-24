@@ -15,6 +15,7 @@ import {
   Database,
   FileText,
   FileType2,
+  MessagesSquare,
   Link2,
   FolderTree,
   Pencil,
@@ -40,6 +41,11 @@ import {
 } from "@/lib/vault/diff";
 import { buildGraph } from "@/lib/vault/graph";
 import { contentForLocalSearch } from "@/lib/vault/contentLoading";
+import {
+  chatExportSearchTextFromSource,
+  parseChatExportV1,
+  type ChatExportParseResult,
+} from "@/lib/vault/chatExport";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -80,7 +86,8 @@ export const Route = createFileRoute("/")({
       { title: "AREPO — Local Knowledge Mapping" },
       {
         name: "description",
-        content: "Local-first Markdown editor and indexer with read-only UTF-8 plain-text viewing.",
+        content:
+          "Local-first Markdown editor and indexer with read-only plain-text and structured chat viewing.",
       },
     ],
   }),
@@ -401,7 +408,13 @@ function VaultApp() {
 
   const activeFileKind = activePath ? fileMeta[activePath]?.kind : undefined;
   const activeIsPlainText = activeFileKind === "plain-text";
+  const activeIsChatJson = activeFileKind === "chat-json";
+  const activeIsReadOnly = activeIsPlainText || activeIsChatJson;
   const activeContentState = activePath ? fileContents[activePath] : undefined;
+  const activeChatParse = useMemo<ChatExportParseResult | null>(() => {
+    if (!activeIsChatJson || activeContentState?.status !== "loaded") return null;
+    return parseChatExportV1(activeContentState.content);
+  }, [activeContentState, activeIsChatJson]);
   const dirty = activeFileKind === "markdown" && buffer !== savedSnapshot;
   const dirtyPaths = useMemo(
     () => new Set(dirty && activePath ? [activePath] : []),
@@ -432,7 +445,7 @@ function VaultApp() {
     }
     const meta = fileMeta[activePath];
     if (!file.hash || !meta || file.hash === meta.hash) return;
-    if (activeIsPlainText) {
+    if (activeIsReadOnly) {
       void reloadFile(activePath);
       return;
     }
@@ -454,7 +467,7 @@ function VaultApp() {
     }
     void reloadFile(activePath);
   }, [
-    activeIsPlainText,
+    activeIsReadOnly,
     activePath,
     buffer,
     dirty,
@@ -522,10 +535,10 @@ function VaultApp() {
   }, [fileMeta, index.backlinks, index.notes, issues, selectedNotePaths]);
   const previewBody = useMemo(() => {
     // Re-parse the live buffer so preview matches what's in the editor
-    if (!activePath || activeIsPlainText) return "";
+    if (!activePath || activeIsReadOnly) return "";
     const stripped = buffer.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
     return renderMarkdown(stripped, index);
-  }, [activeIsPlainText, buffer, index, activePath]);
+  }, [activeIsReadOnly, buffer, index, activePath]);
 
   const backlinks = metadataPath ? (index.backlinks[metadataPath] ?? []) : [];
   const fileIssues = useMemo(
@@ -948,12 +961,17 @@ function VaultApp() {
     () =>
       paths.map((path) => {
         const note = index.notes[path];
+        const kind = fileMeta[path]?.kind ?? "markdown";
+        const loadedContent = contentForLocalSearch(fileContents[path]);
         return {
           path,
           title: note?.title ?? path.split("/").pop() ?? path,
-          kind: fileMeta[path]?.kind ?? "markdown",
+          kind,
           tags: note?.tags ?? [],
-          content: contentForLocalSearch(fileContents[path]),
+          content:
+            kind === "chat-json" && loadedContent !== null
+              ? chatExportSearchTextFromSource(loadedContent)
+              : loadedContent,
         };
       }),
     [fileContents, fileMeta, index.notes, paths],
@@ -1215,7 +1233,7 @@ function VaultApp() {
 
   const fileActionBar = (
     <div className="flex h-10 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b px-3 text-xs">
-      {!activeIsPlainText && (
+      {!activeIsReadOnly && (
         <>
           <SegBtn active={centerTab === "edit"} onClick={() => setCenterTab("edit")}>
             <Pencil className="size-3.5" /> Edit
@@ -1225,13 +1243,16 @@ function VaultApp() {
           </SegBtn>
         </>
       )}
-      {activeIsPlainText ? (
+      {activeIsChatJson ? (
+        <MessagesSquare className="size-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
+      ) : activeIsPlainText ? (
         <FileType2 className="size-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
       ) : (
         <FileText className="size-3.5 shrink-0 text-muted-foreground" />
       )}
       <span className="font-mono truncate min-w-0 flex-1">{activePath ?? "—"}</span>
       {activeIsPlainText && <Badge variant="outline">Plain text · Read only</Badge>}
+      {activeIsChatJson && <Badge variant="outline">Chat JSON · Read only</Badge>}
       {dirty && <span className="text-amber-500 font-medium shrink-0">●</span>}
       {suppressedActiveConflict && (
         <Button
@@ -1257,7 +1278,7 @@ function VaultApp() {
       >
         Close
       </Button>
-      {!activeIsPlainText && (
+      {!activeIsReadOnly && (
         <>
           <Button
             variant="ghost"
@@ -1322,6 +1343,60 @@ function VaultApp() {
     </div>
   );
 
+  const chatJsonPane = (
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      {fileActionBar}
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+        {activeChatParse?.ok ? (
+          <div className="mx-auto max-w-3xl space-y-4">
+            <header className="rounded-lg border bg-muted/20 p-4">
+              <div className="text-lg font-semibold">
+                {activeChatParse.data.conversation.title ?? "Untitled conversation"}
+              </div>
+              <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                {activeChatParse.data.conversation.id}
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                {activeChatParse.data.messages.length.toLocaleString()} messages
+              </div>
+            </header>
+            {activeChatParse.data.messages.length ? (
+              <ol className="space-y-3">
+                {activeChatParse.data.messages.map((message) => (
+                  <li key={message.id} className="rounded-lg border p-4">
+                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span className="font-medium">{message.author}</span>
+                      <time className="font-mono text-xs text-muted-foreground">
+                        {message.timestamp}
+                      </time>
+                      <span className="ml-auto break-all font-mono text-[10px] text-muted-foreground">
+                        {message.id}
+                      </span>
+                    </div>
+                    <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed">
+                      {message.text}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <StateMessage>No messages in this conversation.</StateMessage>
+            )}
+          </div>
+        ) : (
+          <div className="mx-auto max-w-lg">
+            <StateMessage tone="error">
+              <span className="block font-medium">Invalid AREPO chat source</span>
+              <span className="mt-1 block">
+                {activeChatParse?.error.message ?? "Chat source could not be validated."}
+              </span>
+            </StateMessage>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const unavailableContentPane = (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {fileActionBar}
@@ -1359,8 +1434,7 @@ function VaultApp() {
         <FileText className="mx-auto size-5 text-muted-foreground" />
         <div className="text-sm font-medium">No document open</div>
         <div className="text-xs text-muted-foreground">
-          Select a Markdown or plain-text file from the tree, search, or index views to open it
-          here.
+          Select a Markdown, plain-text, or AREPO chat file from the tree or search to open it here.
         </div>
       </div>
     </div>
@@ -1397,11 +1471,13 @@ function VaultApp() {
   const centerPane = activePath
     ? activeContentState?.status !== "loaded"
       ? unavailableContentPane
-      : activeIsPlainText
-        ? plainTextPane
-        : centerTab === "edit"
-          ? editorPane
-          : previewPane
+      : activeIsChatJson
+        ? chatJsonPane
+        : activeIsPlainText
+          ? plainTextPane
+          : centerTab === "edit"
+            ? editorPane
+            : previewPane
     : centerWorkspaceView === "tree"
       ? centerTreePane
       : centerWorkspaceView === "graph"
@@ -1409,7 +1485,14 @@ function VaultApp() {
         : emptyDocumentPane;
 
   const inspectorPane =
-    activeIsPlainText && activePath ? (
+    activeIsChatJson && activePath ? (
+      <ChatJsonInspector
+        path={activePath}
+        size={fileMeta[activePath]?.size ?? 0}
+        mtimeMs={fileMeta[activePath]?.mtimeMs ?? 0}
+        parsed={activeChatParse}
+      />
+    ) : activeIsPlainText && activePath ? (
       <PlainTextInspector path={activePath} size={fileMeta[activePath]?.size ?? 0} />
     ) : (
       <IndexInspectPanel
@@ -1555,7 +1638,7 @@ function VaultApp() {
           {conflictMessage && <span className="text-destructive">{conflictMessage}</span>}
           {diffError && <span className="text-destructive">{diffError}</span>}
           <div className="ml-auto flex flex-wrap gap-1">
-            {!activeIsPlainText && (
+            {!activeIsReadOnly && (
               <Button
                 variant="outline"
                 size="sm"
@@ -1565,7 +1648,7 @@ function VaultApp() {
                 Keep editing
               </Button>
             )}
-            {externalNotice.kind === "conflict" && (
+            {externalNotice.kind === "conflict" && !activeIsReadOnly && (
               <>
                 <Button
                   variant="outline"
@@ -1604,7 +1687,7 @@ function VaultApp() {
                 Reload disk version
               </Button>
             )}
-            {!activeIsPlainText && (
+            {!activeIsReadOnly && (
               <Button
                 variant="outline"
                 size="sm"
@@ -1733,13 +1816,15 @@ function VaultApp() {
               {activePath
                 ? activeContentState?.status !== "loaded"
                   ? unavailableContentPane
-                  : activeIsPlainText
-                    ? plainTextPane
-                    : editorPane
+                  : activeIsChatJson
+                    ? chatJsonPane
+                    : activeIsPlainText
+                      ? plainTextPane
+                      : editorPane
                 : emptyDocumentPane}
             </div>
             <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "preview"}>
-              {activePath && !activeIsPlainText && activeContentState?.status === "loaded"
+              {activePath && !activeIsReadOnly && activeContentState?.status === "loaded"
                 ? previewPane
                 : emptyDocumentPane}
             </div>
@@ -1758,7 +1843,7 @@ function VaultApp() {
               active={mobileTab === "edit"}
               onClick={() => setMobileTab("edit")}
               icon={<Pencil className="size-4" />}
-              label={activeIsPlainText ? "View" : "Edit"}
+              label={activeIsReadOnly ? "View" : "Edit"}
               dot={dirty}
             />
             <TabBtn
@@ -1766,7 +1851,7 @@ function VaultApp() {
               onClick={() => setMobileTab("preview")}
               icon={<Eye className="size-4" />}
               label="Preview"
-              disabled={activeIsPlainText}
+              disabled={activeIsReadOnly}
             />
             <TabBtn
               active={mobileTab === "inspect"}
@@ -2184,6 +2269,61 @@ function PlainTextInspector({ path, size }: { path: string; size: number }) {
       <p className="mt-5 text-muted-foreground">
         This file is intentionally excluded from Markdown metadata, backlinks, graph, validation,
         and machine-index inspection.
+      </p>
+    </div>
+  );
+}
+
+function ChatJsonInspector({
+  path,
+  size,
+  mtimeMs,
+  parsed,
+}: {
+  path: string;
+  size: number;
+  mtimeMs: number;
+  parsed: ChatExportParseResult | null;
+}) {
+  return (
+    <div className="h-full min-h-0 min-w-0 overflow-auto p-4 text-xs">
+      <div className="mb-4 flex items-center gap-2">
+        <MessagesSquare className="size-4 text-violet-600 dark:text-violet-400" />
+        <div className="font-medium">AREPO chat export</div>
+      </div>
+      <dl className="space-y-3">
+        <div>
+          <dt className="text-muted-foreground">Source path</dt>
+          <dd className="mt-1 break-all font-mono">{path}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">File size</dt>
+          <dd className="mt-1">{size.toLocaleString()} bytes</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Filesystem observed time</dt>
+          <dd className="mt-1 font-mono">{mtimeMs ? new Date(mtimeMs).toISOString() : "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Format</dt>
+          <dd className="mt-1">arepo-chat-export · V1 · read only</dd>
+        </div>
+        {parsed?.ok && (
+          <>
+            <div>
+              <dt className="text-muted-foreground">Conversation identity</dt>
+              <dd className="mt-1 break-all font-mono">{parsed.data.conversation.id}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Records</dt>
+              <dd className="mt-1">{parsed.data.messages.length.toLocaleString()} messages</dd>
+            </div>
+          </>
+        )}
+      </dl>
+      <p className="mt-5 text-muted-foreground">
+        Message timestamps are source event time. Filesystem mtime is operational observation time.
+        This source is excluded from Markdown metadata, links, graph, and validation.
       </p>
     </div>
   );
@@ -2661,6 +2801,11 @@ function SearchResults({
               {r.kind === "plain-text" && (
                 <Badge variant="outline" className="shrink-0 text-[9px] py-0">
                   plain text
+                </Badge>
+              )}
+              {r.kind === "chat-json" && (
+                <Badge variant="outline" className="shrink-0 text-[9px] py-0">
+                  chat JSON
                 </Badge>
               )}
             </div>

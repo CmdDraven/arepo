@@ -30,8 +30,8 @@ function normalizeVaultRelativePath(input: unknown): string {
 export function normalizeReadableTextFilePath(input: unknown): string {
   const normalized = normalizeVaultRelativePath(input);
   const lower = normalized.toLowerCase();
-  if (!lower.endsWith(".md") && !lower.endsWith(".txt")) {
-    throw new Error("Readable text files must use the .md or .txt extension");
+  if (!lower.endsWith(".md") && !lower.endsWith(".txt") && !lower.endsWith(".arepo-chat.json")) {
+    throw new Error("Readable source files must use .md, .txt, or the .arepo-chat.json suffix");
   }
   return normalized;
 }

@@ -16,7 +16,7 @@ AREPO reads and writes ordinary documents, then builds rebuildable structure aro
 
 The core purpose of AREPO is to help users understand what their documents contain, how those documents connect, what is missing, what has changed, what generated data exists, and what can be safely enriched.
 
-This document describes both the implemented V1 shape and the intended long-term architecture. V1 implements the local-first Markdown vault, filesystem backend, rebuildable machine index, validation, graph derivation, conflict handling, storage reporting, and test vault fixture. Enrichment, non-Markdown import pipelines, provenance, and multi-node federation are future architecture.
+This document describes both the implemented V1 shape and the intended long-term architecture. V1 implements the local-first Markdown vault, filesystem backend, rebuildable machine index, validation, graph derivation, conflict handling, storage reporting, a narrow read-only plain-text source, one exact read-only `arepo-chat-export` V1 JSON dialect, and the test vault fixture. Generic non-Markdown import pipelines, enrichment, provenance, and multi-node federation are future architecture.
 
 ## Core Identity
 
@@ -93,6 +93,8 @@ V1 currently provides:
 * safe save, reload, save-as-new-file, and overwrite flows
 * atomic writes
 * storage reporting for vault content and generated machine index/cache data
+* read-only UTF-8 `.txt` sources outside Markdown indexing
+* read-only structured `*.arepo-chat.json` V1 conversations outside Markdown indexing
 
 The repository includes `test-vault/` as a committed example and manual-test fixture. It demonstrates folder-qualified links, anchors, backlinks, graph rendering, intentional broken links, and ignored fake links inside code blocks.
 
@@ -263,7 +265,9 @@ AI may help rank and explain candidate links. Deterministic rules should perform
 
 Markdown remains the editable native format.
 
-Plain text can be indexed and converted into Markdown where useful.
+Plain text and exact AREPO chat V1 exports can be viewed and searched locally
+without converting or mutating their canonical source files. Broader extraction
+or conversion remains future work.
 
 Rich documents such as DOCX, ODT, RTF, PDF, transcripts, exports, and logs may later be imported, extracted, indexed, or converted.
 

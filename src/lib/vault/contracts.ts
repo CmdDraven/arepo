@@ -32,7 +32,7 @@ export type NodeInfo = {
   vaults: VaultInfo[];
 };
 
-export type VaultFileKind = "markdown" | "plain-text";
+export type VaultFileKind = "markdown" | "plain-text" | "chat-json";
 
 export type VaultFile = {
   path: string;

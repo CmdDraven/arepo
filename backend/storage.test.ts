@@ -64,6 +64,20 @@ test("storage summary classifies Markdown/text separately from attachments", asy
   assert.equal(summary.attachments.bytes, 6);
 });
 
+test("storage reporting keeps chat JSON in the broad physical attachment/other bucket", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  await writeFile(vault.rootPath, "note.md", "1234");
+  await writeFile(vault.rootPath, "conversation.arepo-chat.json", "123456");
+
+  const summary = await getVaultStorageSummary(vault, cwd);
+
+  assert.equal(summary.total.fileCount, 2);
+  assert.equal(summary.markdownText.fileCount, 1);
+  assert.equal(summary.markdownText.bytes, 4);
+  assert.equal(summary.attachments.fileCount, 1);
+  assert.equal(summary.attachments.bytes, 6);
+});
+
 test("storage summary skips symlinks", async (t) => {
   const { cwd, vault } = await makeVault(t);
   const outside = await makeTestTempDir(t, "arepo-storage-outside-");

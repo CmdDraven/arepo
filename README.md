@@ -20,6 +20,14 @@ external disk changes. They are not notes: `.txt` files never enter the machine
 index, graph, backlinks, Markdown preview, frontmatter, tags, headings, or
 validation. AREPO does not create, save, rename, or delete them.
 
+AREPO also supports one deliberately exact structured import:
+`*.arepo-chat.json` files whose root declares `"format": "arepo-chat-export"`
+and numeric `"version": 1`. These canonical JSON files are read only and remain
+unchanged on disk. AREPO validates and displays the conversation and its ordered
+messages, preserving conversation/message IDs and source timestamp strings.
+Arbitrary `.json`, including `*.chat.json`, is not supported, and chat JSON is
+never converted to Markdown or added to Markdown graph/index semantics.
+
 Sync, history, and backups are intentionally external:
 
 - Syncthing for device sync
@@ -285,8 +293,9 @@ revocation, failure checks, and audit sanitization steps.
 
 The backend accepts only POSIX-style relative vault paths. It rejects absolute
 paths, `..`, empty segments, duplicate slashes, symlink path traversal, and paths
-that resolve outside the configured vault root. Content reads accept `.md` and
-`.txt`; all file mutation operations require `.md`.
+that resolve outside the configured vault root. Content reads accept `.md`,
+`.txt`, and the exact case-insensitive `*.arepo-chat.json` suffix; all file
+mutation operations require `.md`.
 
 File saves write and sync a uniquely named temporary file in the same directory,
 rename it into place, and clean up the temporary file if the operation fails.
@@ -338,7 +347,42 @@ The Tree's browser-local text search can match Markdown and plain-text bodies
 only after the frontend has fetched those files through the content-read
 endpoint. That path requires `readContent`; it does not obtain bodies from the
 structural index. Plain-text results are identified separately from Markdown
-notes.
+notes. For a valid loaded chat export, file-level search text is derived only
+from the conversation title/ID and message IDs, authors, and text. It does not
+search arbitrary JSON keys or punctuation. Malformed or unreadable chat files
+remain filename/path-searchable but contribute no body search text.
+
+### AREPO chat export V1
+
+The supported structured dialect has this shape:
+
+```json
+{
+  "format": "arepo-chat-export",
+  "version": 1,
+  "conversation": {
+    "id": "conv-001",
+    "title": "Example conversation"
+  },
+  "messages": [
+    {
+      "id": "msg-001",
+      "author": "Alice",
+      "timestamp": "2026-08-24T10:00:00Z",
+      "text": "Hello."
+    }
+  ]
+}
+```
+
+Conversation IDs must be non-empty. Message IDs must be non-empty and unique
+within the conversation. Every message requires string author, timestamp, and
+text fields. Timestamps must be parseable ISO-8601-style values with `Z` or an
+explicit numeric offset. Array order is canonical. Message timestamps are
+source event time; filesystem mtime remains separate operational observation
+time. Unknown fields are left untouched in the canonical file but are not part
+of the V1 view. Invalid JSON/schema produces a bounded structured-validation
+state, distinct from an unreadable source-content failure.
 
 Individual source-content reads are isolated from the vault metadata and
 structural-index load. If one supported file cannot be read, AREPO keeps the
@@ -387,27 +431,38 @@ Generated machine indexes live under the app data directory and are disposable
 cache. They are not user-authored Markdown content and can be rebuilt from the
 vault files.
 
+These storage categories are physical reporting buckets, not the supported
+source-kind taxonomy. Chat JSON currently remains in the broad attachment/other
+bucket; this does not make it an attachment or place it in the Markdown index.
+
 The current indexer strips fenced code blocks and inline code before extracting
 headings and wikilinks. It is still a lightweight Markdown parser, not a full
 CommonMark AST pipeline.
 
 ## External Changes
 
-The local backend watches configured vault roots for supported `.md` and `.txt`
-file changes, additions, deletions, and renames. It does not watch outside
-configured vault roots and continues to ignore symlink escapes. Watch events
-are debounced. Markdown changes mark the vault index stale and rebuild it after
-the event burst settles; plain-text-only changes remain visible in watcher
-status without staling or rebuilding the Markdown machine index.
+The local backend watches configured vault roots for supported `.md`, `.txt`,
+and `*.arepo-chat.json` file changes, additions, deletions, and renames. It does
+not watch outside configured vault roots and continues to ignore symlink
+escapes. Watch events are debounced. Markdown changes mark the vault index stale
+and rebuild it after the event burst settles; plain-text-only and chat-only
+changes remain visible in watcher status without staling or rebuilding the
+Markdown machine index.
 
 The frontend polls vault status from the local backend. If the open Markdown
 file changes on disk and the editor has no unsaved changes, AREPO refreshes from
-disk. Open plain-text files always reload their read-only view from disk. If the
+disk. Open plain-text and chat files always reload their read-only view from disk. If the
 Markdown editor is dirty, AREPO keeps the browser buffer intact and shows a
 conflict warning with actions to keep edits, reload the disk version, or save
 the buffer as a new file. If an open Markdown file is deleted on disk, AREPO
 shows a warning and lets the user close the buffer or save it as a new file; a
-deleted plain-text file offers only the read-only close path.
+deleted read-only source offers only the close path. A chat edit that becomes
+malformed reloads the canonical bytes and displays structured validation; a
+later valid edit restores the structured view.
+
+This third source is implemented directly and narrowly. AREPO does not yet have
+generic adapters, record locators, provenance, or a universal structured-source
+index.
 
 The `.txt` experiment uses Node's normal UTF-8 decoding and does not detect
 legacy encodings; invalid UTF-8 may therefore be displayed with replacement
