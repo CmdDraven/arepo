@@ -154,8 +154,10 @@ export function sanitizeArepoBrowserDeviceLabel(input: string): ArepoDeviceLabel
   };
 }
 
-export async function runIsolatedBetterAuthSessionScopeMetadataProof(): Promise<BetterAuthSessionScopeMetadataProofResult> {
-  const first = await createBetterAuthAppDataProofContext();
+export async function runIsolatedBetterAuthSessionScopeMetadataProof(
+  appDataDir: string,
+): Promise<BetterAuthSessionScopeMetadataProofResult> {
+  const first = await createBetterAuthAppDataProofContext({ appDataDir });
   await first.context.runMigrations();
   const firstContext = first.context as BetterAuthSessionScopeContextLike;
   const safeDevice = sanitizeArepoBrowserDeviceLabel("Operator Laptop\nLocal Only");

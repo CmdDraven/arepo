@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   planReducedAnonymousDryRunCanary,
   planReducedAnonymousHealth,
@@ -118,14 +118,14 @@ test("all reduced plans report current scaffold truth", () => {
   }
 });
 
-test("reduced anonymous status planner is not imported by active server handlers", async () => {
+test("reduced anonymous status planner is not imported by active server handlers", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   assert.equal(serverSource.includes("reducedAnonymousStatusPlanner"), false);
   assert.equal(serverSource.includes("planReducedAnonymous"), false);
 });
 
-test("current health status and dry-run canary runtime responses remain full V1 diagnostics", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-reduced-status-"));
+test("current health status and dry-run canary runtime responses remain full V1 diagnostics", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-reduced-status-");
 
   const health = await routeRequest(request("GET", "/api/health"), cwd);
   assert.equal(health.status, 200);

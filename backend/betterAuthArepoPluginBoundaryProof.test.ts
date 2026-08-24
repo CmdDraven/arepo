@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { runIsolatedBetterAuthArepoPluginBoundaryProof } from "./betterAuthArepoPluginBoundaryProof.js";
 
 const secretSamples = [
@@ -28,8 +29,10 @@ function assertNoSecretMaterial(value: unknown): void {
   }
 }
 
-test("AREPO Better Auth plugin-boundary proof stays isolated and inactive", async () => {
-  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof();
+test("AREPO Better Auth plugin-boundary proof stays isolated and inactive", async (t) => {
+  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.status, "isolated-arepo-better-auth-plugin-boundary-proof");
   assert.equal(proof.packageName, "better-auth");
@@ -45,8 +48,10 @@ test("AREPO Better Auth plugin-boundary proof stays isolated and inactive", asyn
   assertNoSecretMaterial(proof);
 });
 
-test("AREPO Better Auth plugin-boundary proof blocks before active behavior by default", async () => {
-  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof();
+test("AREPO Better Auth plugin-boundary proof blocks before active behavior by default", async (t) => {
+  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.blockedAttempt.gateAllowed, false);
   assert.equal(proof.blockedAttempt.reasonCode, "browser_auth_activation_blocked");
@@ -60,8 +65,10 @@ test("AREPO Better Auth plugin-boundary proof blocks before active behavior by d
   assert.equal(proof.wrappedResponses.blockedPairingComplete.setCookieCount, 0);
 });
 
-test("AREPO Better Auth plugin-boundary proof exercises test-only plugin session flow", async () => {
-  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof();
+test("AREPO Better Auth plugin-boundary proof exercises test-only plugin session flow", async (t) => {
+  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.allowedProof.testOnlyAllowed, true);
   assert.equal(proof.allowedProof.betterAuthSessionCreated, true);
@@ -81,8 +88,10 @@ test("AREPO Better Auth plugin-boundary proof exercises test-only plugin session
   assert.equal(proof.wrappedResponses.getSession.body.sessionPresent, true);
 });
 
-test("AREPO Better Auth plugin-boundary proof rejects raw token injection and covers sign-out revoke and expiry", async () => {
-  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof();
+test("AREPO Better Auth plugin-boundary proof rejects raw token injection and covers sign-out revoke and expiry", async (t) => {
+  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.allowedProof.directRawTokenCookieInjectionAuthenticates, false);
   assert.equal(proof.wrappedResponses.directRawTokenInjection.body.sessionPresent, null);
@@ -98,8 +107,10 @@ test("AREPO Better Auth plugin-boundary proof rejects raw token injection and co
   assert.equal(proof.wrappedResponses.getSessionAfterExpiry.body.sessionPresent, null);
 });
 
-test("AREPO Better Auth plugin-boundary proof models AREPO-owned sidecar authorization", async () => {
-  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof();
+test("AREPO Better Auth plugin-boundary proof models AREPO-owned sidecar authorization", async (t) => {
+  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.sidecarAuthorization.status, "modeled-in-memory-proof-only");
   assert.equal(
@@ -126,8 +137,10 @@ test("AREPO Better Auth plugin-boundary proof models AREPO-owned sidecar authori
   assert.ok(proof.sidecarAuthorization.safeDiagnostics.redactedReferenceCount >= 3);
 });
 
-test("AREPO Better Auth plugin-boundary proof records CSRF sequencing without enabling CSRF", async () => {
-  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof();
+test("AREPO Better Auth plugin-boundary proof records CSRF sequencing without enabling CSRF", async (t) => {
+  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.csrfSequencing.liveCsrfEnabled, false);
   assert.equal(proof.csrfSequencing.sequencingOnlyNotLive, true);
@@ -138,8 +151,10 @@ test("AREPO Better Auth plugin-boundary proof records CSRF sequencing without en
   assert.equal(proof.csrfSequencing.sameSiteNotTreatedAsSufficient, true);
 });
 
-test("AREPO Better Auth plugin-boundary proof classifies internal-adapter risk", async () => {
-  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof();
+test("AREPO Better Auth plugin-boundary proof classifies internal-adapter risk", async (t) => {
+  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.apiUsage.createAuthEndpoint, "public-exported-api");
   assert.equal(proof.apiUsage.setSessionCookie, "public-exported-api");
@@ -159,8 +174,10 @@ test("AREPO Better Auth plugin-boundary proof classifies internal-adapter risk",
   );
 });
 
-test("AREPO Better Auth plugin-boundary proof emits sanitized audit-like events", async () => {
-  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof();
+test("AREPO Better Auth plugin-boundary proof emits sanitized audit-like events", async (t) => {
+  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.auditProof.status, "sanitized-audit-like-events-in-isolated-proof");
   assert.equal(proof.auditProof.containsRawCredentialMaterial, false);
@@ -176,8 +193,10 @@ test("AREPO Better Auth plugin-boundary proof emits sanitized audit-like events"
   assert.ok(proof.auditProof.eventCategories.includes("raw_token_injection_rejected"));
 });
 
-test("AREPO Better Auth plugin-boundary proof findings are explicit", async () => {
-  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof();
+test("AREPO Better Auth plugin-boundary proof findings are explicit", async (t) => {
+  const proof = await runIsolatedBetterAuthArepoPluginBoundaryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
   const findings = new Map(proof.findings.map((finding) => [finding.id, finding]));
 
   assert.equal(findings.get("default-activation-gate")?.status, "blocked-by-default");
@@ -196,7 +215,7 @@ test("AREPO Better Auth plugin-boundary proof findings are explicit", async () =
   assert.equal(findings.get("not-live-authorization")?.status, "passed");
 });
 
-test("AREPO Better Auth plugin-boundary proof is isolated from live server authorization and frontend paths", async () => {
+test("AREPO Better Auth plugin-boundary proof is isolated from live server authorization and frontend paths", async (t) => {
   const sourceFiles = [
     "backend/server.ts",
     "backend/protectedModeEnforcement.ts",

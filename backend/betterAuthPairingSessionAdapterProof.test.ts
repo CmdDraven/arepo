@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   BETTER_AUTH_PAIRING_SESSION_ADAPTER_PROOF_LIVE_BROWSER_AUTH_ENABLED,
   BETTER_AUTH_PAIRING_SESSION_ADAPTER_PROOF_MOUNTED,
@@ -34,8 +35,10 @@ function assertNoSecretMaterial(value: unknown): void {
   }
 }
 
-test("Better Auth pairing-session adapter proof remains isolated and inactive", async () => {
-  const proof = await runIsolatedBetterAuthPairingSessionAdapterProof();
+test("Better Auth pairing-session adapter proof remains isolated and inactive", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingSessionAdapterProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(BETTER_AUTH_PAIRING_SESSION_ADAPTER_PROOF_LIVE_BROWSER_AUTH_ENABLED, false);
   assert.equal(BETTER_AUTH_PAIRING_SESSION_ADAPTER_PROOF_MOUNTED, false);
@@ -53,8 +56,10 @@ test("Better Auth pairing-session adapter proof remains isolated and inactive", 
   assertNoSecretMaterial(proof);
 });
 
-test("Better Auth pairing-session adapter proof maps accepted pairing to internal session creation", async () => {
-  const proof = await runIsolatedBetterAuthPairingSessionAdapterProof();
+test("Better Auth pairing-session adapter proof maps accepted pairing to internal session creation", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingSessionAdapterProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.pairingProof.arepoBearerProtectedOperatorAlreadyAuthenticated, true);
   assert.equal(proof.pairingProof.arepoPairingCompletionAccepted, true);
@@ -79,8 +84,10 @@ test("Better Auth pairing-session adapter proof maps accepted pairing to interna
   );
 });
 
-test("Better Auth pairing-session adapter proof records cookie CSRF and public API blockers", async () => {
-  const proof = await runIsolatedBetterAuthPairingSessionAdapterProof();
+test("Better Auth pairing-session adapter proof records cookie CSRF and public API blockers", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingSessionAdapterProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.sessionProof.signedCookieIssuedFromPairingPath, false);
   assert.equal(proof.sessionProof.signedCookieIssuanceStatus, "needs-cookie-adapter-spike");
@@ -105,8 +112,10 @@ test("Better Auth pairing-session adapter proof records cookie CSRF and public A
   assertNoSecretMaterial(proof.sessionProof.logoutClearingCookies);
 });
 
-test("Better Auth pairing-session adapter proof exercises revoke current revoke all and expiry config", async () => {
-  const proof = await runIsolatedBetterAuthPairingSessionAdapterProof();
+test("Better Auth pairing-session adapter proof exercises revoke current revoke all and expiry config", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingSessionAdapterProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.sessionProof.revokeCurrentWorked, true);
   assert.equal(proof.sessionProof.revokeAllForSubjectWorked, true);
@@ -120,7 +129,7 @@ test("Better Auth pairing-session adapter proof exercises revoke current revoke 
   );
 });
 
-test("Better Auth pairing-session adapter proof is isolated from live server authorization and frontend paths", async () => {
+test("Better Auth pairing-session adapter proof is isolated from live server authorization and frontend paths", async (t) => {
   const sourceFiles = [
     "backend/server.ts",
     "backend/protectedModeEnforcement.ts",

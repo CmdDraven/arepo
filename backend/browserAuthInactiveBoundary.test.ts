@@ -1,8 +1,9 @@
 import test from "node:test";
+import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { classifyHttpCredentialExtraction } from "./httpCredentialAdapter.js";
 import { routeRequest, type RequestLike } from "./server.js";
 import {
@@ -213,9 +214,9 @@ async function writeProtectedAuthStores(
   await writeRevocationStore(appDataDir, { revocations: [] });
 }
 
-async function protectedFixture(): Promise<{ cwd: string; appDataDir: string }> {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-browser-boundary-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-browser-boundary-data-"));
+async function protectedFixture(t: TestContext): Promise<{ cwd: string; appDataDir: string }> {
+  const cwd = await makeTestTempDir(t, "arepo-browser-boundary-");
+  const appDataDir = await makeTestTempDir(t, "arepo-browser-boundary-data-");
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
   await writeProtectedAuthStores(appDataDir);
   return { cwd, appDataDir };
@@ -233,7 +234,7 @@ function assertSanitizedBody(body: unknown): void {
   }
 }
 
-test("live server and request authorization code do not import inert browser-auth primitives", async () => {
+test("live server and request authorization code do not import inert browser-auth primitives", async (t) => {
   const liveSourceFiles = [
     "backend/server.ts",
     "backend/protectedModeEnforcement.ts",
@@ -257,7 +258,7 @@ test("live server and request authorization code do not import inert browser-aut
   }
 });
 
-test("live protected enforcement pins request authorization to bearer credentials only", async () => {
+test("live protected enforcement pins request authorization to bearer credentials only", async (t) => {
   const source = await fs.readFile(
     path.join(process.cwd(), "backend", "protectedModeEnforcement.ts"),
     "utf8",
@@ -284,8 +285,8 @@ test("HTTP credential adapter rejects cookie credentials when live bearer-only s
   assertSanitizedBody(result);
 });
 
-test("browser session pairing and csrf routes remain inactive sanitized stubs", async () => {
-  const { cwd } = await protectedFixture();
+test("browser session pairing and csrf routes remain inactive sanitized stubs", async (t) => {
+  const { cwd } = await protectedFixture(t);
   const secret = "bsver_inactive_boundary_session_secret";
 
   for (const [method, route] of inactiveBrowserAuthRoutes) {
@@ -320,8 +321,8 @@ test("browser session pairing and csrf routes remain inactive sanitized stubs", 
   }
 });
 
-test("cookie and csrf-style headers do not authenticate protected routes", async () => {
-  const { cwd } = await protectedFixture();
+test("cookie and csrf-style headers do not authenticate protected routes", async (t) => {
+  const { cwd } = await protectedFixture(t);
   const cases: Record<string, string>[] = [
     { cookie: "arepo_session=inactive-boundary-session-cookie" },
     { "x-csrf-token": "bcsrfsec_inactive_boundary_csrf_secret" },
@@ -344,8 +345,8 @@ test("cookie and csrf-style headers do not authenticate protected routes", async
   }
 });
 
-test("bearer-token protected mode remains the only live credential path", async () => {
-  const { cwd } = await protectedFixture();
+test("bearer-token protected mode remains the only live credential path", async (t) => {
+  const { cwd } = await protectedFixture(t);
 
   const listed = await routeRequest(
     request("GET", "/api/node/credentials", undefined, {
@@ -368,8 +369,8 @@ test("bearer-token protected mode remains the only live credential path", async 
   assertSanitizedBody(malformedBearer.body);
 });
 
-test("representative live routes and inactive stubs do not emit Set-Cookie", async () => {
-  const { cwd } = await protectedFixture();
+test("representative live routes and inactive stubs do not emit Set-Cookie", async (t) => {
+  const { cwd } = await protectedFixture(t);
   const liveRequests = [
     request("GET", "/api/health"),
     request("GET", "/api/node/status"),
@@ -390,8 +391,8 @@ test("representative live routes and inactive stubs do not emit Set-Cookie", asy
   }
 });
 
-test("full protected status reports browser-auth primitives as inactive and unwired", async () => {
-  const { cwd } = await protectedFixture();
+test("full protected status reports browser-auth primitives as inactive and unwired", async (t) => {
+  const { cwd } = await protectedFixture(t);
   const response = await routeRequest(
     request("GET", "/api/node/status", undefined, {
       authorization: `Bearer ${protectedBearerToken}`,

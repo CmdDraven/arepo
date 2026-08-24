@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   normalizeMarkdownFilePath,
   normalizeReadableTextFilePath,
@@ -25,8 +25,8 @@ test("rejects path traversal and absolute paths", () => {
   assert.throws(() => normalizeMarkdownFilePath("Notes/hello.txt"), /\.md/);
 });
 
-test("resolved paths must remain inside the vault root", async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-path-"));
+test("resolved paths must remain inside the vault root", async (t) => {
+  const root = await makeTestTempDir(t, "arepo-path-");
   assert.equal(resolveInsideVault(root, "safe.md"), path.join(root, "safe.md"));
   assert.throws(
     () => resolveInsideVault(root, "../outside.md"),

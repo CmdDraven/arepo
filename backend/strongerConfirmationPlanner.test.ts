@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { planStrongerConfirmation } from "./strongerConfirmationPlanner.js";
 import { routeRequest, type RequestLike } from "./server.js";
 
@@ -167,15 +167,15 @@ test("planner output is sanitized", () => {
   assert.equal(plan.networkExposureSafe, false);
 });
 
-test("stronger confirmation planner is not imported by active server handlers", async () => {
+test("stronger confirmation planner is not imported by active server handlers", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   assert.equal(serverSource.includes("strongerConfirmationPlanner"), false);
   assert.equal(serverSource.includes("planStrongerConfirmation"), false);
 });
 
-test("current V1 source delete route behavior remains unchanged", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-confirmation-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-confirmation-vault-"));
+test("current V1 source delete route behavior remains unchanged", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-confirmation-");
+  const rootPath = await makeTestTempDir(t, "arepo-confirmation-vault-");
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
 
   const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);

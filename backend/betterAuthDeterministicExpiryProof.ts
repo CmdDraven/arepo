@@ -113,8 +113,13 @@ type ExpiryProofContextLike = Awaited<
 const baseUrl = "http://127.0.0.1:8734";
 const sessionCookieName = "arepo_session";
 
-export async function runIsolatedBetterAuthDeterministicExpiryProof(): Promise<BetterAuthDeterministicExpiryProofResult> {
-  const proof = await createBetterAuthAppDataProofContext({ emailAndPasswordEnabled: true });
+export async function runIsolatedBetterAuthDeterministicExpiryProof(
+  appDataDir: string,
+): Promise<BetterAuthDeterministicExpiryProofResult> {
+  const proof = await createBetterAuthAppDataProofContext({
+    appDataDir,
+    emailAndPasswordEnabled: true,
+  });
   await proof.context.runMigrations();
   const context = proof.context as ExpiryProofContextLike;
 

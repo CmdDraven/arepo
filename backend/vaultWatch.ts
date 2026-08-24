@@ -120,6 +120,19 @@ export function stopAllVaultWatchers(): void {
   }
 }
 
+export async function stopVaultWatchersForDirectory(directory: string): Promise<void> {
+  const rebuilding: Promise<void>[] = [];
+  for (const [key, state] of states) {
+    if (state.cwd !== directory && state.root !== directory) continue;
+    for (const watcher of state.watchers) watcher.close();
+    if (state.scanTimer) clearTimeout(state.scanTimer);
+    if (state.rebuildTimer) clearTimeout(state.rebuildTimer);
+    if (state.rebuilding) rebuilding.push(state.rebuilding);
+    states.delete(key);
+  }
+  await Promise.allSettled(rebuilding);
+}
+
 async function refreshDirectoryWatchers(state: VaultWatchState): Promise<void> {
   for (const watcher of state.watchers) watcher.close();
   state.watchers = [];

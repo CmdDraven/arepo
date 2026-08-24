@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { runIsolatedBetterAuthPairingCookieIssuanceProof } from "./betterAuthPairingCookieIssuanceProof.js";
 
 const secretSamples = [
@@ -28,8 +29,10 @@ function assertNoSecretMaterial(value: unknown): void {
   }
 }
 
-test("Better Auth pairing-cookie proof stays isolated and inactive", async () => {
-  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof();
+test("Better Auth pairing-cookie proof stays isolated and inactive", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.status, "isolated-pairing-cookie-issuance-proof");
   assert.equal(proof.packageName, "better-auth");
@@ -45,8 +48,10 @@ test("Better Auth pairing-cookie proof stays isolated and inactive", async () =>
   assertNoSecretMaterial(proof);
 });
 
-test("Better Auth pairing-cookie proof does not require normal login surfaces", async () => {
-  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof();
+test("Better Auth pairing-cookie proof does not require normal login surfaces", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.pairingProof.arepoBearerProtectedOperatorAlreadyAuthenticated, true);
   assert.equal(proof.pairingProof.arepoPairingCompletionAccepted, true);
@@ -58,8 +63,10 @@ test("Better Auth pairing-cookie proof does not require normal login surfaces", 
   assert.equal(proof.pairingProof.loginUiRequired, false);
 });
 
-test("Better Auth pairing-cookie proof records internal versus supported API boundary", async () => {
-  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof();
+test("Better Auth pairing-cookie proof records internal versus supported API boundary", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.boundaryProof.betterAuthUserRecordRequired, true);
   assert.equal(proof.boundaryProof.betterAuthAccountRecordRequired, false);
@@ -71,8 +78,10 @@ test("Better Auth pairing-cookie proof records internal versus supported API bou
   assert.ok(proof.remainingBlockers.includes("supported-pairing-cookie-response-boundary-needed"));
 });
 
-test("Better Auth pairing-cookie proof signs only redacted pairing-cookie metadata", async () => {
-  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof();
+test("Better Auth pairing-cookie proof signs only redacted pairing-cookie metadata", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.cookieProof.signedCookieProducedFromPairingSession, true);
   assert.equal(proof.cookieProof.signedCookieObservedOnlyAsRedactedMetadata, true);
@@ -86,15 +95,19 @@ test("Better Auth pairing-cookie proof signs only redacted pairing-cookie metada
   assert.equal(proof.wrappedResponses.pairingCookieLookup.body.sessionPresent, true);
 });
 
-test("Better Auth pairing-cookie proof rejects direct raw token injection", async () => {
-  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof();
+test("Better Auth pairing-cookie proof rejects direct raw token injection", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.cookieProof.directRawTokenCookieInjectionAuthenticates, false);
   assert.equal(proof.wrappedResponses.directRawTokenInjection.body.sessionPresent, null);
 });
 
-test("Better Auth pairing-cookie proof signs out and expires pairing-issued sessions", async () => {
-  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof();
+test("Better Auth pairing-cookie proof signs out and expires pairing-issued sessions", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.revokeProof.signOutInvalidatesPairingCookieSession, true);
   assert.equal(proof.revokeProof.signOutCookieClearingObserved, true);
@@ -114,8 +127,10 @@ test("Better Auth pairing-cookie proof signs out and expires pairing-issued sess
   assert.equal(proof.wrappedResponses.afterExpiry.body.sessionPresent, null);
 });
 
-test("Better Auth pairing-cookie proof records subject and metadata limits", async () => {
-  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof();
+test("Better Auth pairing-cookie proof records subject and metadata limits", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.sessionProof.subjectKind, "arepo-local-operator");
   assert.equal(proof.sessionProof.betterAuthUserCreatedForSubject, true);
@@ -127,8 +142,10 @@ test("Better Auth pairing-cookie proof records subject and metadata limits", asy
   assert.ok(proof.remainingBlockers.includes("session-scope-metadata-design-needed"));
 });
 
-test("Better Auth pairing-cookie proof findings are explicit", async () => {
-  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof();
+test("Better Auth pairing-cookie proof findings are explicit", async (t) => {
+  const proof = await runIsolatedBetterAuthPairingCookieIssuanceProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
   const findings = new Map(proof.findings.map((finding) => [finding.id, finding]));
 
   assert.equal(findings.get("pairing-to-session")?.status, "proven-through-internal-adapter");
@@ -154,7 +171,7 @@ test("Better Auth pairing-cookie proof findings are explicit", async () => {
   assert.equal(findings.get("not-live-authorization")?.status, "passed");
 });
 
-test("Better Auth pairing-cookie proof is isolated from live server authorization and frontend paths", async () => {
+test("Better Auth pairing-cookie proof is isolated from live server authorization and frontend paths", async (t) => {
   const sourceFiles = [
     "backend/server.ts",
     "backend/protectedModeEnforcement.ts",

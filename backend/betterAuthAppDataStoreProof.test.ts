@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   BETTER_AUTH_APP_DATA_STORE_PROOF_LIVE_BROWSER_AUTH_ENABLED,
   BETTER_AUTH_APP_DATA_STORE_PROOF_MOUNTED,
@@ -34,8 +35,8 @@ function assertNoSecretMaterial(value: unknown): void {
   }
 }
 
-test("Better Auth app-data store proof initializes local SQLite outside live auth", async () => {
-  const proof = await runIsolatedBetterAuthAppDataStoreProof();
+test("Better Auth app-data store proof initializes local SQLite outside live auth", async (t) => {
+  const proof = await runIsolatedBetterAuthAppDataStoreProof(await makeTestTempDir(t, "arepo-ba-"));
 
   assert.equal(BETTER_AUTH_APP_DATA_STORE_PROOF_LIVE_BROWSER_AUTH_ENABLED, false);
   assert.equal(BETTER_AUTH_APP_DATA_STORE_PROOF_MOUNTED, false);
@@ -56,8 +57,8 @@ test("Better Auth app-data store proof initializes local SQLite outside live aut
   assertNoSecretMaterial(proof);
 });
 
-test("Better Auth app-data store proof runs migrations and records schema policy blockers", async () => {
-  const proof = await runIsolatedBetterAuthAppDataStoreProof();
+test("Better Auth app-data store proof runs migrations and records schema policy blockers", async (t) => {
+  const proof = await runIsolatedBetterAuthAppDataStoreProof(await makeTestTempDir(t, "arepo-ba-"));
 
   assert.equal(proof.migrations.runMigrationsAvailable, true);
   assert.equal(proof.migrations.migrationsRan, true);
@@ -74,8 +75,8 @@ test("Better Auth app-data store proof runs migrations and records schema policy
   );
 });
 
-test("Better Auth app-data store proof exercises lookup expiry revoke current and revoke all", async () => {
-  const proof = await runIsolatedBetterAuthAppDataStoreProof();
+test("Better Auth app-data store proof exercises lookup expiry revoke current and revoke all", async (t) => {
+  const proof = await runIsolatedBetterAuthAppDataStoreProof(await makeTestTempDir(t, "arepo-ba-"));
 
   assert.equal(proof.storageProof.databaseCreatedInAppData, true);
   assert.equal(proof.storageProof.databaseOutsideVault, true);
@@ -103,7 +104,7 @@ test("Better Auth app-data store proof exercises lookup expiry revoke current an
   assert.ok(expiryFinding?.blockerCodes.includes("deterministic-expiry-adapter-proof-needed"));
 });
 
-test("Better Auth app-data store proof is isolated from live server authorization and frontend paths", async () => {
+test("Better Auth app-data store proof is isolated from live server authorization and frontend paths", async (t) => {
   const sourceFiles = [
     "backend/server.ts",
     "backend/protectedModeEnforcement.ts",

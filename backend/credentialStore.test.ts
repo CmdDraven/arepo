@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   AUTH_STORAGE_NETWORK_EXPOSURE_SAFE,
   AUTH_STORAGE_OWNER_ONLY_DIRECTORY_MODE,
@@ -219,16 +219,16 @@ test("auth app-data path helpers resolve under the auth directory", () => {
   assert.equal(paths.auditEvents, path.join(appDataDir, "auth", "audit", "events.jsonl"));
 });
 
-test("missing credential store files return empty disabled-mode stores", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-auth-store-"));
+test("missing credential store files return empty disabled-mode stores", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-auth-store-");
   assert.deepEqual(await readCredentialStore(appDataDir), { credentials: [] });
   assert.deepEqual(await readTokenVerifierStore(appDataDir), { tokenVerifiers: [] });
   assert.deepEqual(await readBrowserSessionStore(appDataDir), { sessions: [] });
   assert.deepEqual(await readRevocationStore(appDataDir), { revocations: [] });
 });
 
-test("credential verifier session and revocation stores round trip through atomic writes", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-auth-store-"));
+test("credential verifier session and revocation stores round trip through atomic writes", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-auth-store-");
   const credentialStore = { credentials: [sampleCredential()] };
   const verifierStore = { tokenVerifiers: [sampleVerifier()] };
   const sessionStore = { sessions: [sampleSession()] };
@@ -245,8 +245,8 @@ test("credential verifier session and revocation stores round trip through atomi
   assert.deepEqual(await readRevocationStore(appDataDir), revocationStore);
 });
 
-test("completed writes create auth directories and valid JSON targets without temp leftovers", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-auth-store-"));
+test("completed writes create auth directories and valid JSON targets without temp leftovers", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-auth-store-");
   const paths = resolveAuthStoragePaths(appDataDir);
 
   await writeCredentialStore(appDataDir, { credentials: [sampleCredential()] });
@@ -272,8 +272,8 @@ test("path helpers reject Markdown vault locations for auth material", () => {
   assert.equal(result.ok, false);
 });
 
-test("store helpers reject auth material paths under Markdown vault roots", async () => {
-  const vaultRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+test("store helpers reject auth material paths under Markdown vault roots", async (t) => {
+  const vaultRoot = await makeTestTempDir(t, "arepo-vault-");
   await assert.rejects(
     () =>
       writeCredentialStore(path.join(vaultRoot, ".arepo-data"), { credentials: [] }, [vaultRoot]),
@@ -319,8 +319,8 @@ test("store validation rejects plaintext token and secret-like fields", () => {
   }
 });
 
-test("malformed JSON produces a clear corrupt-store error", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-auth-store-"));
+test("malformed JSON produces a clear corrupt-store error", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-auth-store-");
   const paths = resolveAuthStoragePaths(appDataDir);
   await fs.mkdir(paths.authDir, { recursive: true });
   await fs.writeFile(paths.credentials, "{bad json", "utf8");
@@ -328,8 +328,8 @@ test("malformed JSON produces a clear corrupt-store error", async () => {
   await assert.rejects(() => readCredentialStore(appDataDir), /Corrupt AREPO auth store/);
 });
 
-test("corrupt store schema fails safe instead of accepting credentials", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-auth-store-"));
+test("corrupt store schema fails safe instead of accepting credentials", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-auth-store-");
   const paths = resolveAuthStoragePaths(appDataDir);
   await fs.mkdir(paths.authDir, { recursive: true });
   await fs.writeFile(paths.credentials, JSON.stringify({ credentials: "all allowed" }), "utf8");
@@ -398,7 +398,7 @@ test("credential storage constants document owner-only and atomic-write requirem
   assert.equal(AUTH_STORAGE_REQUIRES_ATOMIC_WRITES, true);
 });
 
-test("request handling does not import credential-store helpers", async () => {
+test("request handling does not import credential-store helpers", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   assert.equal(serverSource.includes("credentialStore"), false);
 });

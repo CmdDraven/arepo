@@ -159,8 +159,11 @@ const sessionCookieName = "arepo_session";
 const primarySubjectEmail = "arepo-plugin-boundary-subject@example.invalid";
 const otherSubjectEmail = "arepo-plugin-boundary-other@example.invalid";
 
-export async function runIsolatedBetterAuthPairingCookieBoundaryProof(): Promise<BetterAuthPairingCookieBoundaryProofResult> {
+export async function runIsolatedBetterAuthPairingCookieBoundaryProof(
+  appDataDir: string,
+): Promise<BetterAuthPairingCookieBoundaryProofResult> {
   const proof = await createBetterAuthAppDataProofContext({
+    appDataDir,
     plugins: [createArepoPairingBoundaryProofPlugin()],
   });
   await proof.context.runMigrations();

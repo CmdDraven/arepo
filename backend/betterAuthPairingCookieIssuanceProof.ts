@@ -148,8 +148,10 @@ type PairingCookieProofContextLike = Awaited<
 const baseUrl = "http://127.0.0.1:8734";
 const sessionCookieName = "arepo_session";
 
-export async function runIsolatedBetterAuthPairingCookieIssuanceProof(): Promise<BetterAuthPairingCookieIssuanceProofResult> {
-  const proof = await createBetterAuthAppDataProofContext();
+export async function runIsolatedBetterAuthPairingCookieIssuanceProof(
+  appDataDir: string,
+): Promise<BetterAuthPairingCookieIssuanceProofResult> {
+  const proof = await createBetterAuthAppDataProofContext({ appDataDir });
   await proof.context.runMigrations();
   const context = proof.context as PairingCookieProofContextLike;
   const user = await context.internalAdapter.createUser({

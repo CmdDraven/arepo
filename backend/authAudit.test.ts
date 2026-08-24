@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   AUTH_AUDIT_NETWORK_EXPOSURE_SAFE,
   appendAuthAuditEvent,
@@ -120,8 +120,8 @@ test("parsing mixed valid and corrupt JSONL returns valid events and recoverable
   assert.equal(parsed.errors[0]?.lineNumber, 2);
 });
 
-test("append helper appends without overwriting existing events", async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-audit-"));
+test("append helper appends without overwriting existing events", async (t) => {
+  const dir = await makeTestTempDir(t, "arepo-audit-");
   const file = path.join(dir, "auth", "audit", "events.jsonl");
   const secondEvent: AuthAuditEvent = { ...baseEvent, eventId: "evt-2", kind: "session.used" };
 
@@ -132,8 +132,8 @@ test("append helper appends without overwriting existing events", async () => {
   assert.equal(raw.trim().split("\n").length, 2);
 });
 
-test("read helper returns events in append order", async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-audit-"));
+test("read helper returns events in append order", async (t) => {
+  const dir = await makeTestTempDir(t, "arepo-audit-");
   const file = path.join(dir, "auth", "audit", "events.jsonl");
   const secondEvent: AuthAuditEvent = { ...baseEvent, eventId: "evt-2", kind: "token.used" };
 
@@ -167,7 +167,7 @@ test("audit helpers do not claim network exposure is safe", () => {
   assert.equal(AUTH_AUDIT_NETWORK_EXPOSURE_SAFE, false);
 });
 
-test("request handling does not import auth audit helpers", async () => {
+test("request handling does not import auth audit helpers", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   assert.equal(serverSource.includes("authAudit"), false);
 });

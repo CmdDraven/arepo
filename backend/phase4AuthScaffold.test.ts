@@ -1,8 +1,9 @@
 import test from "node:test";
+import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { routeRequest, type RequestLike } from "./server.js";
 import {
   planProtectedRequestPipeline,
@@ -70,22 +71,23 @@ function networkExposureValues(value: unknown): boolean[] {
   return values;
 }
 
-async function configuredWorkspace(auth?: {
-  mode: "disabled" | "protected";
-}): Promise<{ cwd: string; appDataDir: string }> {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-phase4-scaffold-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-phase4-data-"));
+async function configuredWorkspace(
+  t: TestContext,
+  auth?: { mode: "disabled" | "protected" },
+): Promise<{ cwd: string; appDataDir: string }> {
+  const cwd = await makeTestTempDir(t, "arepo-phase4-scaffold-");
+  const appDataDir = await makeTestTempDir(t, "arepo-phase4-data-");
   await writeConfig(cwd, appDataDir, auth);
   return { cwd, appDataDir };
 }
 
-test("protected request enforcement is mounted in active handlers", async () => {
+test("protected request enforcement is mounted in active handlers", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   assert.equal(serverSource.includes("enforceProtectedMode"), true);
 });
 
-test("disabled auth mode still permits current local V1 endpoint behavior", async () => {
-  const { cwd } = await configuredWorkspace({ mode: "disabled" });
+test("disabled auth mode still permits current local V1 endpoint behavior", async (t) => {
+  const { cwd } = await configuredWorkspace(t, { mode: "disabled" });
   const response = await routeRequest(
     request("GET", "/api/vaults", undefined, {
       authorization: "Bearer invalid-disabled-mode-token",
@@ -98,8 +100,8 @@ test("disabled auth mode still permits current local V1 endpoint behavior", asyn
   assert.deepEqual((response.body as { vaults: unknown[] }).vaults, []);
 });
 
-test("protected mode with incomplete readiness fails closed", async () => {
-  const { cwd } = await configuredWorkspace({ mode: "protected" });
+test("protected mode with incomplete readiness fails closed", async (t) => {
+  const { cwd } = await configuredWorkspace(t, { mode: "protected" });
   const secret = "invalid-protected-mode-token";
 
   const vaults = await routeRequest(
@@ -137,8 +139,8 @@ test("protected mode with incomplete readiness fails closed", async () => {
   );
 });
 
-test("non-local bind remains unsafe without enforcement", async () => {
-  const { cwd } = await configuredWorkspace({ mode: "disabled" });
+test("non-local bind remains unsafe without enforcement", async (t) => {
+  const { cwd } = await configuredWorkspace(t, { mode: "disabled" });
   const originalHost = process.env.AREPO_HOST;
   process.env.AREPO_HOST = "0.0.0.0";
   try {
@@ -172,8 +174,8 @@ test("non-local bind remains unsafe without enforcement", async () => {
   }
 });
 
-test("unmounted protected request pipeline remains non-enforcing and fail-closed in isolation", async () => {
-  const { appDataDir } = await configuredWorkspace({ mode: "disabled" });
+test("unmounted protected request pipeline remains non-enforcing and fail-closed in isolation", async (t) => {
+  const { appDataDir } = await configuredWorkspace(t, { mode: "disabled" });
   const result = await planProtectedRequestPipeline({
     appDataDir,
     request: {

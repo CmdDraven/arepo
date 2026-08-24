@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { betterAuth } from "better-auth";
 
@@ -117,14 +116,12 @@ export type BetterAuthProofContext = {
 
 const baseUrl = "http://127.0.0.1:8734";
 
-export async function createBetterAuthAppDataProofContext(
-  options: {
-    appDataDir?: string;
-    emailAndPasswordEnabled?: boolean;
-    plugins?: Parameters<typeof betterAuth>[0]["plugins"];
-  } = {},
-): Promise<BetterAuthProofContext> {
-  const appDataDir = options.appDataDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), "arepo-ba-")));
+export async function createBetterAuthAppDataProofContext(options: {
+  appDataDir: string;
+  emailAndPasswordEnabled?: boolean;
+  plugins?: Parameters<typeof betterAuth>[0]["plugins"];
+}): Promise<BetterAuthProofContext> {
+  const { appDataDir } = options;
   const authDir = path.join(appDataDir, "auth");
   await fs.mkdir(authDir, { recursive: true });
   const databasePath = path.join(authDir, "better-auth.sqlite");
@@ -173,8 +170,10 @@ export async function createBetterAuthAppDataProofContext(
   };
 }
 
-export async function runIsolatedBetterAuthAppDataStoreProof(): Promise<BetterAuthAppDataStoreProofResult> {
-  const first = await createBetterAuthAppDataProofContext();
+export async function runIsolatedBetterAuthAppDataStoreProof(
+  appDataDir: string,
+): Promise<BetterAuthAppDataStoreProofResult> {
+  const first = await createBetterAuthAppDataProofContext({ appDataDir });
   await first.context.runMigrations();
   const tableNames = sqliteStringColumn(
     first.database,

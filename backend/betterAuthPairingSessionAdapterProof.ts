@@ -82,8 +82,10 @@ export type BetterAuthPairingSessionAdapterProofResult = {
 
 const baseUrl = "http://127.0.0.1:8734";
 
-export async function runIsolatedBetterAuthPairingSessionAdapterProof(): Promise<BetterAuthPairingSessionAdapterProofResult> {
-  const proof = await createBetterAuthAppDataProofContext();
+export async function runIsolatedBetterAuthPairingSessionAdapterProof(
+  appDataDir: string,
+): Promise<BetterAuthPairingSessionAdapterProofResult> {
+  const proof = await createBetterAuthAppDataProofContext({ appDataDir });
   await proof.context.runMigrations();
   const user = await proof.context.internalAdapter.createUser({
     email: "arepo-pairing-subject@example.invalid",

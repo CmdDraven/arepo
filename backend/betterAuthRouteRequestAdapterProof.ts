@@ -130,8 +130,13 @@ type AdaptedRequest = {
 const baseUrl = "http://127.0.0.1:8734";
 const sessionCookieName = "arepo_session";
 
-export async function runIsolatedBetterAuthRouteRequestAdapterProof(): Promise<BetterAuthRouteRequestAdapterProofResult> {
-  const proof = await createBetterAuthAppDataProofContext({ emailAndPasswordEnabled: true });
+export async function runIsolatedBetterAuthRouteRequestAdapterProof(
+  appDataDir: string,
+): Promise<BetterAuthRouteRequestAdapterProofResult> {
+  const proof = await createBetterAuthAppDataProofContext({
+    appDataDir,
+    emailAndPasswordEnabled: true,
+  });
   await proof.context.runMigrations();
 
   const signUp = await callBetterAuthRoute(proof.auth.handler, {

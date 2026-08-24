@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { readAuthAuditEvents, type AuthAuditEvent } from "./authAudit.js";
 import {
   CREDENTIAL_VERIFICATION_AUDIT_NETWORK_EXPOSURE_SAFE,
@@ -206,11 +206,8 @@ test("rejected session result produces rejected auth audit event with stable rea
   assert.equal(eventJson(event).includes(wrongSessionSecret), false);
 });
 
-test("audit write appends JSONL without overwriting existing audit events", async () => {
-  const auditFile = path.join(
-    await fs.mkdtemp(path.join(os.tmpdir(), "arepo-audit-")),
-    "events.jsonl",
-  );
+test("audit write appends JSONL without overwriting existing audit events", async (t) => {
+  const auditFile = path.join(await makeTestTempDir(t, "arepo-audit-"), "events.jsonl");
   const first = verifySuppliedTokenCredential({
     tokenMaterial,
     stores: stores(),
@@ -279,11 +276,8 @@ test("audit event never includes supplied secret material from verification inpu
   assert.equal(serialized.includes("local-test"), true);
 });
 
-test("corrupt existing JSONL lines do not prevent appending a new audit event", async () => {
-  const auditFile = path.join(
-    await fs.mkdtemp(path.join(os.tmpdir(), "arepo-audit-")),
-    "events.jsonl",
-  );
+test("corrupt existing JSONL lines do not prevent appending a new audit event", async (t) => {
+  const auditFile = path.join(await makeTestTempDir(t, "arepo-audit-"), "events.jsonl");
   await fs.writeFile(auditFile, "{bad json\n", "utf8");
   const result = verifySuppliedTokenCredential({
     tokenMaterial,
@@ -305,8 +299,8 @@ test("corrupt existing JSONL lines do not prevent appending a new audit event", 
   );
 });
 
-test("audit helper returns clear write errors for unavailable app-data paths", async () => {
-  const auditDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-audit-dir-"));
+test("audit helper returns clear write errors for unavailable app-data paths", async (t) => {
+  const auditDir = await makeTestTempDir(t, "arepo-audit-dir-");
   const result = verifySuppliedTokenCredential({
     tokenMaterial,
     stores: stores(),
@@ -326,7 +320,7 @@ test("audit integration helpers do not claim network exposure is safe", () => {
   assert.equal(CREDENTIAL_VERIFICATION_AUDIT_NETWORK_EXPOSURE_SAFE, false);
 });
 
-test("request handling does not import credential verification audit helpers", async () => {
+test("request handling does not import credential verification audit helpers", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   const nodeServiceSource = await fs.readFile(
     path.join(process.cwd(), "backend", "nodeService.ts"),

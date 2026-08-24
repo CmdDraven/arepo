@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { assessProtectedModeStartup } from "./protectedModeStartup.js";
 import {
   writeBrowserSessionStore,
@@ -15,8 +15,8 @@ import { nonLocalBindWarning } from "./nodeRuntime.js";
 
 const localRuntime = { nonLocalWarning: undefined };
 
-test("disabled mode tolerates missing auth stores", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-startup-"));
+test("disabled mode tolerates missing auth stores", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-startup-");
   const assessment = await assessProtectedModeStartup({
     auth: { mode: "disabled" },
     appDataDir,
@@ -34,8 +34,8 @@ test("disabled mode tolerates missing auth stores", async () => {
   assert.equal(assessment.networkExposureSafe, false);
 });
 
-test("requested protected mode reports missing required stores as unavailable", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-startup-"));
+test("requested protected mode reports missing required stores as unavailable", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-startup-");
   const assessment = await assessProtectedModeStartup({
     auth: { mode: "disabled", requestedMode: "protected" },
     appDataDir,
@@ -53,8 +53,8 @@ test("requested protected mode reports missing required stores as unavailable", 
   assert.equal(assessment.networkExposureSafe, false);
 });
 
-test("requested protected mode reports corrupt stores with quarantine planning metadata", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-startup-"));
+test("requested protected mode reports corrupt stores with quarantine planning metadata", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-startup-");
   await writeCredentialStore(appDataDir, { credentials: [] });
   await writeTokenVerifierStore(appDataDir, { tokenVerifiers: [] });
   await writeBrowserSessionStore(appDataDir, { sessions: [] });
@@ -76,8 +76,8 @@ test("requested protected mode reports corrupt stores with quarantine planning m
   assert.equal(assessment.corruptStores[0]?.quarantineCandidate, `${paths.credentials}.corrupt`);
 });
 
-test("requested protected mode reports unsafe auth paths", async () => {
-  const vaultRoot = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+test("requested protected mode reports unsafe auth paths", async (t) => {
+  const vaultRoot = await makeTestTempDir(t, "arepo-vault-");
   const assessment = await assessProtectedModeStartup({
     auth: { mode: "disabled", requestedMode: "protected" },
     appDataDir: path.join(vaultRoot, ".arepo-data"),
@@ -90,8 +90,8 @@ test("requested protected mode reports unsafe auth paths", async () => {
   assert.match(assessment.unsafeStorePaths[0] ?? "", /must not be placed inside/);
 });
 
-test("valid empty stores satisfy requested protected-mode startup availability", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-startup-"));
+test("valid empty stores satisfy requested protected-mode startup availability", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-startup-");
   await writeCredentialStore(appDataDir, { credentials: [] });
   await writeTokenVerifierStore(appDataDir, { tokenVerifiers: [] });
   await writeBrowserSessionStore(appDataDir, { sessions: [] });
@@ -111,8 +111,8 @@ test("valid empty stores satisfy requested protected-mode startup availability",
   assert.equal(assessment.credentialVerificationActive, false);
 });
 
-test("valid empty stores activate protected-mode startup gate when mode is protected", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-startup-"));
+test("valid empty stores activate protected-mode startup gate when mode is protected", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-startup-");
   await writeCredentialStore(appDataDir, { credentials: [] });
   await writeTokenVerifierStore(appDataDir, { tokenVerifiers: [] });
   await writeBrowserSessionStore(appDataDir, { sessions: [] });
@@ -136,8 +136,8 @@ test("valid empty stores activate protected-mode startup gate when mode is prote
   assert.equal(assessment.networkExposureSafe, false);
 });
 
-test("non-local bind with disabled auth remains unsafe", async () => {
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-startup-"));
+test("non-local bind with disabled auth remains unsafe", async (t) => {
+  const appDataDir = await makeTestTempDir(t, "arepo-startup-");
   const assessment = await assessProtectedModeStartup({
     auth: { mode: "disabled" },
     appDataDir,
@@ -152,7 +152,7 @@ test("non-local bind with disabled auth remains unsafe", async () => {
   assert.equal(assessment.networkExposureSafe, false);
 });
 
-test("active request handling mounts protected-mode enforcement", async () => {
+test("active request handling mounts protected-mode enforcement", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   assert.equal(serverSource.includes("enforceProtectedMode"), true);
 });

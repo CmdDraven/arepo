@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   classifyFutureArepoCsrfRoutes,
   runIsolatedBetterAuthCsrfOwnershipProof,
@@ -31,8 +32,10 @@ function assertNoSecretMaterial(value: unknown): void {
   }
 }
 
-test("Better Auth CSRF ownership proof is isolated and keeps live auth inactive", async () => {
-  const proof = await runIsolatedBetterAuthCsrfOwnershipProof();
+test("Better Auth CSRF ownership proof is isolated and keeps live auth inactive", async (t) => {
+  const proof = await runIsolatedBetterAuthCsrfOwnershipProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.status, "isolated-csrf-ownership-proof");
   assert.equal(proof.packageName, "better-auth");
@@ -48,8 +51,10 @@ test("Better Auth CSRF ownership proof is isolated and keeps live auth inactive"
   assertNoSecretMaterial(proof);
 });
 
-test("Better Auth own endpoint origin behavior is exercised without claiming arbitrary route coverage", async () => {
-  const proof = await runIsolatedBetterAuthCsrfOwnershipProof();
+test("Better Auth own endpoint origin behavior is exercised without claiming arbitrary route coverage", async (t) => {
+  const proof = await runIsolatedBetterAuthCsrfOwnershipProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.betterAuthEndpointProof.signOutWithoutOriginStatus, 403);
   assert.equal(proof.betterAuthEndpointProof.signOutWithoutOriginRejected, true);
@@ -73,8 +78,10 @@ test("Better Auth own endpoint origin behavior is exercised without claiming arb
   ]);
 });
 
-test("CSRF ownership proof classifies unsafe and safe AREPO route categories", async () => {
-  const proof = await runIsolatedBetterAuthCsrfOwnershipProof();
+test("CSRF ownership proof classifies unsafe and safe AREPO route categories", async (t) => {
+  const proof = await runIsolatedBetterAuthCsrfOwnershipProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
   const classifications = proof.routePolicy.classifications;
   const directClassifications = classifyFutureArepoCsrfRoutes();
 
@@ -120,8 +127,10 @@ test("CSRF ownership proof classifies unsafe and safe AREPO route categories", a
   );
 });
 
-test("CSRF ownership proof records Better Auth external CSRF limits and AREPO primitive compatibility", async () => {
-  const proof = await runIsolatedBetterAuthCsrfOwnershipProof();
+test("CSRF ownership proof records Better Auth external CSRF limits and AREPO primitive compatibility", async (t) => {
+  const proof = await runIsolatedBetterAuthCsrfOwnershipProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.externalCsrfApiProof.supportedTokenIssueApiFound, false);
   assert.equal(proof.externalCsrfApiProof.supportedTokenVerifyApiFound, false);
@@ -142,8 +151,10 @@ test("CSRF ownership proof records Better Auth external CSRF limits and AREPO pr
   assertNoSecretMaterial(proof.arepoCsrfPrimitiveCompatibility);
 });
 
-test("CSRF failure outputs are sanitized and use stable reason codes", async () => {
-  const proof = await runIsolatedBetterAuthCsrfOwnershipProof();
+test("CSRF failure outputs are sanitized and use stable reason codes", async (t) => {
+  const proof = await runIsolatedBetterAuthCsrfOwnershipProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
   const reasons = sanitizedCsrfFailureReasons();
 
   assert.deepEqual(proof.failurePolicy.sanitizedReasonCodes, reasons);
@@ -166,8 +177,10 @@ test("CSRF failure outputs are sanitized and use stable reason codes", async () 
   assertNoSecretMaterial(reasons);
 });
 
-test("CSRF ownership findings state AREPO ownership for arbitrary unsafe API routes", async () => {
-  const proof = await runIsolatedBetterAuthCsrfOwnershipProof();
+test("CSRF ownership findings state AREPO ownership for arbitrary unsafe API routes", async (t) => {
+  const proof = await runIsolatedBetterAuthCsrfOwnershipProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(
     proof.findings.find((finding) => finding.id === "better-auth-own-endpoint-origin-protection")
@@ -201,7 +214,7 @@ test("CSRF ownership findings state AREPO ownership for arbitrary unsafe API rou
   );
 });
 
-test("Better Auth CSRF ownership proof is isolated from live server authorization and frontend paths", async () => {
+test("Better Auth CSRF ownership proof is isolated from live server authorization and frontend paths", async (t) => {
   const sourceFiles = [
     "backend/server.ts",
     "backend/protectedModeEnforcement.ts",

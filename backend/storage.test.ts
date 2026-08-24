@@ -1,16 +1,17 @@
 import test from "node:test";
+import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { buildVaultIndex } from "./vaultFs.js";
 import { getVaultStorageSummary } from "./storage.js";
 import { writeMachineIndex } from "./indexCache.js";
 import type { VaultInfo } from "./types.js";
 
-async function makeVault(): Promise<{ cwd: string; vault: VaultInfo }> {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-storage-cwd-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-storage-vault-"));
+async function makeVault(t: TestContext): Promise<{ cwd: string; vault: VaultInfo }> {
+  const cwd = await makeTestTempDir(t, "arepo-storage-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-storage-vault-");
   return {
     cwd,
     vault: {
@@ -33,8 +34,8 @@ async function writeFile(root: string, rel: string, content: string | Buffer): P
   await fs.writeFile(file, content);
 }
 
-test("storage summary counts normal nested files", async () => {
-  const { cwd, vault } = await makeVault();
+test("storage summary counts normal nested files", async (t) => {
+  const { cwd, vault } = await makeVault(t);
   await writeFile(vault.rootPath, "a.md", "12345");
   await writeFile(vault.rootPath, "nested/b.txt", "123");
   await writeFile(vault.rootPath, "assets/image.bin", Buffer.alloc(7));
@@ -49,8 +50,8 @@ test("storage summary counts normal nested files", async () => {
   assert.equal(summary.attachments.bytes, 7);
 });
 
-test("storage summary classifies Markdown/text separately from attachments", async () => {
-  const { cwd, vault } = await makeVault();
+test("storage summary classifies Markdown/text separately from attachments", async (t) => {
+  const { cwd, vault } = await makeVault(t);
   await writeFile(vault.rootPath, "note.markdown", "abcd");
   await writeFile(vault.rootPath, "readme.TXT", "xy");
   await writeFile(vault.rootPath, "pdfs/file.pdf", Buffer.alloc(6));
@@ -64,8 +65,8 @@ test("storage summary classifies Markdown/text separately from attachments", asy
 });
 
 test("storage summary skips symlinks", async (t) => {
-  const { cwd, vault } = await makeVault();
-  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-storage-outside-"));
+  const { cwd, vault } = await makeVault(t);
+  const outside = await makeTestTempDir(t, "arepo-storage-outside-");
   await writeFile(vault.rootPath, "note.md", "inside");
   await fs.writeFile(path.join(outside, "outside.md"), "outside-content");
   try {
@@ -86,8 +87,8 @@ test("storage summary skips symlinks", async (t) => {
   assert.equal(summary.markdownText.fileCount, 1);
 });
 
-test("storage summary reports zero for missing index cache", async () => {
-  const { cwd, vault } = await makeVault();
+test("storage summary reports zero for missing index cache", async (t) => {
+  const { cwd, vault } = await makeVault(t);
   await writeFile(vault.rootPath, "note.md", "# Note\n");
 
   const summary = await getVaultStorageSummary(vault, cwd);
@@ -98,8 +99,8 @@ test("storage summary reports zero for missing index cache", async () => {
   assert.deepEqual(summary.appDataCache.files, []);
 });
 
-test("storage summary includes generated machine index cache bytes", async () => {
-  const { cwd, vault } = await makeVault();
+test("storage summary includes generated machine index cache bytes", async (t) => {
+  const { cwd, vault } = await makeVault(t);
   await writeFile(vault.rootPath, "note.md", "# Note\n");
   await writeMachineIndex(vault, await buildVaultIndex(vault), cwd);
 

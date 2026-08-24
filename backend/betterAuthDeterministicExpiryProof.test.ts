@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { runIsolatedBetterAuthDeterministicExpiryProof } from "./betterAuthDeterministicExpiryProof.js";
 
 const secretSamples = [
@@ -30,8 +31,10 @@ function assertNoSecretMaterial(value: unknown): void {
   }
 }
 
-test("Better Auth deterministic expiry proof stays isolated and inactive", async () => {
-  const proof = await runIsolatedBetterAuthDeterministicExpiryProof();
+test("Better Auth deterministic expiry proof stays isolated and inactive", async (t) => {
+  const proof = await runIsolatedBetterAuthDeterministicExpiryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.status, "isolated-deterministic-expiry-proof");
   assert.equal(proof.packageName, "better-auth");
@@ -47,8 +50,10 @@ test("Better Auth deterministic expiry proof stays isolated and inactive", async
   assertNoSecretMaterial(proof);
 });
 
-test("Better Auth deterministic expiry proof records bounded lifetime and no slow waits", async () => {
-  const proof = await runIsolatedBetterAuthDeterministicExpiryProof();
+test("Better Auth deterministic expiry proof records bounded lifetime and no slow waits", async (t) => {
+  const proof = await runIsolatedBetterAuthDeterministicExpiryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.expiryConfig.boundedSessionLifetimeConfigured, true);
   assert.equal(proof.expiryConfig.expirySeconds, 60 * 30);
@@ -63,8 +68,10 @@ test("Better Auth deterministic expiry proof records bounded lifetime and no slo
   assert.equal(proof.proofMethod.appDataBoundaryChecked, true);
 });
 
-test("Better Auth deterministic expiry proof covers app-data session expiry filtering", async () => {
-  const proof = await runIsolatedBetterAuthDeterministicExpiryProof();
+test("Better Auth deterministic expiry proof covers app-data session expiry filtering", async (t) => {
+  const proof = await runIsolatedBetterAuthDeterministicExpiryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.appDataBoundary.expiryMetadataPresent, true);
   assert.equal(proof.appDataBoundary.expiredSessionExcludedFromActiveLookup, true);
@@ -72,8 +79,10 @@ test("Better Auth deterministic expiry proof covers app-data session expiry filt
   assert.equal(proof.appDataBoundary.safeExpiryClassification, "expired");
 });
 
-test("Better Auth deterministic expiry proof covers signed-cookie get-session rejection", async () => {
-  const proof = await runIsolatedBetterAuthDeterministicExpiryProof();
+test("Better Auth deterministic expiry proof covers signed-cookie get-session rejection", async (t) => {
+  const proof = await runIsolatedBetterAuthDeterministicExpiryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.requestResponseBoundary.signedCookieIssued, true);
   assert.equal(proof.requestResponseBoundary.sessionLookupBeforeExpiryWorked, true);
@@ -101,16 +110,20 @@ test("Better Auth deterministic expiry proof covers signed-cookie get-session re
   assert.equal(proof.wrappedResponses.getSessionAfterExpiry.body.sessionPresent, null);
 });
 
-test("Better Auth deterministic expiry proof keeps logout revoke behavior distinct", async () => {
-  const proof = await runIsolatedBetterAuthDeterministicExpiryProof();
+test("Better Auth deterministic expiry proof keeps logout revoke behavior distinct", async (t) => {
+  const proof = await runIsolatedBetterAuthDeterministicExpiryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.revokeBoundary.signOutStillClearsCookie, true);
   assert.equal(proof.revokeBoundary.signOutDistinctFromExpiry, true);
   assert.equal(proof.wrappedResponses.signOutControl.body.success, true);
 });
 
-test("Better Auth deterministic expiry proof records cleanup and backup restore policy", async () => {
-  const proof = await runIsolatedBetterAuthDeterministicExpiryProof();
+test("Better Auth deterministic expiry proof records cleanup and backup restore policy", async (t) => {
+  const proof = await runIsolatedBetterAuthDeterministicExpiryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.cleanupPolicy.betterAuthDeletesExpiredSessionOnGetSession, true);
   assert.equal(proof.cleanupPolicy.explicitPruningStillRecommended, true);
@@ -120,8 +133,10 @@ test("Better Auth deterministic expiry proof records cleanup and backup restore 
   assert.equal(proof.posture.futureSelfHost, "requires-current-auth-db-and-backup-restore-policy");
 });
 
-test("Better Auth deterministic expiry proof findings are explicit", async () => {
-  const proof = await runIsolatedBetterAuthDeterministicExpiryProof();
+test("Better Auth deterministic expiry proof findings are explicit", async (t) => {
+  const proof = await runIsolatedBetterAuthDeterministicExpiryProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
   const findings = new Map(proof.findings.map((finding) => [finding.id, finding]));
 
   assert.equal(findings.get("bounded-session-lifetime-configured")?.status, "passed");
@@ -137,7 +152,7 @@ test("Better Auth deterministic expiry proof findings are explicit", async () =>
   assert.equal(findings.get("not-live-authorization")?.status, "passed");
 });
 
-test("Better Auth deterministic expiry proof is isolated from live server authorization and frontend paths", async () => {
+test("Better Auth deterministic expiry proof is isolated from live server authorization and frontend paths", async (t) => {
   const sourceFiles = [
     "backend/server.ts",
     "backend/protectedModeEnforcement.ts",

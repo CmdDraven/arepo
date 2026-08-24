@@ -1,15 +1,16 @@
 import test from "node:test";
+import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { buildVaultIndex } from "./vaultFs.js";
 import { machineIndexPath, rebuildMachineIndex, writeMachineIndex } from "./indexCache.js";
 import type { VaultInfo } from "./types.js";
 
-async function makeVault(): Promise<{ cwd: string; vault: VaultInfo }> {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-index-cache-cwd-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-index-cache-vault-"));
+async function makeVault(t: TestContext): Promise<{ cwd: string; vault: VaultInfo }> {
+  const cwd = await makeTestTempDir(t, "arepo-index-cache-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-index-cache-vault-");
   await writeFile(rootPath, "note.md", "# Note\n\nbody-only-cache-secret\n\n[[other]]\n");
   await writeFile(rootPath, "other.md", "# Other\n");
   await writeFile(rootPath, "plain.txt", "plain-text-cache-secret [[not-indexed]]\n");
@@ -35,8 +36,8 @@ async function writeFile(root: string, rel: string, content: string): Promise<vo
   await fs.writeFile(file, content, "utf8");
 }
 
-test("machine index cache writes tolerate concurrent writes to the same vault", async () => {
-  const { cwd, vault } = await makeVault();
+test("machine index cache writes tolerate concurrent writes to the same vault", async (t) => {
+  const { cwd, vault } = await makeVault(t);
   const data = await buildVaultIndex(vault);
 
   await Promise.all(Array.from({ length: 40 }, () => writeMachineIndex(vault, data, cwd)));
@@ -62,8 +63,8 @@ test("machine index cache writes tolerate concurrent writes to the same vault", 
   assert.equal(cacheDirFiles.filter((file) => file.endsWith(".tmp")).length, 0);
 });
 
-test("concurrent machine index rebuilds do not leave a broken cache file", async () => {
-  const { cwd, vault } = await makeVault();
+test("concurrent machine index rebuilds do not leave a broken cache file", async (t) => {
+  const { cwd, vault } = await makeVault(t);
 
   const results = await Promise.all(
     Array.from({ length: 20 }, () => rebuildMachineIndex(vault, cwd)),

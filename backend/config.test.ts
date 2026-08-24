@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { loadConfig, resolveAppDataDir } from "./config.js";
 
 async function writeConfig(cwd: string, config: unknown): Promise<void> {
@@ -14,15 +14,15 @@ async function writeConfig(cwd: string, config: unknown): Promise<void> {
   );
 }
 
-test("config validation rejects parse errors clearly", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("config validation rejects parse errors clearly", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, "{bad json");
   await assert.rejects(() => loadConfig(cwd), /Invalid AREPO config JSON/);
 });
 
-test("config validation rejects duplicate vault ids and missing roots", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("config validation rejects duplicate vault ids and missing roots", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   const permissions = {
     readIndex: true,
     readContent: true,
@@ -62,9 +62,9 @@ test("config validation rejects duplicate vault ids and missing roots", async ()
   await assert.rejects(() => loadConfig(cwd), /rootPath is not accessible/);
 });
 
-test("config validation rejects unsafe permission shapes", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("config validation rejects unsafe permission shapes", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -89,9 +89,9 @@ test("config validation rejects unsafe permission shapes", async () => {
   await assert.rejects(() => loadConfig(cwd), /must allow readContent/);
 });
 
-test("vaultIndexScope defaults to unlimited Markdown depth when omitted", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("vaultIndexScope defaults to unlimited Markdown depth when omitted", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -123,9 +123,9 @@ test("vaultIndexScope defaults to unlimited Markdown depth when omitted", async 
   });
 });
 
-test("config validation rejects invalid vaultIndexScope values", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("config validation rejects invalid vaultIndexScope values", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   const baseVault = {
     id: "bad-scope",
     displayName: "Bad Scope",
@@ -180,8 +180,8 @@ test("config validation rejects invalid vaultIndexScope values", async () => {
   await assert.rejects(() => loadConfig(cwd), /minDepth must be an integer >= 0/);
 });
 
-test("config validation rejects unsafe local node identity", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("config validation rejects unsafe local node identity", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local node",
@@ -205,8 +205,8 @@ test("config validation rejects unsafe local node identity", async () => {
   await assert.rejects(() => loadConfig(cwd), /node displayName must be a non-empty string/);
 });
 
-test("config validation rejects unsupported node modes", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("config validation rejects unsupported node modes", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -219,8 +219,8 @@ test("config validation rejects unsupported node modes", async () => {
   await assert.rejects(() => loadConfig(cwd), /only local node mode is supported in V1/);
 });
 
-test("auth config defaults to disabled when omitted", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("auth config defaults to disabled when omitted", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -235,8 +235,8 @@ test("auth config defaults to disabled when omitted", async () => {
   assert.deepEqual(config.auth, { mode: "disabled" });
 });
 
-test("disabled auth config remains the default compatibility mode", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("disabled auth config remains the default compatibility mode", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -254,8 +254,8 @@ test("disabled auth config remains the default compatibility mode", async () => 
   assert.deepEqual(config.auth, { mode: "disabled" });
 });
 
-test("auth dry-run request policy defaults off and can be enabled explicitly", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("auth dry-run request policy defaults off and can be enabled explicitly", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -277,8 +277,8 @@ test("auth dry-run request policy defaults off and can be enabled explicitly", a
   assert.equal(config.auth.dryRunAudit, true);
 });
 
-test("protected auth config is persisted as an operational mode request", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("protected auth config is persisted as an operational mode request", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -298,8 +298,8 @@ test("protected auth config is persisted as an operational mode request", async 
   assert.equal(config.auth.protectedModeUnavailableReason, undefined);
 });
 
-test("config validation rejects unsupported auth modes", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("config validation rejects unsupported auth modes", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -316,8 +316,8 @@ test("config validation rejects unsupported auth modes", async () => {
   await assert.rejects(() => loadConfig(cwd), /unsupported auth mode "token"/);
 });
 
-test("config validation rejects unsupported requested auth modes", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("config validation rejects unsupported requested auth modes", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -335,8 +335,8 @@ test("config validation rejects unsupported requested auth modes", async () => {
   await assert.rejects(() => loadConfig(cwd), /unsupported requested auth mode "session"/);
 });
 
-test("config validation rejects non-boolean auth dry-run request policy", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("config validation rejects non-boolean auth dry-run request policy", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -354,8 +354,8 @@ test("config validation rejects non-boolean auth dry-run request policy", async 
   await assert.rejects(() => loadConfig(cwd), /auth\.dryRunRequestPolicy must be boolean/);
 });
 
-test("config validation rejects non-boolean auth dry-run audit flag", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("config validation rejects non-boolean auth dry-run audit flag", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -373,8 +373,8 @@ test("config validation rejects non-boolean auth dry-run audit flag", async () =
   await assert.rejects(() => loadConfig(cwd), /auth\.dryRunAudit must be boolean/);
 });
 
-test("config validation rejects disabled requested mode when protected mode is active", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("config validation rejects disabled requested mode when protected mode is active", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   await writeConfig(cwd, {
     node: {
       nodeId: "local",
@@ -395,8 +395,8 @@ test("config validation rejects disabled requested mode when protected mode is a
   );
 });
 
-test("app data directory can be configured in local config", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-config-"));
+test("app data directory can be configured in local config", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
   const appDataDir = path.join(cwd, "app-data");
   await writeConfig(cwd, {
     node: {

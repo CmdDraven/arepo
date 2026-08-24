@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { planAuditRequirement } from "./auditRequirementPlanner.js";
 import { routeRequest, type RequestLike } from "./server.js";
 
@@ -216,15 +216,15 @@ test("planner output is sanitized and invariant flags remain false", () => {
   assert.equal(plan.networkExposureSafe, false);
 });
 
-test("audit requirement planner is not imported by active server handlers", async () => {
+test("audit requirement planner is not imported by active server handlers", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   assert.equal(serverSource.includes("auditRequirementPlanner"), false);
   assert.equal(serverSource.includes("planAuditRequirement"), false);
 });
 
-test("current V1 endpoint behavior does not write audit logs because of this planner", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-audit-plan-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-audit-plan-data-"));
+test("current V1 endpoint behavior does not write audit logs because of this planner", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-audit-plan-");
+  const appDataDir = await makeTestTempDir(t, "arepo-audit-plan-data-");
   await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
   await fs.writeFile(
     path.join(cwd, ".arepo", "config.json"),

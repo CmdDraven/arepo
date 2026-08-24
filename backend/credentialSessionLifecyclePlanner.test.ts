@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { planCredentialSessionLifecycle } from "./credentialSessionLifecyclePlanner.js";
 import { routeRequest, type RequestLike } from "./server.js";
 
@@ -159,15 +159,15 @@ test("planner output is sanitized and invariant flags remain false", () => {
   assert.equal(plan.networkExposureSafe, false);
 });
 
-test("credential session lifecycle planner is not imported by active server handlers", async () => {
+test("credential session lifecycle planner is not imported by active server handlers", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   assert.equal(serverSource.includes("credentialSessionLifecyclePlanner"), false);
   assert.equal(serverSource.includes("planCredentialSessionLifecycle"), false);
 });
 
-test("current V1 endpoint behavior is unchanged by lifecycle planning", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-lifecycle-plan-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-lifecycle-plan-data-"));
+test("current V1 endpoint behavior is unchanged by lifecycle planning", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-lifecycle-plan-");
+  const appDataDir = await makeTestTempDir(t, "arepo-lifecycle-plan-data-");
   await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
   await fs.writeFile(
     path.join(cwd, ".arepo", "config.json"),

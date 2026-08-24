@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   adaptBetterAuthRouteRequest,
   runIsolatedBetterAuthRouteRequestAdapterProof,
@@ -31,7 +32,7 @@ function assertNoSecretMaterial(value: unknown): void {
   }
 }
 
-test("routeRequest-style input converts to standard Request shape", async () => {
+test("routeRequest-style input converts to standard Request shape", async (t) => {
   const adapted = adaptBetterAuthRouteRequest({
     method: "POST",
     path: "/api/auth/sign-in/email",
@@ -56,8 +57,10 @@ test("routeRequest-style input converts to standard Request shape", async () => 
   });
 });
 
-test("Better Auth routeRequest adapter proof observes signed cookie issuance and clearing with redaction", async () => {
-  const proof = await runIsolatedBetterAuthRouteRequestAdapterProof();
+test("Better Auth routeRequest adapter proof observes signed cookie issuance and clearing with redaction", async (t) => {
+  const proof = await runIsolatedBetterAuthRouteRequestAdapterProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.status, "isolated-route-request-adapter-proof");
   assert.equal(proof.packageName, "better-auth");
@@ -98,8 +101,10 @@ test("Better Auth routeRequest adapter proof observes signed cookie issuance and
   assertNoSecretMaterial(proof);
 });
 
-test("Better Auth routeRequest adapter proof exercises session lookup revoke and raw-token rejection", async () => {
-  const proof = await runIsolatedBetterAuthRouteRequestAdapterProof();
+test("Better Auth routeRequest adapter proof exercises session lookup revoke and raw-token rejection", async (t) => {
+  const proof = await runIsolatedBetterAuthRouteRequestAdapterProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.sessionProof.sessionLookupThroughAcceptedCookieWorked, true);
   assert.equal(proof.sessionProof.revokeCurrentInvalidatedCookieSession, true);
@@ -182,7 +187,7 @@ test("response wrapper redacts set-cookie values and raw response bodies", () =>
   assert.equal(JSON.stringify(wrapped).includes("raw-secret-token"), false);
 });
 
-test("Better Auth routeRequest adapter proof is isolated from live server authorization and frontend paths", async () => {
+test("Better Auth routeRequest adapter proof is isolated from live server authorization and frontend paths", async (t) => {
   const sourceFiles = [
     "backend/server.ts",
     "backend/protectedModeEnforcement.ts",

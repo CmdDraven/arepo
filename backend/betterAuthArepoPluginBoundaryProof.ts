@@ -262,10 +262,13 @@ const otherSubjectEmail = "arepo-arepo-plugin-boundary-other@example.invalid";
 const primarySubjectRef = "local-operator-primary";
 const otherSubjectRef = "local-operator-other";
 
-export async function runIsolatedBetterAuthArepoPluginBoundaryProof(): Promise<BetterAuthArepoPluginBoundaryProofResult> {
+export async function runIsolatedBetterAuthArepoPluginBoundaryProof(
+  appDataDir: string,
+): Promise<BetterAuthArepoPluginBoundaryProofResult> {
   const routeContract = routeContractForPairingComplete();
   const instrumentation = createPluginInstrumentation();
   const proof = await createBetterAuthAppDataProofContext({
+    appDataDir,
     plugins: [createArepoBetterAuthPluginBoundaryProofPlugin({ routeContract, instrumentation })],
   });
   await proof.context.runMigrations();

@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { routeRequest, type RequestLike } from "./server.js";
 import { loadConfig } from "./config.js";
 import { readAuthAuditEvents } from "./authAudit.js";
@@ -169,16 +169,16 @@ function statusBody(response: Awaited<ReturnType<typeof routeRequest>>) {
   };
 }
 
-test("health endpoint returns local node info", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+test("health endpoint returns local node info", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
   const response = await routeRequest(request("GET", "/api/health"), cwd);
   assert.equal(response.status, 200);
   assert.equal((response.body as { ok: boolean }).ok, true);
 });
 
-test("auth policy plumbing does not reject existing routes or accept credentials", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("auth policy plumbing does not reject existing routes or accept credentials", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
 
   const response = await routeRequest(
@@ -198,11 +198,11 @@ test("auth policy plumbing does not reject existing routes or accept credentials
   assert.equal(body.requestPolicy.acceptsCredentials, false);
 });
 
-test("node status endpoint reports local runtime posture", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("node status endpoint reports local runtime posture", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
 
   const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
@@ -502,8 +502,8 @@ test("node status endpoint reports local runtime posture", async () => {
   assert.equal(status.capabilities.migrationSupport, false);
 });
 
-test("node status endpoint reports non-local bind warning", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+test("node status endpoint reports non-local bind warning", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
   const originalHost = process.env.AREPO_HOST;
   process.env.AREPO_HOST = "0.0.0.0";
   try {
@@ -535,9 +535,9 @@ test("node status endpoint reports non-local bind warning", async () => {
   }
 });
 
-test("node status endpoint returns reduced diagnostics when protected mode is not ready", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("node status endpoint returns reduced diagnostics when protected mode is not ready", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
 
   const response = await routeRequest(request("GET", "/api/node/status"), cwd);
@@ -560,9 +560,9 @@ test("node status endpoint returns reduced diagnostics when protected mode is no
   assert.equal("vaults" in status, false);
 });
 
-test("protected-mode startup assessment denies protected routes when readiness is incomplete", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("protected-mode startup assessment denies protected routes when readiness is incomplete", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
 
   const response = await routeRequest(request("GET", "/api/vaults"), cwd);
@@ -573,10 +573,10 @@ test("protected-mode startup assessment denies protected routes when readiness i
   assert.ok(body.reasonCodes.includes("auth-store-missing"));
 });
 
-test("protected mode enforces bearer credentials and vault route permissions", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("protected mode enforces bearer credentials and vault route permissions", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   const sourceBody = "# Protected\n\nsource-body-secret\n";
   const plainBody = "protected plain text — こんにちは\n";
   await fs.writeFile(path.join(rootPath, "note.md"), sourceBody, "utf8");
@@ -698,9 +698,9 @@ test("protected mode enforces bearer credentials and vault route permissions", a
   assert.equal(serializedAudit.includes("salt"), false);
 });
 
-test("protected mode returns reduced anonymous status and full authorized status", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("protected mode returns reduced anonymous status and full authorized status", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
   await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode"] });
 
@@ -912,10 +912,10 @@ test("protected mode returns reduced anonymous status and full authorized status
   assert.equal(full.protectedModeReadiness.networkExposureSafe, false);
 });
 
-test("protected mode fails closed for routes without a permission policy", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("protected mode fails closed for routes without a permission policy", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   const vault = testVault(rootPath);
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
   await writeProtectedAuthStores(appDataDir, {
@@ -936,9 +936,9 @@ test("protected mode fails closed for routes without a permission policy", async
   assert.ok(body.reasonCodes.includes("route-not-found"));
 });
 
-test("protected dry-run canary remains sanitized when anonymous dry-run is enabled", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("protected dry-run canary remains sanitized when anonymous dry-run is enabled", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir, {
     auth: { mode: "protected", dryRunRequestPolicy: true },
   });
@@ -963,9 +963,9 @@ test("protected dry-run canary remains sanitized when anonymous dry-run is enabl
   assert.equal((anonymous.body as { diagnosticOnly: boolean }).diagnosticOnly, true);
 });
 
-test("browser session and pairing auth stubs return sanitized unavailable responses", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("browser session and pairing auth stubs return sanitized unavailable responses", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   const secret = "raw-browser-session-or-pairing-secret";
   const routes = [
     ["POST", "/api/node/auth/session"],
@@ -1037,9 +1037,9 @@ test("browser session and pairing auth stubs return sanitized unavailable respon
   }
 });
 
-test("protected mode treats session-cookie auth as unsupported in this slice", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("protected mode treats session-cookie auth as unsupported in this slice", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
   await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode"] });
 
@@ -1056,10 +1056,10 @@ test("protected mode treats session-cookie auth as unsupported in this slice", a
   assert.equal(serialized.includes("salt"), false);
 });
 
-test("protected credential bootstrap is localhost-only and returns raw token once", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("protected credential bootstrap is localhost-only and returns raw token once", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   const vault = testVault(rootPath);
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
 
@@ -1148,9 +1148,9 @@ test("protected credential bootstrap is localhost-only and returns raw token onc
   assert.equal(JSON.stringify(status).includes(issued.data.bearerToken), false);
 });
 
-test("protected credential create revoke and audit responses remain sanitized", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("protected credential create revoke and audit responses remain sanitized", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
   await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode", "manageAuth"] });
 
@@ -1293,9 +1293,9 @@ test("protected credential create revoke and audit responses remain sanitized", 
   assert.equal(serializedAudit.includes("not-confirm"), false);
 });
 
-test("protected credential rotation revokes old token and returns replacement once", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("protected credential rotation revokes old token and returns replacement once", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
   await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageNode", "manageAuth"] });
 
@@ -1366,9 +1366,9 @@ test("protected credential rotation revokes old token and returns replacement on
   assert.equal(serializedList.includes(protectedBearerToken), false);
 });
 
-test("expired bearer credentials return sanitized 401 while active credentials keep readiness complete", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("expired bearer credentials return sanitized 401 while active credentials keep readiness complete", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" } });
 
   const expiredToken = "server-expired-token-material";
@@ -1454,8 +1454,8 @@ test("expired bearer credentials return sanitized 401 while active credentials k
   );
 });
 
-test("unsupported auth modes still fail closed clearly", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+test("unsupported auth modes still fail closed clearly", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
   await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
   await fs.writeFile(
     path.join(cwd, ".arepo", "config.json"),
@@ -1481,8 +1481,8 @@ test("unsupported auth modes still fail closed clearly", async () => {
   assert.match(body.error, /unsupported auth mode "token"/);
 });
 
-test("node status endpoint surfaces invalid config diagnostics", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+test("node status endpoint surfaces invalid config diagnostics", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
   await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
   await fs.writeFile(
     path.join(cwd, ".arepo", "config.json"),
@@ -1505,11 +1505,11 @@ test("node status endpoint surfaces invalid config diagnostics", async () => {
   assert.match(body.error, /nodeId must contain only/);
 });
 
-test("vault registration and file APIs stay inside configured root", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("vault registration and file APIs stay inside configured root", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
 
   const created = await routeRequest(
     request("POST", "/api/vaults", { rootPath, displayName: "Docs" }),
@@ -1531,10 +1531,10 @@ test("vault registration and file APIs stay inside configured root", async () =>
   assert.equal(traversal.status, 400);
 });
 
-test("file mutation endpoints reject plain-text targets", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("file mutation endpoints reject plain-text targets", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.writeFile(path.join(rootPath, "read-only.txt"), "unchanged\n", "utf8");
   const vault: VaultInfo = {
     ...testVault(rootPath, "plain-text-mutations"),
@@ -1580,9 +1580,9 @@ test("file mutation endpoints reject plain-text targets", async () => {
   await assert.rejects(() => fs.access(path.join(rootPath, "new.txt")));
 });
 
-test("vault index scope update persists config and rebuilds the machine index", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+test("vault index scope update persists config and rebuilds the machine index", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const rootPath = await makeTestTempDir(t, "arepo-vault-");
   await fs.mkdir(path.join(rootPath, "Notes", "Nestest"), { recursive: true });
   await fs.writeFile(path.join(rootPath, "README.md"), "# Readme\n", "utf8");
   await fs.writeFile(path.join(rootPath, "Notes", "note.md"), "# Note\n", "utf8");
@@ -1625,9 +1625,9 @@ test("vault index scope update persists config and rebuilds the machine index", 
   });
 });
 
-test("vault storage endpoint reports content and cache sizes", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+test("vault storage endpoint reports content and cache sizes", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const rootPath = await makeTestTempDir(t, "arepo-vault-");
   await fs.mkdir(path.join(rootPath, "assets"), { recursive: true });
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
   await fs.writeFile(path.join(rootPath, "assets", "file.bin"), Buffer.alloc(4));
@@ -1654,9 +1654,9 @@ test("vault storage endpoint reports content and cache sizes", async () => {
   assert.equal(storage.appDataCache.machineIndexBytes > 0, true);
 });
 
-test("removing a vault can keep generated data without deleting source files", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+test("removing a vault can keep generated data without deleting source files", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const rootPath = await makeTestTempDir(t, "arepo-vault-");
   const sourceFile = path.join(rootPath, "note.md");
   await fs.writeFile(sourceFile, "# Note\n", "utf8");
 
@@ -1684,9 +1684,9 @@ test("removing a vault can keep generated data without deleting source files", a
   assert.deepEqual(body.data.generatedData.diagnostics, []);
 });
 
-test("removing a vault can discard verified AREPO-generated data without deleting source files", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+test("removing a vault can discard verified AREPO-generated data without deleting source files", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const rootPath = await makeTestTempDir(t, "arepo-vault-");
   const sourceFile = path.join(rootPath, "note.md");
   await fs.writeFile(sourceFile, "# Note\n", "utf8");
 
@@ -1712,9 +1712,9 @@ test("removing a vault can discard verified AREPO-generated data without deletin
   assert.deepEqual(body.data.generatedData.diagnostics, []);
 });
 
-test("removing an inaccessible vault registration does not require the vault root to exist", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+test("removing an inaccessible vault registration does not require the vault root to exist", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const rootPath = await makeTestTempDir(t, "arepo-vault-");
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
 
   const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
@@ -1735,9 +1735,9 @@ test("removing an inaccessible vault registration does not require the vault roo
   assert.deepEqual((list.body as { vaults: VaultInfo[] }).vaults, []);
 });
 
-test("discard generated data refuses to delete unverified cache files", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+test("discard generated data refuses to delete unverified cache files", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const rootPath = await makeTestTempDir(t, "arepo-vault-");
   const sourceFile = path.join(rootPath, "note.md");
   await fs.writeFile(sourceFile, "# Note\n", "utf8");
 
@@ -1762,11 +1762,11 @@ test("discard generated data refuses to delete unverified cache files", async ()
   assert.match(body.data.generatedData.diagnostics[0] ?? "", /could not be verified/);
 });
 
-test("vault indexing works without a user-authored index.md", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("vault indexing works without a user-authored index.md", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.mkdir(path.join(rootPath, "Projects"));
   await fs.writeFile(
     path.join(rootPath, "Home.md"),
@@ -1807,9 +1807,9 @@ test("vault indexing works without a user-authored index.md", async () => {
   assert.ok(graph.nodes.some((node) => node.id === "missing:Missing Note"));
 });
 
-test("index structural filters expose read-only machine-index views", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("index structural filters expose read-only machine-index views", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.mkdir(path.join(rootPath, "A"), { recursive: true });
   await fs.mkdir(path.join(rootPath, "B"), { recursive: true });
   await fs.writeFile(
@@ -1877,9 +1877,9 @@ test("index structural filters expose read-only machine-index views", async () =
   );
 });
 
-test("index search endpoint finds structural machine-index fields", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("index search endpoint finds structural machine-index fields", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.mkdir(path.join(rootPath, "Topics"), { recursive: true });
   await fs.writeFile(
     path.join(rootPath, "Topics", "alpha-note.md"),
@@ -1959,9 +1959,9 @@ test("index search endpoint finds structural machine-index fields", async () => 
   assert.equal(empty.total, 0);
 });
 
-test("index inspect endpoint exposes file-level machine-index details", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+test("index inspect endpoint exposes file-level machine-index details", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.mkdir(path.join(rootPath, "Refs"), { recursive: true });
   await fs.writeFile(
     path.join(rootPath, "note.md"),
@@ -2023,11 +2023,11 @@ test("index inspect endpoint exposes file-level machine-index details", async ()
   assert.equal((orphanResponse.body as VaultInspectResponse).orphan, true);
 });
 
-test("user-authored index.md is indexed as a normal note when present", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("user-authored index.md is indexed as a normal note when present", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.writeFile(path.join(rootPath, "Home.md"), "# Home\n\n[[index]]\n", "utf8");
   await fs.writeFile(path.join(rootPath, "index.md"), "# Optional Homepage\n\n[[Home]]\n", "utf8");
 
@@ -2046,11 +2046,11 @@ test("user-authored index.md is indexed as a normal note when present", async ()
   assert.equal(index.backlinks["Home.md"]?.[0]?.fromPath, "index.md");
 });
 
-test("external file change is surfaced through vault status", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("external file change is surfaced through vault status", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
 
   const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
@@ -2071,11 +2071,11 @@ test("external file change is surfaced through vault status", async () => {
   assert.ok(body.changedPaths.includes("note.md"));
 });
 
-test("external additions and deletions are reflected in status and rebuilt index", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("external additions and deletions are reflected in status and rebuilt index", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.writeFile(path.join(rootPath, "a.md"), "# A\n", "utf8");
 
   const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
@@ -2103,11 +2103,11 @@ test("external additions and deletions are reflected in status and rebuilt index
   assert.ok(index.notes["b.md"]);
 });
 
-test("plain-text watcher changes stay visible without staling or rebuilding the Markdown index", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("plain-text watcher changes stay visible without staling or rebuilding the Markdown index", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
   await fs.writeFile(path.join(rootPath, "plain.txt"), "first\n", "utf8");
 
@@ -2139,11 +2139,11 @@ test("plain-text watcher changes stay visible without staling or rebuilding the 
   assert.equal((await fs.stat(cachePath)).mtimeMs, cacheStatBefore.mtimeMs);
 });
 
-test("mixed Markdown and plain-text watcher changes rebuild only the Markdown index", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+test("mixed Markdown and plain-text watcher changes rebuild only the Markdown index", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.writeFile(path.join(rootPath, "note.md"), "# Before\n", "utf8");
   await fs.writeFile(path.join(rootPath, "plain.txt"), "before\n", "utf8");
 
@@ -2166,11 +2166,11 @@ test("mixed Markdown and plain-text watcher changes rebuild only the Markdown in
 });
 
 test("watch/index status ignores symlink escapes", async (t) => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
-  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-outside-"));
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  const outside = await makeTestTempDir(t, "arepo-outside-");
   await fs.writeFile(path.join(outside, "escape.md"), "# Escape\n", "utf8");
   try {
     await fs.symlink(outside, path.join(rootPath, "linked"), "dir");
@@ -2196,8 +2196,8 @@ test("watch/index status ignores symlink escapes", async (t) => {
   assert.deepEqual((files.body as { files: { path: string }[] }).files, []);
 });
 
-test("cors allows default local dev origins, env extras, and rejects arbitrary origins", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+test("cors allows default local dev origins, env extras, and rejects arbitrary origins", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
   const localhost = await routeRequest(
     request("GET", "/api/health", undefined, { origin: "http://localhost:8733" }),
     cwd,

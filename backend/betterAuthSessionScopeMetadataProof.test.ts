@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   runIsolatedBetterAuthSessionScopeMetadataProof,
   sanitizeArepoBrowserDeviceLabel,
@@ -32,8 +33,10 @@ function assertNoSecretMaterial(value: unknown): void {
   }
 }
 
-test("Better Auth session-scope metadata proof stays isolated and inactive", async () => {
-  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof();
+test("Better Auth session-scope metadata proof stays isolated and inactive", async (t) => {
+  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.status, "isolated-session-scope-metadata-proof");
   assert.equal(proof.packageName, "better-auth");
@@ -49,8 +52,10 @@ test("Better Auth session-scope metadata proof stays isolated and inactive", asy
   assertNoSecretMaterial(proof);
 });
 
-test("Better Auth session-scope proof chooses hybrid metadata ownership", async () => {
-  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof();
+test("Better Auth session-scope proof chooses hybrid metadata ownership", async (t) => {
+  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(
     proof.chosenModel,
@@ -70,8 +75,10 @@ test("Better Auth session-scope proof chooses hybrid metadata ownership", async 
   ]);
 });
 
-test("Better Auth session-scope proof exposes only redacted stable references", async () => {
-  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof();
+test("Better Auth session-scope proof exposes only redacted stable references", async (t) => {
+  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.bridgeReferences.betterAuthUserIdReferenceAvailable, true);
   assert.equal(proof.bridgeReferences.betterAuthSessionIdReferenceAvailable, true);
@@ -83,8 +90,10 @@ test("Better Auth session-scope proof exposes only redacted stable references", 
   assert.equal(proof.lookupProof.sessionMetadataReadableWithoutSecrets, true);
 });
 
-test("Better Auth session-scope proof keeps authorization and permissions AREPO-owned", async () => {
-  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof();
+test("Better Auth session-scope proof keeps authorization and permissions AREPO-owned", async (t) => {
+  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.metadataPlacement.localOperatorIdentity, "arepo-owned-app-data-state");
   assert.equal(
@@ -99,8 +108,10 @@ test("Better Auth session-scope proof keeps authorization and permissions AREPO-
   assert.ok(proof.remainingBlockers.includes("arepo-sidecar-authorization-store-needed"));
 });
 
-test("Better Auth session-scope proof sanitizes device labels", async () => {
-  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof();
+test("Better Auth session-scope proof sanitizes device labels", async (t) => {
+  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
   const sanitized = sanitizeArepoBrowserDeviceLabel("  Operator\nLaptop\t ");
   const unsafe = sanitizeArepoBrowserDeviceLabel("Cookie: arepo_session=secret");
   const long = sanitizeArepoBrowserDeviceLabel("x".repeat(200));
@@ -118,8 +129,10 @@ test("Better Auth session-scope proof sanitizes device labels", async () => {
   assert.equal(proof.deviceLabelProof.secretShapedInputRejected, true);
 });
 
-test("Better Auth session-scope metadata survives DB reopen and revocation remains targeted", async () => {
-  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof();
+test("Better Auth session-scope metadata survives DB reopen and revocation remains targeted", async (t) => {
+  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.lookupProof.metadataSurvivesAppDataDbReopen, true);
   assert.equal(proof.lookupProof.safeSessionReferenceAvailableAfterReopen, true);
@@ -128,8 +141,10 @@ test("Better Auth session-scope metadata survives DB reopen and revocation remai
   assert.equal(proof.revocationProof.revokeAllPreservesOtherSubject, true);
 });
 
-test("Better Auth session-scope proof defines safe status and audit posture", async () => {
-  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof();
+test("Better Auth session-scope proof defines safe status and audit posture", async (t) => {
+  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
 
   assert.equal(proof.statusAuditProof.reducedAnonymousStatusShouldExposeMetadata, false);
   assert.equal(proof.statusAuditProof.fullAuthorizedStatusMayExposeRedactedReferences, true);
@@ -139,8 +154,10 @@ test("Better Auth session-scope proof defines safe status and audit posture", as
   assert.equal(proof.backupRestoreProof.restoredAuthDbRequiresArepoSidecarConsistencyCheck, true);
 });
 
-test("Better Auth session-scope proof findings are explicit", async () => {
-  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof();
+test("Better Auth session-scope proof findings are explicit", async (t) => {
+  const proof = await runIsolatedBetterAuthSessionScopeMetadataProof(
+    await makeTestTempDir(t, "arepo-ba-"),
+  );
   const findings = new Map(proof.findings.map((finding) => [finding.id, finding]));
 
   assert.equal(findings.get("stable-session-user-identifiers")?.status, "passed");
@@ -161,7 +178,7 @@ test("Better Auth session-scope proof findings are explicit", async () => {
   assert.equal(findings.get("not-live-authorization")?.status, "passed");
 });
 
-test("Better Auth session-scope proof is isolated from live server authorization and frontend paths", async () => {
+test("Better Auth session-scope proof is isolated from live server authorization and frontend paths", async (t) => {
   const sourceFiles = [
     "backend/server.ts",
     "backend/protectedModeEnforcement.ts",

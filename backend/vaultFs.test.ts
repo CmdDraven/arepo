@@ -1,8 +1,9 @@
 import test from "node:test";
+import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   atomicWriteFile,
   buildVaultIndex,
@@ -17,8 +18,8 @@ import { renderMarkdown } from "../src/lib/vault/render.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
 import type { VaultInfo } from "./types.js";
 
-async function makeVault(): Promise<VaultInfo> {
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
+async function makeVault(t: TestContext): Promise<VaultInfo> {
+  const rootPath = await makeTestTempDir(t, "arepo-vault-");
   return {
     id: "test",
     displayName: "Test",
@@ -32,8 +33,8 @@ async function makeVault(): Promise<VaultInfo> {
   };
 }
 
-test("reads and writes files inside the vault root", async () => {
-  const vault = await makeVault();
+test("reads and writes files inside the vault root", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(vault, "Notes/a.md", "# A\n");
   const before = await readVaultFile(vault, "Notes/a.md");
   assert.equal(before.content, "# A\n");
@@ -44,8 +45,8 @@ test("reads and writes files inside the vault root", async () => {
   assert.equal(written.hash, after.hash);
 });
 
-test("discovers and reads supported UTF-8 text files with explicit kinds", async () => {
-  const vault = await makeVault();
+test("discovers and reads supported UTF-8 text files with explicit kinds", async (t) => {
+  const vault = await makeVault(t);
   await fs.writeFile(
     path.join(vault.rootPath, "z.txt"),
     "Zażółć gęślą jaźń — こんにちは\n",
@@ -69,8 +70,8 @@ test("discovers and reads supported UTF-8 text files with explicit kinds", async
   assert.equal(plain.content, "Zażółć gęślą jaźń — こんにちは\n");
 });
 
-test("plain-text files cannot be created, written, renamed, or deleted", async () => {
-  const vault = await makeVault();
+test("plain-text files cannot be created, written, renamed, or deleted", async (t) => {
+  const vault = await makeVault(t);
   await fs.writeFile(path.join(vault.rootPath, "read-only.txt"), "disk content\n", "utf8");
 
   await assert.rejects(() => createVaultFile(vault, "new.txt", "nope\n"), /\.md/);
@@ -86,8 +87,8 @@ test("plain-text files cannot be created, written, renamed, or deleted", async (
   );
 });
 
-test("rejects stale writes when the file changed on disk", async () => {
-  const vault = await makeVault();
+test("rejects stale writes when the file changed on disk", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(vault, "a.md", "# A\n");
   const before = await readVaultFile(vault, "a.md");
   await writeVaultFile(vault, "a.md", "# External\n");
@@ -101,8 +102,8 @@ test("rejects stale writes when the file changed on disk", async () => {
   );
 });
 
-test("serializes optimistic writes so only one writer can consume a file version", async () => {
-  const vault = await makeVault();
+test("serializes optimistic writes so only one writer can consume a file version", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(vault, "a.md", "# Original\n");
   const before = await readVaultFile(vault, "a.md");
 
@@ -124,8 +125,8 @@ test("serializes optimistic writes so only one writer can consume a file version
   assert.match((await readVaultFile(vault, "a.md")).content, /^# Writer [AB]\n$/);
 });
 
-test("atomic writes clean temporary files when the final rename fails", async () => {
-  const vault = await makeVault();
+test("atomic writes clean temporary files when the final rename fails", async (t) => {
+  const vault = await makeVault(t);
   const target = path.join(vault.rootPath, "occupied.md");
   await fs.mkdir(target);
 
@@ -138,13 +139,13 @@ test("atomic writes clean temporary files when the final rename fails", async ()
   );
 });
 
-test("rejects files outside the vault root", async () => {
-  const vault = await makeVault();
+test("rejects files outside the vault root", async (t) => {
+  const vault = await makeVault(t);
   await assert.rejects(() => readVaultFile(vault, "../x.md"), /cannot be/);
 });
 
-test("backend index reports duplicate ids, duplicate anchors, broken links, and orphans", async () => {
-  const vault = await makeVault();
+test("backend index reports duplicate ids, duplicate anchors, broken links, and orphans", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(
     vault,
     "a.md",
@@ -162,8 +163,8 @@ test("backend index reports duplicate ids, duplicate anchors, broken links, and 
   assert.ok(issues.some((issue) => issue.kind === "broken-wikilink"));
 });
 
-test("structural indexes exclude source bodies", async () => {
-  const vault = await makeVault();
+test("structural indexes exclude source bodies", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(
     vault,
     "secret.md",
@@ -176,8 +177,8 @@ test("structural indexes exclude source bodies", async () => {
   assert.equal(JSON.stringify(result).includes("body-only-token"), false);
 });
 
-test("Markdown indexing ignores plain-text files and their contents", async () => {
-  const vault = await makeVault();
+test("Markdown indexing ignores plain-text files and their contents", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(vault, "note.md", "---\nid: note\ntitle: Note\n---\n# Note\n");
   await fs.writeFile(
     path.join(vault.rootPath, "plain.txt"),
@@ -191,8 +192,8 @@ test("Markdown indexing ignores plain-text files and their contents", async () =
   assert.equal(JSON.stringify(result).includes("missing-from-plain"), false);
 });
 
-test("backend index ignores wikilinks in fenced and inline code", async () => {
-  const vault = await makeVault();
+test("backend index ignores wikilinks in fenced and inline code", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(
     vault,
     "a.md",
@@ -207,8 +208,8 @@ test("backend index ignores wikilinks in fenced and inline code", async () => {
   assert.equal(issues.filter((issue) => issue.kind === "broken-wikilink").length, 1);
 });
 
-test("folder-qualified wikilinks resolve from the vault root", async () => {
-  const vault = await makeVault();
+test("folder-qualified wikilinks resolve from the vault root", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(
     vault,
     "Notes/note.md",
@@ -241,7 +242,7 @@ test("folder-qualified wikilinks resolve from the vault root", async () => {
   );
 });
 
-test("repository test-vault indexes core fixture expectations", async () => {
+test("repository test-vault indexes core fixture expectations", async (t) => {
   const rootPath = path.resolve(process.cwd(), "test-vault");
   const vault: VaultInfo = {
     id: "repo-test-vault",
@@ -345,7 +346,7 @@ test("repository test-vault indexes core fixture expectations", async () => {
   assert.ok(graph.edges.some((edge) => edge.type === "broken"));
 });
 
-test("repository test-vault default scope indexes all Markdown depths", async () => {
+test("repository test-vault default scope indexes all Markdown depths", async (t) => {
   const rootPath = path.resolve(process.cwd(), "test-vault");
   const vault: VaultInfo = {
     id: "repo-default-scope",
@@ -369,7 +370,7 @@ test("repository test-vault default scope indexes all Markdown depths", async ()
   ]);
 });
 
-test("repository test-vault maxDepth 1 excludes depth 2 Markdown notes", async () => {
+test("repository test-vault maxDepth 1 excludes depth 2 Markdown notes", async (t) => {
   const rootPath = path.resolve(process.cwd(), "test-vault");
   const vault: VaultInfo = {
     id: "repo-max-depth-one",
@@ -430,7 +431,7 @@ test("repository test-vault maxDepth 1 excludes depth 2 Markdown notes", async (
   );
 });
 
-test("repository test-vault exact depth 2 scope only indexes nested Markdown notes", async () => {
+test("repository test-vault exact depth 2 scope only indexes nested Markdown notes", async (t) => {
   const rootPath = path.resolve(process.cwd(), "test-vault");
   const vault: VaultInfo = {
     id: "repo-depth-two",
@@ -458,8 +459,8 @@ test("repository test-vault exact depth 2 scope only indexes nested Markdown not
   assert.equal(index.notes["Reference/reference-note.md"], undefined);
 });
 
-test("id links resolve before unique filename stems", async () => {
-  const vault = await makeVault();
+test("id links resolve before unique filename stems", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(
     vault,
     "Source.md",
@@ -481,8 +482,8 @@ test("id links resolve before unique filename stems", async () => {
   assert.equal(index.backlinks["ById.md"]?.[0]?.fromPath, "Source.md");
 });
 
-test("frontmatter id links distinguish unique, missing, and duplicate targets", async () => {
-  const vault = await makeVault();
+test("frontmatter id links distinguish unique, missing, and duplicate targets", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(
     vault,
     "Source.md",
@@ -505,8 +506,8 @@ test("frontmatter id links distinguish unique, missing, and duplicate targets", 
   assert.ok(issues.some((issue) => issue.kind === "ambiguous-link"));
 });
 
-test("ambiguous filename stems create validation errors", async () => {
-  const vault = await makeVault();
+test("ambiguous filename stems create validation errors", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(vault, "Source.md", "# Source\n\n[[topic]]\n");
   await createVaultFile(vault, "A/topic.md", "# Topic A\n");
   await createVaultFile(vault, "B/topic.md", "# Topic B\n");
@@ -520,8 +521,8 @@ test("ambiguous filename stems create validation errors", async () => {
   );
 });
 
-test("unsafe wikilink paths are rejected by validation", async () => {
-  const vault = await makeVault();
+test("unsafe wikilink paths are rejected by validation", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(vault, "Source.md", "# Source\n\n[[../secret]]\n[[/absolute]]\n");
 
   const { issues } = await buildVaultIndex(vault);
@@ -529,8 +530,8 @@ test("unsafe wikilink paths are rejected by validation", async () => {
   assert.ok(issues.every((issue) => !issue.message.includes("undefined")));
 });
 
-test("preview rendering leaves inline-code wikilinks literal", async () => {
-  const vault = await makeVault();
+test("preview rendering leaves inline-code wikilinks literal", async (t) => {
+  const vault = await makeVault(t);
   await createVaultFile(vault, "Notes/note.md", "# Note\n");
   await createVaultFile(vault, "Reference/reference-note.md", "# Reference\n\n[[Notes/note]]\n");
 
@@ -545,8 +546,8 @@ test("preview rendering leaves inline-code wikilinks literal", async () => {
 });
 
 test("explicit file operations reject symlinks inside vault paths", async (t) => {
-  const vault = await makeVault();
-  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-outside-"));
+  const vault = await makeVault(t);
+  const outside = await makeTestTempDir(t, "arepo-outside-");
   await fs.writeFile(path.join(outside, "escape.md"), "# Escape\n", "utf8");
   await fs.writeFile(path.join(outside, "escape.txt"), "Escape\n", "utf8");
   try {
@@ -564,8 +565,8 @@ test("explicit file operations reject symlinks inside vault paths", async (t) =>
 });
 
 test("supported text discovery ignores symlinked plain-text files", async (t) => {
-  const vault = await makeVault();
-  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-outside-"));
+  const vault = await makeVault(t);
+  const outside = await makeTestTempDir(t, "arepo-outside-");
   const outsideFile = path.join(outside, "escape.txt");
   await fs.writeFile(outsideFile, "escape\n", "utf8");
   try {

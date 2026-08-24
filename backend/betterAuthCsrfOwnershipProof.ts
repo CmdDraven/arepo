@@ -126,8 +126,13 @@ export type BetterAuthCsrfOwnershipProofResult = {
 
 const baseUrl = "http://127.0.0.1:8734";
 
-export async function runIsolatedBetterAuthCsrfOwnershipProof(): Promise<BetterAuthCsrfOwnershipProofResult> {
-  const proof = await createBetterAuthAppDataProofContext({ emailAndPasswordEnabled: true });
+export async function runIsolatedBetterAuthCsrfOwnershipProof(
+  appDataDir: string,
+): Promise<BetterAuthCsrfOwnershipProofResult> {
+  const proof = await createBetterAuthAppDataProofContext({
+    appDataDir,
+    emailAndPasswordEnabled: true,
+  });
   await proof.context.runMigrations();
 
   const signUp = await callBetterAuth(proof.auth.handler, {

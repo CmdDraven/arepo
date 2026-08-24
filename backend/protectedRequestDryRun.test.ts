@@ -1,8 +1,9 @@
 import test from "node:test";
+import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   readAuthAuditEvents,
   serializeAuthAuditEventJsonl,
@@ -82,10 +83,11 @@ async function writeConfig(
 }
 
 async function workspace(
+  t: TestContext,
   auth: Record<string, unknown> = { mode: "disabled" },
 ): Promise<{ cwd: string; appDataDir: string }> {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-dry-run-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-dry-run-data-"));
+  const cwd = await makeTestTempDir(t, "arepo-dry-run-");
+  const appDataDir = await makeTestTempDir(t, "arepo-dry-run-data-");
   await writeConfig(cwd, appDataDir, auth);
   return { cwd, appDataDir };
 }
@@ -126,8 +128,11 @@ async function writeDryRunCredential(
   await writeTokenVerifierStore(appDataDir, { tokenVerifiers: [tokenVerifier()] });
 }
 
-async function addTestVault(cwd: string): Promise<{ vaultId: string; rootPath: string }> {
-  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-dry-run-vault-"));
+async function addTestVault(
+  t: TestContext,
+  cwd: string,
+): Promise<{ vaultId: string; rootPath: string }> {
+  const rootPath = await makeTestTempDir(t, "arepo-dry-run-vault-");
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
   const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
   assert.equal(created.status, 201);
@@ -136,9 +141,9 @@ async function addTestVault(cwd: string): Promise<{ vaultId: string; rootPath: s
   return { vaultId, rootPath };
 }
 
-test("default config does not mount dry-run middleware", async () => {
+test("default config does not mount dry-run middleware", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace();
+  const { cwd } = await workspace(t);
 
   const response = await routeRequest(
     request("GET", "/api/vaults", undefined, {
@@ -172,9 +177,9 @@ test("default config does not mount dry-run middleware", async () => {
   assert.equal(getProtectedRequestDryRunStatus({}).dryRun.observed.count, 0);
 });
 
-test("dry-run canary endpoint reports disabled observation status by default", async () => {
+test("dry-run canary endpoint reports disabled observation status by default", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace();
+  const { cwd } = await workspace(t);
 
   const response = await routeRequest(
     request("GET", "/api/node/auth/dry-run", undefined, {
@@ -212,9 +217,9 @@ test("dry-run canary endpoint reports disabled observation status by default", a
   assert.equal(serialized.includes(sessionMaterial), false);
 });
 
-test("dry-run canary endpoint reports sanitized mounted dry-run status", async () => {
+test("dry-run canary endpoint reports sanitized mounted dry-run status", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+  const { cwd } = await workspace(t, { mode: "disabled", dryRunRequestPolicy: true });
   const filesystemPath = "/tmp/arepo-sensitive-vault/Notes/secret.md";
 
   const response = await routeRequest(
@@ -272,9 +277,9 @@ test("dry-run canary endpoint reports sanitized mounted dry-run status", async (
   assert.equal(serialized.includes(sourceBodyMaterial), false);
 });
 
-test("dry-run response plan records unauthenticated without changing V1 response", async () => {
+test("dry-run response plan records unauthenticated without changing V1 response", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+  const { cwd } = await workspace(t, { mode: "disabled", dryRunRequestPolicy: true });
 
   const response = await routeRequest(request("GET", "/api/vaults"), cwd);
   const dryRun = getProtectedRequestDryRunStatus({ dryRunRequestPolicy: true });
@@ -288,10 +293,10 @@ test("dry-run response plan records unauthenticated without changing V1 response
   assert.equal(dryRun.lastDryRunResult?.plannedResponse?.networkExposureSafe, false);
 });
 
-test("dry-run response plan records unauthorized without changing V1 source read", async () => {
+test("dry-run response plan records unauthorized without changing V1 source read", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd, appDataDir } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
-  const { vaultId, rootPath } = await addTestVault(cwd);
+  const { cwd, appDataDir } = await workspace(t, { mode: "disabled", dryRunRequestPolicy: true });
+  const { vaultId, rootPath } = await addTestVault(t, cwd);
   await writeDryRunCredential(appDataDir, vaultId, ["readIndex"]);
 
   const response = await routeRequest(
@@ -322,10 +327,10 @@ test("dry-run response plan records unauthorized without changing V1 source read
   assert.equal(serialized.includes("salt"), false);
 });
 
-test("dry-run response plan records stronger confirmation without changing V1 write", async () => {
+test("dry-run response plan records stronger confirmation without changing V1 write", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd, appDataDir } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
-  const { vaultId, rootPath } = await addTestVault(cwd);
+  const { cwd, appDataDir } = await workspace(t, { mode: "disabled", dryRunRequestPolicy: true });
+  const { vaultId, rootPath } = await addTestVault(t, cwd);
   await writeDryRunCredential(appDataDir, vaultId, ["readContent", "writeContent"]);
 
   const response = await routeRequest(
@@ -357,9 +362,9 @@ test("dry-run response plan records stronger confirmation without changing V1 wr
   assert.equal(serialized.includes("dry-run-verifier-1"), false);
 });
 
-test("dry-run canary endpoint reports sanitized audit append status", async () => {
+test("dry-run canary endpoint reports sanitized audit append status", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd, appDataDir } = await workspace({
+  const { cwd, appDataDir } = await workspace(t, {
     mode: "disabled",
     dryRunRequestPolicy: true,
     dryRunAudit: true,
@@ -416,9 +421,9 @@ test("dry-run canary endpoint reports sanitized audit append status", async () =
   assert.equal(serialized.includes("salt"), false);
 });
 
-test("dry-run audit flag alone does nothing unless request-policy dry-run is enabled", async () => {
+test("dry-run audit flag alone does nothing unless request-policy dry-run is enabled", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd, appDataDir } = await workspace({ mode: "disabled", dryRunAudit: true });
+  const { cwd, appDataDir } = await workspace(t, { mode: "disabled", dryRunAudit: true });
 
   const response = await routeRequest(
     request("GET", "/api/vaults", undefined, {
@@ -442,9 +447,9 @@ test("dry-run audit flag alone does nothing unless request-policy dry-run is ena
   await assert.rejects(() => fs.access(path.join(appDataDir, "auth")), /ENOENT/);
 });
 
-test("explicit dry-run config mounts observation only and calls the protected request pipeline", async () => {
+test("explicit dry-run config mounts observation only and calls the protected request pipeline", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+  const { cwd } = await workspace(t, { mode: "disabled", dryRunRequestPolicy: true });
 
   const response = await routeRequest(
     request("GET", "/api/vaults", undefined, {
@@ -483,9 +488,9 @@ test("explicit dry-run config mounts observation only and calls the protected re
   assert.equal(dryRun.dryRun.enforced, false);
 });
 
-test("mounted dry-run middleware never rejects requests or sets cookies", async () => {
+test("mounted dry-run middleware never rejects requests or sets cookies", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+  const { cwd } = await workspace(t, { mode: "disabled", dryRunRequestPolicy: true });
 
   const response = await routeRequest(
     request("GET", "/api/vaults", undefined, {
@@ -503,9 +508,9 @@ test("mounted dry-run middleware never rejects requests or sets cookies", async 
   assert.equal(serializedBody.includes("auth"), false);
 });
 
-test("mounted dry-run middleware does not create credentials sessions or audit files", async () => {
+test("mounted dry-run middleware does not create credentials sessions or audit files", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd, appDataDir } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+  const { cwd, appDataDir } = await workspace(t, { mode: "disabled", dryRunRequestPolicy: true });
 
   const response = await routeRequest(
     request("GET", "/api/vaults", undefined, {
@@ -519,9 +524,9 @@ test("mounted dry-run middleware does not create credentials sessions or audit f
   await assert.rejects(() => fs.access(path.join(appDataDir, "auth")), /ENOENT/);
 });
 
-test("dry-run audit appends sanitized JSONL events when explicitly enabled", async () => {
+test("dry-run audit appends sanitized JSONL events when explicitly enabled", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd, appDataDir } = await workspace({
+  const { cwd, appDataDir } = await workspace(t, {
     mode: "disabled",
     dryRunRequestPolicy: true,
     dryRunAudit: true,
@@ -568,9 +573,9 @@ test("dry-run audit appends sanitized JSONL events when explicitly enabled", asy
   assert.equal(serialized.includes("salt"), false);
 });
 
-test("dry-run audit append preserves existing JSONL events", async () => {
+test("dry-run audit append preserves existing JSONL events", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd, appDataDir } = await workspace({
+  const { cwd, appDataDir } = await workspace(t, {
     mode: "disabled",
     dryRunRequestPolicy: true,
     dryRunAudit: true,
@@ -594,9 +599,9 @@ test("dry-run audit append preserves existing JSONL events", async () => {
   assert.equal(parsed.events.length, 2);
 });
 
-test("corrupt existing JSONL lines do not prevent dry-run audit append", async () => {
+test("corrupt existing JSONL lines do not prevent dry-run audit append", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd, appDataDir } = await workspace({
+  const { cwd, appDataDir } = await workspace(t, {
     mode: "disabled",
     dryRunRequestPolicy: true,
     dryRunAudit: true,
@@ -618,9 +623,9 @@ test("corrupt existing JSONL lines do not prevent dry-run audit append", async (
   );
 });
 
-test("dry-run audit write failure is diagnostic only", async () => {
+test("dry-run audit write failure is diagnostic only", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-dry-run-"));
+  const cwd = await makeTestTempDir(t, "arepo-dry-run-");
   const appDataDir = path.join(cwd, "app-data-file");
   await fs.writeFile(appDataDir, "not a directory", "utf8");
   await writeConfig(cwd, appDataDir, {
@@ -651,9 +656,9 @@ test("dry-run audit write failure is diagnostic only", async () => {
   assert.equal(dryRun.lastDryRunAuditStatus?.networkExposureSafe, false);
 });
 
-test("dry-run diagnostics are sanitized and report inactive enforcement", async () => {
+test("dry-run diagnostics are sanitized and report inactive enforcement", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace({ mode: "disabled", dryRunRequestPolicy: true });
+  const { cwd } = await workspace(t, { mode: "disabled", dryRunRequestPolicy: true });
 
   await routeRequest(
     request("GET", "/api/vaults?token=query-secret", undefined, {
@@ -697,9 +702,9 @@ test("dry-run diagnostics are sanitized and report inactive enforcement", async 
   assert.equal(serialized.includes("salt"), false);
 });
 
-test("non-local bind remains unsafe when dry-run is mounted", async () => {
+test("non-local bind remains unsafe when dry-run is mounted", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace({
+  const { cwd } = await workspace(t, {
     mode: "disabled",
     dryRunRequestPolicy: true,
     dryRunAudit: true,
@@ -728,9 +733,9 @@ test("non-local bind remains unsafe when dry-run is mounted", async () => {
   }
 });
 
-test("protected mode with incomplete readiness returns reduced status when dry-run is mounted", async () => {
+test("protected mode with incomplete readiness returns reduced status when dry-run is mounted", async (t) => {
   resetProtectedRequestDryRunDiagnostics();
-  const { cwd } = await workspace({
+  const { cwd } = await workspace(t, {
     mode: "protected",
     dryRunRequestPolicy: true,
     dryRunAudit: true,

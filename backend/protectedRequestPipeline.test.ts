@@ -1,8 +1,9 @@
 import test from "node:test";
+import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import { readAuthAuditEvents, serializeAuthAuditEventJsonl } from "./authAudit.js";
 import {
   planProtectedRequestPipeline,
@@ -144,8 +145,8 @@ function revocation(
   };
 }
 
-async function makeAppData(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), "arepo-pipeline-"));
+async function makeAppData(t: TestContext): Promise<string> {
+  return makeTestTempDir(t, "arepo-pipeline-");
 }
 
 async function writeStores(
@@ -175,8 +176,8 @@ async function writeStores(
   });
 }
 
-test("valid bearer token with stores produces would-allow for generated-index route", async () => {
-  const appDataDir = await makeAppData();
+test("valid bearer token with stores produces would-allow for generated-index route", async (t) => {
+  const appDataDir = await makeAppData(t);
   await writeStores(appDataDir, { credential: apiCredential(["readIndex"]) });
 
   const result = await planProtectedRequestPipeline({
@@ -196,8 +197,8 @@ test("valid bearer token with stores produces would-allow for generated-index ro
   assert.equal(result.decision.routePattern, "/api/vaults/:vaultId/index/search?q=...");
 });
 
-test("valid bearer token lacking readContent denies source file read", async () => {
-  const appDataDir = await makeAppData();
+test("valid bearer token lacking readContent denies source file read", async (t) => {
+  const appDataDir = await makeAppData(t);
   await writeStores(appDataDir, { credential: apiCredential(["readIndex"]) });
 
   const result = await planProtectedRequestPipeline({
@@ -215,8 +216,8 @@ test("valid bearer token lacking readContent denies source file read", async () 
   assert.deepEqual(result.decision.missingPermissions, ["readContent"]);
 });
 
-test("valid browser session input plans CSRF and origin requirements for mutation routes", async () => {
-  const appDataDir = await makeAppData();
+test("valid browser session input plans CSRF and origin requirements for mutation routes", async (t) => {
+  const appDataDir = await makeAppData(t);
   await writeStores(appDataDir, {
     browserCredential: browserCredential(["readContent", "writeContent"]),
   });
@@ -240,8 +241,8 @@ test("valid browser session input plans CSRF and origin requirements for mutatio
   assert.ok(result.decision.browserSecurityPlan.failureReasons.includes("failed-csrf"));
 });
 
-test("missing credentials produce requires-authentication and no-credential diagnostics", async () => {
-  const appDataDir = await makeAppData();
+test("missing credentials produce requires-authentication and no-credential diagnostics", async (t) => {
+  const appDataDir = await makeAppData(t);
   await writeStores(appDataDir);
 
   const result = await planProtectedRequestPipeline({
@@ -256,8 +257,8 @@ test("missing credentials produce requires-authentication and no-credential diag
   assert.ok(result.decision.reasonCodes.includes("requires-authentication"));
 });
 
-test("missing stores do not grant access", async () => {
-  const appDataDir = await makeAppData();
+test("missing stores do not grant access", async (t) => {
+  const appDataDir = await makeAppData(t);
 
   const result = await planProtectedRequestPipeline({
     appDataDir,
@@ -276,9 +277,9 @@ test("missing stores do not grant access", async () => {
   assert.equal(result.credential.status, "not-found");
 });
 
-test("corrupt credential token session or revocation store data fails closed", async () => {
+test("corrupt credential token session or revocation store data fails closed", async (t) => {
   for (const storeName of ["credentials", "tokenVerifiers", "sessions", "revocations"] as const) {
-    const appDataDir = await makeAppData();
+    const appDataDir = await makeAppData(t);
     await writeStores(appDataDir);
     const paths = resolveAuthStoragePaths(appDataDir);
     const target =
@@ -308,16 +309,16 @@ test("corrupt credential token session or revocation store data fails closed", a
   }
 });
 
-test("revoked credential token and session fail closed", async () => {
-  const credentialRevoked = await makeAppData();
+test("revoked credential token and session fail closed", async (t) => {
+  const credentialRevoked = await makeAppData(t);
   await writeStores(credentialRevoked, {
     revocations: [revocation("credential", "api-credential-1")],
   });
-  const tokenRevoked = await makeAppData();
+  const tokenRevoked = await makeAppData(t);
   await writeStores(tokenRevoked, {
     revocations: [revocation("tokenVerifier", "token-verifier-1")],
   });
-  const sessionRevoked = await makeAppData();
+  const sessionRevoked = await makeAppData(t);
   await writeStores(sessionRevoked, {
     revocations: [revocation("browserSession", "session-1")],
   });
@@ -358,8 +359,8 @@ test("revoked credential token and session fail closed", async () => {
   assert.equal(sessionResult.credential.reasonCode, "session-revoked");
 });
 
-test("dry-run audit mode returns sanitized audit event without writing JSONL", async () => {
-  const appDataDir = await makeAppData();
+test("dry-run audit mode returns sanitized audit event without writing JSONL", async (t) => {
+  const appDataDir = await makeAppData(t);
   await writeStores(appDataDir, { credential: apiCredential(["readIndex"]) });
 
   const result = await planProtectedRequestPipeline({
@@ -381,8 +382,8 @@ test("dry-run audit mode returns sanitized audit event without writing JSONL", a
   assert.equal(JSON.stringify(result.audit.event).includes(tokenMaterial), false);
 });
 
-test("append audit mode writes one sanitized JSONL event without overwriting existing entries", async () => {
-  const appDataDir = await makeAppData();
+test("append audit mode writes one sanitized JSONL event without overwriting existing entries", async (t) => {
+  const appDataDir = await makeAppData(t);
   await writeStores(appDataDir, { credential: apiCredential(["readIndex"]) });
   const paths = resolveAuthStoragePaths(appDataDir);
   await fs.mkdir(path.dirname(paths.auditEvents), { recursive: true });
@@ -419,8 +420,8 @@ test("append audit mode writes one sanitized JSONL event without overwriting exi
   assert.equal(JSON.stringify(parsed.events).includes(tokenMaterial), false);
 });
 
-test("disabled audit mode writes nothing", async () => {
-  const appDataDir = await makeAppData();
+test("disabled audit mode writes nothing", async (t) => {
+  const appDataDir = await makeAppData(t);
   await writeStores(appDataDir, { credential: apiCredential(["readIndex"]) });
   const paths = resolveAuthStoragePaths(appDataDir);
 
@@ -440,8 +441,8 @@ test("disabled audit mode writes nothing", async () => {
   await assert.rejects(() => fs.readFile(paths.auditEvents, "utf8"), /ENOENT/);
 });
 
-test("pipeline result never includes raw secret or source body material", async () => {
-  const appDataDir = await makeAppData();
+test("pipeline result never includes raw secret or source body material", async (t) => {
+  const appDataDir = await makeAppData(t);
   await writeStores(appDataDir, { credential: apiCredential(["readIndex"]) });
 
   const result = await planProtectedRequestPipeline({
@@ -467,8 +468,8 @@ test("pipeline result never includes raw secret or source body material", async 
   assert.equal(serialized.includes(tokenSalt.toString("hex")), false);
 });
 
-test("pipeline always reports inactive enforcement and unsafe network exposure", async () => {
-  const appDataDir = await makeAppData();
+test("pipeline always reports inactive enforcement and unsafe network exposure", async (t) => {
+  const appDataDir = await makeAppData(t);
   await writeStores(appDataDir, { credential: apiCredential(["readIndex"]) });
 
   const result = await planProtectedRequestPipeline({
@@ -488,7 +489,7 @@ test("pipeline always reports inactive enforcement and unsafe network exposure",
   assert.equal(result.networkExposureSafe, false);
 });
 
-test("pipeline is not imported by request handling files", async () => {
+test("pipeline is not imported by request handling files", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   const nodeServiceSource = await fs.readFile(
     path.join(process.cwd(), "backend", "nodeService.ts"),

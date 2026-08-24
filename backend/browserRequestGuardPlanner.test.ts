@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTestTempDir } from "./testTemp.js";
 import {
   planBrowserRequestGuard,
   type BrowserRequestGuardMethod,
@@ -313,15 +313,15 @@ test("planner output is sanitized and invariant flags remain false", () => {
   assert.equal(plan.networkExposureSafe, false);
 });
 
-test("browser request guard planner is not imported by active server handlers", async () => {
+test("browser request guard planner is not imported by active server handlers", async (t) => {
   const serverSource = await fs.readFile(path.join(process.cwd(), "backend", "server.ts"), "utf8");
   assert.equal(serverSource.includes("browserRequestGuardPlanner"), false);
   assert.equal(serverSource.includes("planBrowserRequestGuard"), false);
 });
 
-test("current V1 endpoint behavior is unchanged by the browser request guard planner", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-browser-guard-"));
-  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-browser-guard-data-"));
+test("current V1 endpoint behavior is unchanged by the browser request guard planner", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-browser-guard-");
+  const appDataDir = await makeTestTempDir(t, "arepo-browser-guard-data-");
   await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
   await fs.writeFile(
     path.join(cwd, ".arepo", "config.json"),
