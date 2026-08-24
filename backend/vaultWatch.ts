@@ -12,6 +12,12 @@ type SnapshotEntry = {
   size: number;
 };
 
+type VaultWatchPublicError =
+  | "Vault watcher failed."
+  | "Unable to watch vault directory."
+  | "Vault rescan failed."
+  | "Machine index rebuild failed.";
+
 type VaultWatchState = {
   cwd: string;
   vault: VaultInfo;
@@ -24,7 +30,7 @@ type VaultWatchState = {
   deletedPaths: Set<string>;
   lastEventAt?: number;
   lastIndexedAt?: number;
-  error?: string;
+  error?: VaultWatchPublicError;
   scanTimer?: NodeJS.Timeout;
   rebuildTimer?: NodeJS.Timeout;
   rebuilding?: Promise<void>;
@@ -161,14 +167,14 @@ async function refreshDirectoryWatchers(state: VaultWatchState): Promise<void> {
         state.lastEventAt = Date.now();
         scheduleScan(state);
       });
-      watcher.on("error", (error) => {
+      watcher.on("error", () => {
         state.indexStatus = "error";
-        state.error = error instanceof Error ? error.message : "Watcher failed";
+        state.error = "Vault watcher failed.";
       });
       state.watchers.push(watcher);
-    } catch (error) {
+    } catch {
       state.indexStatus = "error";
-      state.error = error instanceof Error ? error.message : "Unable to watch vault directory";
+      state.error = "Unable to watch vault directory.";
     }
   }
 }
@@ -176,9 +182,9 @@ async function refreshDirectoryWatchers(state: VaultWatchState): Promise<void> {
 function scheduleScan(state: VaultWatchState): void {
   if (state.scanTimer) clearTimeout(state.scanTimer);
   state.scanTimer = setTimeout(() => {
-    void rescanVault(state, { scheduleRebuild: true }).catch((error) => {
+    void rescanVault(state, { scheduleRebuild: true }).catch(() => {
       state.indexStatus = "error";
-      state.error = error instanceof Error ? error.message : "Vault rescan failed";
+      state.error = "Vault rescan failed.";
     });
   }, SCAN_DEBOUNCE_MS);
   state.scanTimer.unref();
@@ -228,9 +234,9 @@ function scheduleRebuild(state: VaultWatchState, delay = REBUILD_DEBOUNCE_MS): v
         state.lastIndexedAt = Date.now();
         state.error = undefined;
       })
-      .catch((error) => {
+      .catch(() => {
         state.indexStatus = "error";
-        state.error = error instanceof Error ? error.message : "Machine index rebuild failed";
+        state.error = "Machine index rebuild failed.";
       })
       .finally(() => {
         state.rebuilding = undefined;

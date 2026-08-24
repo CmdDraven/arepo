@@ -2,6 +2,7 @@ import { loadConfig, saveConfig } from "./config.js";
 import { removeMachineIndexIfOwned, type GeneratedDataRemoval } from "./indexCache.js";
 import { stopVaultWatcher } from "./vaultWatch.js";
 import type { VaultInfo } from "./types.js";
+import { PublicApiError } from "./publicApiError.js";
 
 export type GeneratedDataAction = "keep" | "discard";
 
@@ -20,13 +21,17 @@ export async function removeVault(
   cwd = process.cwd(),
 ): Promise<RemoveVaultResult> {
   const vaultId = typeof input.vaultId === "string" ? input.vaultId : "";
-  if (!vaultId) throw new Error("vaultId is required");
+  if (!vaultId) {
+    throw new PublicApiError(400, "vaultId is required", { code: "invalid-vault-removal" });
+  }
   const generatedDataAction =
     input.generatedDataAction === "discard" ? "discard" : ("keep" as GeneratedDataAction);
 
   const config = await loadConfig(cwd);
   const index = config.vaults.findIndex((vault) => vault.id === vaultId);
-  if (index < 0) throw new Error(`Unknown vault: ${vaultId}`);
+  if (index < 0) {
+    throw new PublicApiError(400, `Unknown vault: ${vaultId}`, { code: "unknown-vault" });
+  }
 
   const [vault] = config.vaults.splice(index, 1);
   await saveConfig(config, cwd);

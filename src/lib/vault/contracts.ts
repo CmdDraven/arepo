@@ -65,6 +65,17 @@ export function isManagementVaultInfo(vault: VaultListItem): vault is VaultInfo 
   return "rootPath" in vault;
 }
 
+export type DirectoryBrowserEntry = {
+  name: string;
+  path: string;
+};
+
+export type DirectoryBrowserResponse = {
+  currentPath: string;
+  parentPath: string | null;
+  directories: DirectoryBrowserEntry[];
+};
+
 export type VaultFileKind = "markdown" | "plain-text" | "chat-json";
 
 export type VaultFile = {

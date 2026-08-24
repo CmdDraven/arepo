@@ -38,6 +38,19 @@ test("full node diagnostics require auth and authorization", () => {
   assert.ok(plan.failureReasons.includes("missing-credential"));
 });
 
+test("directory browsing is an authenticated authorized metadata read", () => {
+  const plan = planBrowserSecurity({
+    client: "cliApiHeaderToken",
+    routePolicy: policyFor("GET /api/node/directories"),
+    credentialPresent: true,
+    authorizationSatisfied: true,
+  });
+  assert.equal(plan.requestClass, "safeReadMetadata");
+  assert.equal(plan.authenticationRequired, true);
+  assert.equal(plan.authorizationRequired, true);
+  assert.equal(plan.csrfCheckRequired, false);
+});
+
 test("cookie-session source mutation requires origin and CSRF", () => {
   const plan = planBrowserSecurity({
     client: "browserCookieSession",

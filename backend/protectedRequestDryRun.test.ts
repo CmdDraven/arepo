@@ -652,6 +652,12 @@ test("dry-run audit write failure is diagnostic only", async (t) => {
   assert.equal(dryRun.dryRun.audited.attemptedCount, 1);
   assert.equal(dryRun.dryRun.audited.appendedCount, 0);
   assert.equal(dryRun.dryRun.audited.lastStatus, "failed");
+  assert.equal(dryRun.lastDryRunAuditStatus?.error, "audit-append-failed");
+  assert.equal(dryRun.lastDryRunResult?.error, undefined);
+  const serialized = JSON.stringify(dryRun);
+  for (const hidden of [appDataDir, "ENOTDIR", "EISDIR", "not a directory"]) {
+    assert.equal(serialized.includes(hidden), false, hidden);
+  }
   assert.equal(dryRun.lastDryRunAuditStatus?.enforcementActive, false);
   assert.equal(dryRun.lastDryRunAuditStatus?.networkExposureSafe, false);
 });

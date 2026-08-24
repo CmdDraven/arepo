@@ -50,6 +50,8 @@ import {
 import { requireAvailableVault } from "./vaultAvailability.js";
 import { rebindVaultRoot } from "./vaultRelocation.js";
 import { projectVaultList } from "./vaultListVisibility.js";
+import { apiErrorResponse, PublicApiError } from "./publicApiError.js";
+import { browseServerDirectories } from "./directoryBrowser.js";
 
 export type RequestLike = Pick<http.IncomingMessage, "method" | "url" | "headers"> &
   AsyncIterable<Buffer> & {
@@ -67,26 +69,29 @@ export async function routeRequest(
   cwd = process.cwd(),
 ): Promise<ResponsePayload> {
   const method = request.method ?? "GET";
-  const url = new URL(request.url ?? "/", "http://localhost");
-  const segments = url.pathname.split("/").filter(Boolean);
-  const cors = corsHeaders(request);
-
-  if (!cors.allowed) {
-    return json(
-      403,
-      {
-        ok: false,
-        error: "Origin is not allowed by AREPO local backend CORS policy",
-      },
-      cors.headers,
-    );
-  }
-
-  if (method === "OPTIONS") {
-    return json(204, null, cors.headers);
-  }
+  let responseHeaders: Record<string, string> | undefined;
 
   try {
+    const url = new URL(request.url ?? "/", "http://localhost");
+    const segments = url.pathname.split("/").filter(Boolean);
+    const cors = corsHeaders(request);
+    responseHeaders = cors.headers;
+
+    if (!cors.allowed) {
+      return json(
+        403,
+        {
+          ok: false,
+          error: "Origin is not allowed by AREPO local backend CORS policy",
+        },
+        cors.headers,
+      );
+    }
+
+    if (method === "OPTIONS") {
+      return json(204, null, cors.headers);
+    }
+
     if (isInactiveBrowserSessionAuthRoute(method, url.pathname)) {
       return json(501, inactiveBrowserSessionAuthBody(), cors.headers);
     }
@@ -112,6 +117,10 @@ export async function routeRequest(
     if (method === "GET" && url.pathname === "/api/node/auth/dry-run") {
       const config = await loadConfig(cwd);
       return json(200, getProtectedRequestDryRunCanaryStatus(config.auth), cors.headers);
+    }
+
+    if (method === "GET" && url.pathname === "/api/node/directories") {
+      return json(200, await browseServerDirectories(url.searchParams.get("path")), cors.headers);
     }
 
     if (segments[0] === "api" && segments[1] === "node" && segments[2] === "credentials") {
@@ -329,16 +338,8 @@ export async function routeRequest(
 
     return json(404, { ok: false, error: "Not found" }, cors.headers);
   } catch (error) {
-    return json(
-      errorStatus(error),
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-        code: errorCode(error),
-        reason: errorReason(error),
-      },
-      cors.headers,
-    );
+    const failure = apiErrorResponse(error);
+    return json(failure.status, failure.body, responseHeaders);
   }
 }
 
@@ -359,7 +360,13 @@ async function readJson(request: AsyncIterable<Buffer>): Promise<unknown> {
   for await (const chunk of request) chunks.push(chunk);
   const raw = Buffer.concat(chunks).toString("utf8");
   if (!raw) return {};
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new PublicApiError(400, "Request body must contain valid JSON.", {
+      code: "invalid-request-body",
+    });
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -394,27 +401,6 @@ function inactiveBrowserSessionAuthBody(): ResponsePayload["body"] {
       message: "Browser-session authentication is planned but not active.",
     },
   };
-}
-
-function errorStatus(error: unknown): number {
-  const status = (error as { status?: unknown })?.status;
-  if (typeof status === "number" && status >= 400 && status <= 599) return status;
-  const code = (error as NodeJS.ErrnoException)?.code;
-  if (code === "ENOENT") return 404;
-  if (code === "EEXIST") return 409;
-  if (code === "CONFLICT") return 409;
-  if (code === "EACCES" || code === "EPERM") return 403;
-  return 400;
-}
-
-function errorCode(error: unknown): string | undefined {
-  const code = (error as NodeJS.ErrnoException)?.code;
-  return typeof code === "string" ? code : undefined;
-}
-
-function errorReason(error: unknown): string | undefined {
-  const reason = (error as { reason?: unknown })?.reason;
-  return typeof reason === "string" ? reason : undefined;
 }
 
 function corsHeaders(request: RequestLike): {

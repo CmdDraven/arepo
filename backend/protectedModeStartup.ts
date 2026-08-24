@@ -53,8 +53,8 @@ export async function assessProtectedModeStartup(
   let paths: AuthStoragePaths | undefined;
   try {
     paths = resolveAuthStoragePaths(input.appDataDir, input.vaultRoots ?? []);
-  } catch (error) {
-    unsafeStorePaths.push(error instanceof Error ? error.message : "Auth storage path is unsafe.");
+  } catch {
+    unsafeStorePaths.push("Auth storage path is unsafe.");
   }
 
   if (paths) {
@@ -75,11 +75,11 @@ export async function assessProtectedModeStartup(
 
       try {
         await store.read(input.appDataDir, input.vaultRoots ?? []);
-      } catch (error) {
+      } catch {
         corruptStores.push({
           store: store.name,
           path: file,
-          error: error instanceof Error ? error.message : "Auth store validation failed.",
+          error: "Auth store validation failed.",
           quarantineCandidate: `${file}.corrupt`,
         });
       }

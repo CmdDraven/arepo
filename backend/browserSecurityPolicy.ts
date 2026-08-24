@@ -68,6 +68,7 @@ const categoryRequestClasses: Record<RoutePolicyCategory, BrowserSecurityRequest
   health: "safeReadMetadata",
   nodeDiagnostics: "safeReadMetadata",
   dryRunDiagnostics: "safeReadMetadata",
+  directoryBrowsing: "safeReadMetadata",
   browserSessionAuth: "authManagement",
   browserSessionLogout: "authManagement",
   browserSessionRevocation: "authManagement",

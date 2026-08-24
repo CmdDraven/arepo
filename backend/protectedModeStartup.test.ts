@@ -72,7 +72,8 @@ test("requested protected mode reports corrupt stores with quarantine planning m
   assert.equal(assessment.protectedModeMayStart, false);
   assert.equal(assessment.corruptStores.length, 1);
   assert.equal(assessment.corruptStores[0]?.store, "credentials");
-  assert.match(assessment.corruptStores[0]?.error ?? "", /Corrupt AREPO auth store/);
+  assert.equal(assessment.corruptStores[0]?.error, "Auth store validation failed.");
+  assert.equal(assessment.corruptStores[0]?.error.includes(paths.credentials), false);
   assert.equal(assessment.corruptStores[0]?.quarantineCandidate, `${paths.credentials}.corrupt`);
 });
 
@@ -87,7 +88,8 @@ test("requested protected mode reports unsafe auth paths", async (t) => {
 
   assert.equal(assessment.protectedModeMayStart, false);
   assert.equal(assessment.unsafeStorePaths.length, 1);
-  assert.match(assessment.unsafeStorePaths[0] ?? "", /must not be placed inside/);
+  assert.equal(assessment.unsafeStorePaths[0], "Auth storage path is unsafe.");
+  assert.equal(assessment.unsafeStorePaths[0]?.includes(vaultRoot), false);
 });
 
 test("valid empty stores satisfy requested protected-mode startup availability", async (t) => {

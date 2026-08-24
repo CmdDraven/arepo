@@ -195,7 +195,7 @@ export async function runProtectedRequestDryRun(input: {
       mode: "append",
       status: "failed",
       reasonCode: "dry-run-failed",
-      error: error instanceof Error ? error.message : "Protected request dry-run failed",
+      error: "Protected request dry-run failed.",
       enforcementActive: false,
       networkExposureSafe: false,
     });
@@ -306,7 +306,7 @@ function responseSummaryFromPipelineResult(
 function failedSummary(
   request: RequestLike,
   url: URL,
-  error: unknown,
+  _error: unknown,
 ): ProtectedRequestDryRunSummary {
   return {
     timestamp: new Date().toISOString(),
@@ -316,7 +316,7 @@ function failedSummary(
     reasonCodes: ["dry-run-failed"],
     enforcementActive: false,
     networkExposureSafe: false,
-    error: error instanceof Error ? error.message : "Protected request dry-run failed",
+    error: "Protected request dry-run failed.",
   };
 }
 

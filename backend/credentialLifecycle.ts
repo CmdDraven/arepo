@@ -19,6 +19,7 @@ import {
   type VaultScopedGrant,
 } from "./credentialStore.js";
 import { createTokenVerifierMetadata } from "./credentialVerifier.js";
+import { PublicApiError } from "./publicApiError.js";
 import { ROUTE_PERMISSION_VOCABULARY, type RoutePermission } from "./routePermissions.js";
 import type { VaultInfo } from "./types.js";
 
@@ -112,7 +113,7 @@ export async function getCredentialLifecycleStatus(
       totalCredentialCount: summaries.length,
       bootstrapAvailable: activeCredentialCount === 0,
     };
-  } catch (error) {
+  } catch {
     return {
       storeAvailable: false,
       activeCredentialCount: 0,
@@ -120,7 +121,7 @@ export async function getCredentialLifecycleStatus(
       expiredCredentialCount: 0,
       totalCredentialCount: 0,
       bootstrapAvailable: false,
-      error: error instanceof Error ? error.message : "credential lifecycle status unavailable",
+      error: "Credential lifecycle status unavailable.",
     };
   }
 }
@@ -603,8 +604,7 @@ function isRoutePermission(value: unknown): value is RoutePermission {
 }
 
 function httpError(status: number, message: string): Error {
-  const error = new Error(message) as Error & { status?: number; code?: string };
-  error.status = status;
-  error.code = status === 404 ? "ENOENT" : status === 409 ? "CONFLICT" : "EINVAL";
-  return error;
+  return new PublicApiError(status, message, {
+    code: status === 404 ? "ENOENT" : status === 409 ? "CONFLICT" : "EINVAL",
+  });
 }

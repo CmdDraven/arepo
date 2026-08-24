@@ -17,6 +17,7 @@ export type RoutePolicyCategory =
   | "corsPreflight"
   | "health"
   | "nodeDiagnostics"
+  | "directoryBrowsing"
   | "dryRunDiagnostics"
   | "browserSessionAuth"
   | "browserSessionLogout"
@@ -143,6 +144,18 @@ export const PROTECTED_ROUTE_POLICIES = [
     networkExposureSafe: false,
     notes:
       "Diagnostic-only canary for protected-request dry-run status; future protected mode should expose only reduced anonymous fields or require manageNode.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/node/directories",
+    category: "directoryBrowsing",
+    requiredPermissions: ["manageVaults"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ nodeManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Server directory discovery exposes filesystem structure and is restricted to vault managers.",
   },
   {
     method: "POST",

@@ -1,15 +1,16 @@
 import type { VaultInspectResponse, VaultIndexResponse } from "./types.js";
+import { PublicApiError } from "./publicApiError.js";
 
 export function buildVaultInspectResponse(
   data: VaultIndexResponse,
   path: string | null,
 ): VaultInspectResponse {
-  if (!path) throw new Error("path is required");
+  if (!path) throw new PublicApiError(400, "path is required", { code: "invalid-index-path" });
   const note = data.index.notes[path];
   if (!note) {
-    const error = new Error(`Unknown indexed note: ${path}`) as NodeJS.ErrnoException;
-    error.code = "ENOENT";
-    throw error;
+    throw new PublicApiError(404, `Unknown indexed note: ${path}`, {
+      code: "ENOENT",
+    });
   }
   const outgoingLinks = (data.index.outgoingLinks[path] ?? []).map((link) => ({
     ...link,

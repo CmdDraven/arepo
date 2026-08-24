@@ -1,4 +1,5 @@
 import type { VaultIndexScope } from "./types.js";
+import { PublicApiError } from "./publicApiError.js";
 
 export const DEFAULT_VAULT_INDEX_SCOPE: VaultIndexScope = {
   markdown: {
@@ -36,23 +37,31 @@ export function defaultVaultIndexScope(): VaultIndexScope {
 
 export function validateVaultIndexScope(scope: VaultIndexScope, context: string): void {
   if (!scope || typeof scope !== "object" || Array.isArray(scope)) {
-    throw new Error(`${context}: vaultIndexScope must be an object`);
+    throw invalidIndexScope(context, "vaultIndexScope must be an object");
   }
   const markdown = scope.markdown;
   if (!markdown || typeof markdown !== "object" || Array.isArray(markdown)) {
-    throw new Error(`${context}: vaultIndexScope.markdown is required`);
+    throw invalidIndexScope(context, "vaultIndexScope.markdown is required");
   }
   if (!Number.isInteger(markdown.minDepth) || markdown.minDepth < 0) {
-    throw new Error(`${context}: vaultIndexScope.markdown.minDepth must be an integer >= 0`);
+    throw invalidIndexScope(context, "vaultIndexScope.markdown.minDepth must be an integer >= 0");
   }
   if (
     markdown.maxDepth !== null &&
     (!Number.isInteger(markdown.maxDepth) || markdown.maxDepth < markdown.minDepth)
   ) {
-    throw new Error(
-      `${context}: vaultIndexScope.markdown.maxDepth must be null or an integer >= minDepth`,
+    throw invalidIndexScope(
+      context,
+      "vaultIndexScope.markdown.maxDepth must be null or an integer >= minDepth",
     );
   }
+}
+
+function invalidIndexScope(context: string, detail: string): PublicApiError {
+  return new PublicApiError(400, `Invalid vault index scope: ${detail}`, {
+    code: "invalid-index-scope",
+    internalMessage: `${context}: ${detail}`,
+  });
 }
 
 export function markdownDepthFromVaultRoot(vaultPath: string): number {

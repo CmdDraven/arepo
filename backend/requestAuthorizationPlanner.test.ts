@@ -184,6 +184,24 @@ test("valid zero-grant credentials may invoke vault discovery without gaining va
   assert.deepEqual(plan.requiredPermissions, []);
 });
 
+test("directory browsing requires manageVaults rather than vault-scoped grants", () => {
+  const scoped = planRouteAwareRequestAuthorization({
+    request: bearerRequest("GET", "/api/node/directories?path=/srv"),
+    stores: storesForCredential(credential(["readIndex", "readContent"])),
+    now: new Date(now),
+  });
+  assert.equal(scoped.wouldDeny, true);
+  assert.deepEqual(scoped.missingPermissions, ["manageVaults"]);
+
+  const managed = planRouteAwareRequestAuthorization({
+    request: bearerRequest("GET", "/api/node/directories?path=/srv"),
+    stores: storesForCredential(credential([], ["manageVaults"])),
+    now: new Date(now),
+  });
+  assert.equal(managed.wouldAllow, true);
+  assert.deepEqual(managed.requiredPermissions, ["manageVaults"]);
+});
+
 test("source write requires writeContent plus readContent", () => {
   const denied = planRouteAwareRequestAuthorization({
     request: bearerRequest("PUT", "/api/vaults/notes/file?path=Notes/note.md"),

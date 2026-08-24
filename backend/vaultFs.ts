@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { buildIndex, validate } from "../src/lib/vault/indexer.js";
 import { sourceKindForPath, sourcePolicy } from "../src/lib/vault/sourcePolicy.js";
 import { defaultVaultIndexScope, markdownPathInScope } from "./indexScope.js";
+import { PublicApiError } from "./publicApiError.js";
 import {
   normalizeMarkdownFilePath,
   normalizeReadableTextFilePath,
@@ -91,7 +92,7 @@ export async function writeVaultFile(
   precondition: WritePrecondition = {},
 ): Promise<VaultFileWriteResponse> {
   requirePermission(vault.permissions.writeContent, "Vault is not writable");
-  if (typeof content !== "string") throw new Error("content must be a string");
+  if (typeof content !== "string") throw publicVaultError("content must be a string");
   const vaultPath = normalizeMarkdownFilePath(rawPath);
   const absolutePath = await resolveWritableVaultPath(vault, vaultPath);
   return withFileWriteLock(absolutePath, async () => {
@@ -114,7 +115,7 @@ export async function createVaultFile(
   content = "",
 ): Promise<VaultFile> {
   requirePermission(vault.permissions.writeContent, "Vault is not writable");
-  if (typeof content !== "string") throw new Error("content must be a string");
+  if (typeof content !== "string") throw publicVaultError("content must be a string");
   const vaultPath = normalizeMarkdownFilePath(rawPath);
   const absolutePath = await resolveCreatableVaultPath(vault, vaultPath);
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
@@ -159,7 +160,7 @@ export async function renameVaultPath(
   await fs.mkdir(path.dirname(toAbsolute), { recursive: true });
   try {
     await fs.lstat(toAbsolute);
-    throw new Error("Destination already exists");
+    throw publicVaultError("Destination already exists");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
@@ -245,13 +246,13 @@ async function walk(
 }
 
 function requirePermission(allowed: boolean, message: string): void {
-  if (!allowed) throw new Error(message);
+  if (!allowed) throw publicVaultError(message);
 }
 
 async function realVaultRoot(vault: VaultInfo): Promise<string> {
   const root = await fs.realpath(vault.rootPath);
   const stat = await fs.lstat(root);
-  if (!stat.isDirectory()) throw new Error("Vault root is not a directory");
+  if (!stat.isDirectory()) throw publicVaultError("Vault root is not a directory");
   return root;
 }
 
@@ -260,7 +261,9 @@ async function resolveExistingVaultPath(vault: VaultInfo, vaultPath: string): Pr
   const absolutePath = resolveInsideVault(root, vaultPath);
   await assertNoSymlinkSegments(root, vaultPath, false);
   const stat = await fs.lstat(absolutePath);
-  if (stat.isSymbolicLink()) throw new Error("Symlinks are not allowed inside vault paths");
+  if (stat.isSymbolicLink()) {
+    throw publicVaultError("Symlinks are not allowed inside vault paths");
+  }
   const real = await fs.realpath(absolutePath);
   ensureInside(root, real);
   return absolutePath;
@@ -274,7 +277,9 @@ async function resolveWritableVaultPath(vault: VaultInfo, vaultPath: string): Pr
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   });
-  if (stat?.isSymbolicLink()) throw new Error("Symlinks are not allowed inside vault paths");
+  if (stat?.isSymbolicLink()) {
+    throw publicVaultError("Symlinks are not allowed inside vault paths");
+  }
   if (stat) {
     const real = await fs.realpath(absolutePath);
     ensureInside(root, real);
@@ -304,9 +309,11 @@ async function assertNoSymlinkSegments(
       throw error;
     });
     if (!stat) return;
-    if (stat.isSymbolicLink()) throw new Error("Symlinks are not allowed inside vault paths");
+    if (stat.isSymbolicLink()) {
+      throw publicVaultError("Symlinks are not allowed inside vault paths");
+    }
     if (!stat.isDirectory() && i < maxExistingSegments - 1) {
-      throw new Error("Vault path parent is not a directory");
+      throw publicVaultError("Vault path parent is not a directory");
     }
   }
 }
@@ -315,7 +322,9 @@ async function assertNoSymlinksInTree(root: string): Promise<void> {
   const entries = await fs.readdir(root, { withFileTypes: true });
   for (const entry of entries) {
     const absolutePath = path.join(root, entry.name);
-    if (entry.isSymbolicLink()) throw new Error("Symlinks are not allowed inside vault paths");
+    if (entry.isSymbolicLink()) {
+      throw publicVaultError("Symlinks are not allowed inside vault paths");
+    }
     if (entry.isDirectory()) await assertNoSymlinksInTree(absolutePath);
   }
 }
@@ -325,7 +334,7 @@ async function assertNoImmutableSupportedSourcesInTree(root: string): Promise<vo
     if (!dirent.isFile()) return;
     const kind = sourceKindForPath(absolutePath);
     if (kind && !sourcePolicy(kind).mutable) {
-      throw new Error(
+      throw publicVaultError(
         "Folder rename is not allowed because the folder contains read-only source content",
       );
     }
@@ -335,7 +344,7 @@ async function assertNoImmutableSupportedSourcesInTree(root: string): Promise<vo
 function ensureInside(root: string, absolutePath: string): void {
   const relative = path.relative(root, absolutePath);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error("Resolved path escapes the configured vault root");
+    throw publicVaultError("Resolved path escapes the configured vault root");
   }
 }
 
@@ -355,9 +364,13 @@ async function assertUnchangedIfExpected(
   const mtimeMatches =
     typeof expectedMtimeMs === "number" ? Math.abs(stat.mtimeMs - expectedMtimeMs) < 1 : true;
   if (!hashMatches || !mtimeMatches) {
-    const error = new Error("File changed on disk since it was opened. Reload before saving.");
-    (error as NodeJS.ErrnoException).code = "CONFLICT";
-    throw error;
+    throw new PublicApiError(
+      409,
+      "File changed on disk since it was opened. Reload before saving.",
+      {
+        code: "CONFLICT",
+      },
+    );
   }
 }
 
@@ -371,8 +384,12 @@ export function vaultFileKind(filePath: string): VaultFileKind | null {
 
 function requiredVaultFileKind(filePath: string): VaultFileKind {
   const kind = vaultFileKind(filePath);
-  if (!kind) throw new Error("Unsupported readable source file suffix");
+  if (!kind) throw publicVaultError("Unsupported readable source file suffix");
   return kind;
+}
+
+function publicVaultError(message: string): PublicApiError {
+  return new PublicApiError(400, message, { code: "invalid-vault-operation" });
 }
 
 async function syncDirectory(directory: string): Promise<void> {

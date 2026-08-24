@@ -14,6 +14,7 @@ const currentBackendRoutes = [
   "GET /api/health",
   "GET /api/node/status",
   "GET /api/node/auth/dry-run",
+  "GET /api/node/directories",
   "POST /api/node/auth/session",
   "POST /api/node/auth/session/logout",
   "POST /api/node/auth/session/revoke-all",
@@ -138,6 +139,16 @@ test("vault registration requires manageVaults", () => {
   const policy = policyFor("POST /api/vaults");
   assertRequires(policy, "manageVaults");
   assert.ok(policy.strongerConfirmation.includes("vaultRegistration"));
+});
+
+test("server directory browsing requires manageVaults without unrelated authority", () => {
+  const policy = policyFor("GET /api/node/directories");
+  assert.deepEqual(policy.requiredPermissions, ["manageVaults"]);
+  assertDoesNotRequire(policy, "manageNode");
+  assertDoesNotRequire(policy, "manageAuth");
+  assert.equal(policy.dataAccess.nodeManagement, true);
+  assert.equal(policy.dataAccess.sourceContent, false);
+  assert.equal(policy.dataAccess.sourceMutation, false);
 });
 
 test("vault removal requires manageVaults and stronger confirmation", () => {

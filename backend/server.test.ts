@@ -180,6 +180,62 @@ test("health endpoint returns local node info", async (t) => {
   assert.equal((response.body as { ok: boolean }).ok, true);
 });
 
+test("unexpected request-boundary failures do not expose filesystem details", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const sensitivePath = "/private/example/request-boundary-secret.txt";
+  const failingRequest = request("GET", "/api/health");
+  Object.defineProperty(failingRequest, "url", {
+    get() {
+      throw Object.assign(new Error(`EACCES: permission denied, open '${sensitivePath}'`), {
+        code: "EACCES",
+        syscall: "open",
+        path: sensitivePath,
+      });
+    },
+  });
+
+  const response = await routeRequest(failingRequest, cwd);
+  assert.deepEqual(response, {
+    status: 500,
+    body: { ok: false, error: "Internal server error", code: "internal-error" },
+    headers: {},
+  });
+  const serialized = JSON.stringify(response);
+  for (const hidden of [sensitivePath, "EACCES", "permission denied", "syscall", "stack"]) {
+    assert.equal(serialized.includes(hidden), false, hidden);
+  }
+});
+
+test("disabled local mode browses server directories without listing files", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const root = await makeTestTempDir(t, "arepo-directory-browser-");
+  await fs.mkdir(path.join(root, "zeta"));
+  await fs.mkdir(path.join(root, "alpha"));
+  await fs.writeFile(path.join(root, "hidden-file.txt"), "file\n", "utf8");
+
+  const response = await routeRequest(
+    request("GET", `/api/node/directories?path=${encodeURIComponent(root)}`),
+    cwd,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    (response.body as { directories: { name: string }[] }).directories.map(({ name }) => name),
+    ["alpha", "zeta"],
+  );
+  assert.equal(JSON.stringify(response.body).includes("hidden-file.txt"), false);
+
+  const relative = await routeRequest(request("GET", "/api/node/directories?path=relative"), cwd);
+  assert.deepEqual(relative, {
+    status: 400,
+    body: {
+      ok: false,
+      error: "Directory path must be absolute.",
+      code: "invalid-directory-path",
+    },
+    headers: relative.headers,
+  });
+});
+
 test("auth policy plumbing does not reject existing routes or accept credentials", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const appDataDir = await makeTestTempDir(t, "arepo-data-");
@@ -980,6 +1036,56 @@ test("manageVaults receives the full registration view without implied node capa
     cwd,
   );
   assert.equal(removed.status, 200);
+});
+
+test("protected directory browsing requires manageVaults and grants no unrelated authority", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const vaultRoot = await makeTestTempDir(t, "arepo-vault-");
+  const browseRoot = await makeTestTempDir(t, "arepo-directory-browser-");
+  await fs.mkdir(path.join(browseRoot, "Visible child"));
+  const vault = testVault(vaultRoot, "directory-policy-vault");
+  await writeConfig(cwd, appDataDir, {
+    auth: { mode: "protected" },
+    vaults: [vault],
+  });
+  const route = `/api/node/directories?path=${encodeURIComponent(browseRoot)}`;
+  const bearerHeaders = { authorization: `Bearer ${protectedBearerToken}` };
+  await writeProtectedAuthStores(appDataDir, {
+    vaultGrants: [{ vaultId: vault.id, permissions: ["readIndex", "readContent"] }],
+  });
+
+  const anonymous = await routeRequest(request("GET", route), cwd);
+  assert.equal(anonymous.status, 401);
+  assert.equal(JSON.stringify(anonymous.body).includes(browseRoot), false);
+
+  const scoped = await routeRequest(request("GET", route, undefined, bearerHeaders), cwd);
+  assert.equal(scoped.status, 403);
+  assert.equal(JSON.stringify(scoped.body).includes(browseRoot), false);
+  assert.equal(JSON.stringify(scoped.body).includes("Visible child"), false);
+
+  await writeProtectedAuthStores(appDataDir, {});
+  const zeroGrant = await routeRequest(request("GET", route, undefined, bearerHeaders), cwd);
+  assert.equal(zeroGrant.status, 403);
+  assert.equal(JSON.stringify(zeroGrant.body).includes(browseRoot), false);
+
+  await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageVaults"] });
+  const managed = await routeRequest(request("GET", route, undefined, bearerHeaders), cwd);
+  assert.equal(managed.status, 200);
+  assert.equal(
+    (managed.body as { currentPath: string }).currentPath,
+    await fs.realpath(browseRoot),
+  );
+  assert.deepEqual(
+    (managed.body as { directories: { name: string }[] }).directories.map(({ name }) => name),
+    ["Visible child"],
+  );
+
+  const nodeStatus = await routeRequest(
+    request("GET", "/api/node/status", undefined, bearerHeaders),
+    cwd,
+  );
+  assert.equal(nodeStatus.status, 403);
 });
 
 test("protected vault rebind requires authentication, manageVaults, and confirmation", async (t) => {
@@ -1847,6 +1953,39 @@ test("node status endpoint surfaces invalid config diagnostics", async (t) => {
   const body = response.body as { ok: false; error: string };
   assert.equal(body.ok, false);
   assert.match(body.error, /nodeId must contain only/);
+});
+
+test("node status bounds protected startup and credential-store diagnostics", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-sensitive-");
+  await writeConfig(cwd, appDataDir, {
+    auth: { mode: "disabled", requestedMode: "protected" },
+  });
+  await writeProtectedAuthStores(appDataDir, {});
+  const paths = resolveAuthStoragePaths(appDataDir);
+  await fs.writeFile(paths.credentials, "{ sensitive invalid json", "utf8");
+
+  const response = await routeRequest(request("GET", "/api/node/status"), cwd);
+  assert.equal(response.status, 200);
+  const status = response.body as LocalNodeRuntimeStatus;
+  assert.equal(status.credentialLifecycle.error, "Credential lifecycle status unavailable.");
+  assert.equal(status.protectedModeStartup.corruptStores.length, 1);
+  assert.equal(
+    status.protectedModeStartup.corruptStores[0]?.error,
+    "Auth store validation failed.",
+  );
+  const exposedErrors = JSON.stringify({
+    lifecycle: status.credentialLifecycle.error,
+    startup: status.protectedModeStartup.corruptStores[0]?.error,
+  });
+  for (const hidden of [
+    appDataDir,
+    paths.credentials,
+    "Corrupt AREPO auth store",
+    "invalid JSON",
+  ]) {
+    assert.equal(exposedErrors.includes(hidden), false, hidden);
+  }
 });
 
 test("vault registration and file APIs stay inside configured root", async (t) => {

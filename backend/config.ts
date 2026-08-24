@@ -18,6 +18,7 @@ import {
   type VaultInfo,
 } from "./types.js";
 import { validateVaultRoot, withVaultAvailability } from "./vaultAvailability.js";
+import { PublicApiError } from "./publicApiError.js";
 
 function defaultConfig(): VaultConfigFile {
   return {
@@ -47,11 +48,12 @@ export async function loadConfig(cwd = process.cwd()): Promise<VaultConfigFile> 
     try {
       parsed = JSON.parse(raw) as Partial<VaultConfigFile>;
     } catch (error) {
-      throw new Error(
-        `Invalid AREPO config JSON at ${file}: ${
+      throw new PublicApiError(400, "AREPO configuration JSON is invalid.", {
+        code: "invalid-config",
+        internalMessage: `Invalid AREPO config JSON at ${file}: ${
           error instanceof Error ? error.message : "parse failed"
         }`,
-      );
+      });
     }
     const config = {
       node: { ...defaultConfig().node, ...parsed.node },
@@ -115,7 +117,7 @@ export async function getNodeInfo(cwd = process.cwd()): Promise<NodeInfo> {
 export async function getVault(vaultId: string, cwd = process.cwd()): Promise<VaultInfo> {
   const config = await loadConfig(cwd);
   const vault = config.vaults.find((item) => item.id === vaultId);
-  if (!vault) throw new Error(`Unknown vault: ${vaultId}`);
+  if (!vault) throw unknownVault(vaultId);
   return vault;
 }
 
@@ -126,7 +128,7 @@ export async function updateVaultIndexScope(
 ): Promise<VaultInfo> {
   const config = await loadConfig(cwd);
   const vault = config.vaults.find((item) => item.id === vaultId);
-  if (!vault) throw new Error(`Unknown vault: ${vaultId}`);
+  if (!vault) throw unknownVault(vaultId);
   const nextScope = normalizeVaultIndexScope(scopeInput);
   validateVaultIndexScope(
     nextScope,
@@ -158,96 +160,78 @@ export function resolveAppDataDir(
 
 async function validateConfig(config: VaultConfigFile, file: string): Promise<void> {
   if (!config || typeof config !== "object") {
-    throw new Error(`Invalid AREPO config at ${file}: config must be an object`);
+    throw invalidConfig(file, "config must be an object");
   }
   if (!config.node || typeof config.node !== "object") {
-    throw new Error(`Invalid AREPO config at ${file}: node is required`);
+    throw invalidConfig(file, "node is required");
   }
   if (typeof config.node.nodeId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(config.node.nodeId)) {
-    throw new Error(
-      `Invalid AREPO config at ${file}: nodeId must contain only letters, numbers, _ or -`,
-    );
+    throw invalidConfig(file, "nodeId must contain only letters, numbers, _ or -");
   }
   if (typeof config.node.displayName !== "string" || !config.node.displayName.trim()) {
-    throw new Error(`Invalid AREPO config at ${file}: node displayName must be a non-empty string`);
+    throw invalidConfig(file, "node displayName must be a non-empty string");
   }
   if (config.node.mode !== "local") {
-    throw new Error(`Invalid AREPO config at ${file}: only local node mode is supported in V1`);
+    throw invalidConfig(file, "only local node mode is supported in V1");
   }
   if (config.node.apiVersion !== 1) {
-    throw new Error(`Invalid AREPO config at ${file}: apiVersion must be 1`);
+    throw invalidConfig(file, "apiVersion must be 1");
   }
   validateAuthConfig(config.auth, file);
   if (config.appDataDir !== undefined) {
     if (typeof config.appDataDir !== "string" || !config.appDataDir.trim()) {
-      throw new Error(`Invalid AREPO config at ${file}: appDataDir must be a non-empty string`);
+      throw invalidConfig(file, "appDataDir must be a non-empty string");
     }
     if (config.appDataDir.includes("\0")) {
-      throw new Error(`Invalid AREPO config at ${file}: appDataDir cannot contain null bytes`);
+      throw invalidConfig(file, "appDataDir cannot contain null bytes");
     }
   }
   if (!Array.isArray(config.vaults)) {
-    throw new Error(`Invalid AREPO config at ${file}: vaults must be an array`);
+    throw invalidConfig(file, "vaults must be an array");
   }
 
   const seenIds = new Set<string>();
   for (const vault of config.vaults) {
     if (!vault || typeof vault !== "object") {
-      throw new Error(`Invalid AREPO config at ${file}: each vault must be an object`);
+      throw invalidConfig(file, "each vault must be an object");
     }
     if (typeof vault.id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(vault.id)) {
-      throw new Error(
-        `Invalid AREPO config at ${file}: vault id must contain only letters, numbers, _ or -`,
-      );
+      throw invalidConfig(file, "vault id must contain only letters, numbers, _ or -");
     }
     if (seenIds.has(vault.id)) {
-      throw new Error(`Invalid AREPO config at ${file}: duplicate vault id "${vault.id}"`);
+      throw invalidConfig(file, `duplicate vault id "${vault.id}"`);
     }
     seenIds.add(vault.id);
 
     if (typeof vault.displayName !== "string" || !vault.displayName.trim()) {
-      throw new Error(`Invalid AREPO config at ${file}: vault ${vault.id} needs displayName`);
+      throw invalidConfig(file, `vault ${vault.id} needs displayName`);
     }
     if (typeof vault.rootPath !== "string" || !path.isAbsolute(vault.rootPath)) {
-      throw new Error(
-        `Invalid AREPO config at ${file}: vault ${vault.id} rootPath must be absolute`,
-      );
+      throw invalidConfig(file, `vault ${vault.id} rootPath must be absolute`);
     }
     if (vault.rootPath.includes("\0")) {
-      throw new Error(
-        `Invalid AREPO config at ${file}: vault ${vault.id} rootPath cannot contain null bytes`,
-      );
+      throw invalidConfig(file, `vault ${vault.id} rootPath cannot contain null bytes`);
     }
     const permissions = vault.permissions;
     if (!permissions || typeof permissions !== "object") {
-      throw new Error(`Invalid AREPO config at ${file}: vault ${vault.id} permissions required`);
+      throw invalidConfig(file, `vault ${vault.id} permissions required`);
     }
     for (const key of ["readIndex", "readContent", "writeContent", "deleteFiles"] as const) {
       if (typeof permissions[key] !== "boolean") {
-        throw new Error(
-          `Invalid AREPO config at ${file}: vault ${vault.id} permission ${key} must be boolean`,
-        );
+        throw invalidConfig(file, `vault ${vault.id} permission ${key} must be boolean`);
       }
     }
     if (!permissions.readIndex) {
-      throw new Error(
-        `Invalid AREPO config at ${file}: vault ${vault.id} must allow readIndex in local mode`,
-      );
+      throw invalidConfig(file, `vault ${vault.id} must allow readIndex in local mode`);
     }
     if (!permissions.readContent) {
-      throw new Error(
-        `Invalid AREPO config at ${file}: vault ${vault.id} must allow readContent in local mode`,
-      );
+      throw invalidConfig(file, `vault ${vault.id} must allow readContent in local mode`);
     }
     if (!permissions.readContent && permissions.writeContent) {
-      throw new Error(
-        `Invalid AREPO config at ${file}: vault ${vault.id} cannot writeContent without readContent`,
-      );
+      throw invalidConfig(file, `vault ${vault.id} cannot writeContent without readContent`);
     }
     if (permissions.deleteFiles && !permissions.writeContent) {
-      throw new Error(
-        `Invalid AREPO config at ${file}: vault ${vault.id} cannot deleteFiles without writeContent`,
-      );
+      throw invalidConfig(file, `vault ${vault.id} cannot deleteFiles without writeContent`);
     }
 
     validateVaultIndexScope(
@@ -288,33 +272,25 @@ function normalizeAuthConfig(auth: unknown): AuthConfig {
 
 function validateAuthConfig(auth: AuthConfig, file: string): void {
   if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
-    throw new Error(`Invalid AREPO config at ${file}: auth must be an object`);
+    throw invalidConfig(file, "auth must be an object");
   }
   if (auth.mode !== "disabled" && auth.mode !== "protected") {
     const mode = typeof auth.mode === "string" ? auth.mode : String(auth.mode);
-    throw new Error(
-      `Invalid AREPO config at ${file}: unsupported auth mode "${mode}"; expected disabled or protected`,
-    );
+    throw invalidConfig(file, `unsupported auth mode "${mode}"; expected disabled or protected`);
   }
   if (auth.requestedMode !== undefined && !["disabled", "protected"].includes(auth.requestedMode)) {
     const requestedMode =
       typeof auth.requestedMode === "string" ? auth.requestedMode : String(auth.requestedMode);
-    throw new Error(
-      `Invalid AREPO config at ${file}: unsupported requested auth mode "${requestedMode}"`,
-    );
+    throw invalidConfig(file, `unsupported requested auth mode "${requestedMode}"`);
   }
   if (auth.requestedMode === "disabled" && auth.mode === "protected") {
-    throw new Error(
-      `Invalid AREPO config at ${file}: auth.requestedMode cannot be disabled while auth.mode is protected`,
-    );
+    throw invalidConfig(file, "auth.requestedMode cannot be disabled while auth.mode is protected");
   }
   if (auth.dryRunRequestPolicy !== undefined && typeof auth.dryRunRequestPolicy !== "boolean") {
-    throw new Error(
-      `Invalid AREPO config at ${file}: auth.dryRunRequestPolicy must be boolean when set`,
-    );
+    throw invalidConfig(file, "auth.dryRunRequestPolicy must be boolean when set");
   }
   if (auth.dryRunAudit !== undefined && typeof auth.dryRunAudit !== "boolean") {
-    throw new Error(`Invalid AREPO config at ${file}: auth.dryRunAudit must be boolean when set`);
+    throw invalidConfig(file, "auth.dryRunAudit must be boolean when set");
   }
 }
 
@@ -328,7 +304,7 @@ export async function addVault(
   cwd = process.cwd(),
 ): Promise<VaultInfo> {
   if (!input.rootPath || typeof input.rootPath !== "string") {
-    throw new Error("rootPath is required");
+    throw new PublicApiError(400, "rootPath is required", { code: "invalid-vault-root" });
   }
   const rootPath = await validateVaultRoot(input.rootPath);
 
@@ -371,6 +347,17 @@ function uniqueId(baseId: string, existing: string[]): string {
   let i = 2;
   while (existing.includes(`${baseId}-${i}`)) i++;
   return `${baseId}-${i}`;
+}
+
+function invalidConfig(file: string, detail: string): PublicApiError {
+  return new PublicApiError(400, `Invalid AREPO configuration: ${detail}`, {
+    code: "invalid-config",
+    internalMessage: `Invalid AREPO config at ${file}: ${detail}`,
+  });
+}
+
+function unknownVault(vaultId: string): PublicApiError {
+  return new PublicApiError(400, `Unknown vault: ${vaultId}`, { code: "unknown-vault" });
 }
 
 function expandHome(value: string): string {

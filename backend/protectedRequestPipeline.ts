@@ -20,6 +20,8 @@ import {
 
 export const PROTECTED_REQUEST_PIPELINE_ENFORCEMENT_ACTIVE = false;
 export const PROTECTED_REQUEST_PIPELINE_NETWORK_EXPOSURE_SAFE = false;
+const AUTH_STORE_LOAD_FAILED = "auth-store-load-failed";
+const AUDIT_APPEND_FAILED = "audit-append-failed";
 
 export type ProtectedRequestAuditMode = "disabled" | "dry-run" | "append";
 
@@ -121,13 +123,13 @@ async function loadStores(
       stores: { credentialStore, tokenVerifierStore, browserSessionStore, revocationStore },
       status: { status: "loaded", missingStoresTolerated: true, errors: [] },
     };
-  } catch (error) {
+  } catch {
     return {
       stores: EMPTY_STORES,
       status: {
         status: "failed",
         missingStoresTolerated: false,
-        errors: [error instanceof Error ? error.message : "auth store load failed"],
+        errors: [AUTH_STORE_LOAD_FAILED],
       },
     };
   }
@@ -149,12 +151,12 @@ async function handleAudit(
   try {
     await appendAuthAuditEvent(auditEventsPath, event);
     return { mode, status: "written", event };
-  } catch (error) {
+  } catch {
     return {
       mode,
       status: "failed",
       event,
-      error: error instanceof Error ? error.message : "audit append failed",
+      error: AUDIT_APPEND_FAILED,
     };
   }
 }

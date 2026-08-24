@@ -3,6 +3,7 @@ import { rebuildMachineIndex } from "./indexCache.js";
 import { validateVaultRoot, withVaultAvailability } from "./vaultAvailability.js";
 import { ensureVaultWatcher, recordVaultIndexed, stopVaultWatcherAndWait } from "./vaultWatch.js";
 import type { VaultInfo } from "./types.js";
+import { PublicApiError } from "./publicApiError.js";
 
 export type RebindVaultResult = {
   vault: VaultInfo;
@@ -16,7 +17,9 @@ export async function rebindVaultRoot(
 ): Promise<RebindVaultResult> {
   const config = await loadConfig(cwd);
   const vaultIndex = config.vaults.findIndex((vault) => vault.id === vaultId);
-  if (vaultIndex < 0) throw new Error(`Unknown vault: ${vaultId}`);
+  if (vaultIndex < 0) {
+    throw new PublicApiError(400, `Unknown vault: ${vaultId}`, { code: "unknown-vault" });
+  }
 
   const rootPath = await validateVaultRoot(rootInput);
   const previousVault = config.vaults[vaultIndex];

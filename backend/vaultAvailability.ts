@@ -1,24 +1,31 @@
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { PublicApiError } from "./publicApiError.js";
 import type { VaultAvailability, VaultAvailabilityReason, VaultInfo } from "./types.js";
 
-export class VaultUnavailableError extends Error {
+export class VaultUnavailableError extends PublicApiError {
   readonly code = "VAULT_ROOT_UNAVAILABLE";
   readonly status = 503;
 
   constructor(readonly reason: VaultAvailabilityReason) {
-    super("Vault root is unavailable.");
+    super(503, "Vault root is unavailable.", {
+      code: "VAULT_ROOT_UNAVAILABLE",
+      reason,
+    });
     this.name = "VaultUnavailableError";
   }
 }
 
-export class VaultRootValidationError extends Error {
+export class VaultRootValidationError extends PublicApiError {
   readonly code = "INVALID_VAULT_ROOT";
   readonly status = 400;
 
   constructor(readonly reason: VaultAvailabilityReason | "invalid-root-path") {
-    super(validationMessage(reason));
+    super(400, validationMessage(reason), {
+      code: "INVALID_VAULT_ROOT",
+      reason,
+    });
     this.name = "VaultRootValidationError";
   }
 }

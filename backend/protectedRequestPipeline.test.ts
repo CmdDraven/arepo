@@ -10,6 +10,7 @@ import {
   PROTECTED_REQUEST_PIPELINE_ENFORCEMENT_ACTIVE,
   PROTECTED_REQUEST_PIPELINE_NETWORK_EXPOSURE_SAFE,
 } from "./protectedRequestPipeline.js";
+import { planProtectedResponse } from "./protectedResponsePlanner.js";
 import {
   readBrowserSessionStore,
   readCredentialStore,
@@ -304,6 +305,9 @@ test("corrupt credential token session or revocation store data fails closed", a
     });
 
     assert.equal(result.storeLoad.status, "failed", storeName);
+    assert.deepEqual(result.storeLoad.errors, ["auth-store-load-failed"], storeName);
+    assert.equal(JSON.stringify(result).includes(target), false, storeName);
+    assert.equal(JSON.stringify(result).includes("Corrupt AREPO auth store"), false, storeName);
     assert.equal(result.decision.wouldDeny, true, storeName);
     assert.notEqual(result.credential.status, "verified", storeName);
   }
@@ -418,6 +422,34 @@ test("append audit mode writes one sanitized JSONL event without overwriting exi
     ["evt-existing", "evt-pipeline"],
   );
   assert.equal(JSON.stringify(parsed.events).includes(tokenMaterial), false);
+});
+
+test("audit write failures use bounded pipeline and response diagnostics", async (t) => {
+  const appDataDir = await makeAppData(t);
+  await writeStores(appDataDir, { credential: apiCredential([]) });
+  const sensitiveAuditPath = await makeTestTempDir(t, "arepo-sensitive-audit-path-");
+  const result = await planProtectedRequestPipeline({
+    appDataDir,
+    request: {
+      method: "GET",
+      path: "/api/vaults/notes/index",
+      headers: { authorization: `Bearer ${tokenMaterial}` },
+    },
+    vaultId: "notes",
+    audit: { mode: "append", auditEventsPath: sensitiveAuditPath },
+    now: new Date(now),
+  });
+  const response = planProtectedResponse({ pipelineResult: result, protectedModeReady: true });
+
+  assert.equal(result.audit.status, "failed");
+  assert.equal(result.audit.error, "audit-append-failed");
+  assert.ok(result.reasonCodes.includes("audit:audit-append-failed"));
+  assert.equal(response.kind, "unauthorized");
+  assert.equal(response.body.reasonCodes.includes("audit:audit-append-failed"), false);
+  const serialized = JSON.stringify({ result, response });
+  for (const hidden of [sensitiveAuditPath, "EISDIR", "EPERM", "permission denied"]) {
+    assert.equal(serialized.includes(hidden), false, hidden);
+  }
 });
 
 test("disabled audit mode writes nothing", async (t) => {

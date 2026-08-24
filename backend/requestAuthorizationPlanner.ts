@@ -284,6 +284,9 @@ function matchRoutePolicy(request: RequestShapedCredentialInput): ProtectedRoute
   if (pathname === "/api/node/auth/dry-run") {
     return policyFor(method, "/api/node/auth/dry-run");
   }
+  if (pathname === "/api/node/directories") {
+    return policyFor(method, "/api/node/directories");
+  }
   if (pathname === "/api/node/auth/session") {
     return policyFor(method, "/api/node/auth/session");
   }

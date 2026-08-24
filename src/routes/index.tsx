@@ -12,6 +12,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  ChevronUp,
   Database,
   FileText,
   FileType2,
@@ -51,6 +52,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   searchLocalFiles,
   type LocalFileSearchDocument,
   type LocalFileSearchResult,
@@ -79,6 +88,16 @@ import {
   type VaultPermission,
 } from "@/lib/vault/store";
 import { isManagementVaultInfo } from "@/lib/vault/contracts";
+import type { DirectoryBrowserResponse } from "@/lib/vault/contracts";
+import {
+  beginDirectoryNavigation,
+  cancelDirectoryBrowser,
+  failDirectoryNavigation,
+  finishDirectoryNavigation,
+  openDirectoryBrowser,
+  selectCurrentDirectory,
+  type DirectoryBrowserState,
+} from "@/lib/vault/directoryBrowser";
 import { renderMarkdown } from "@/lib/vault/render";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -5043,6 +5062,38 @@ function AddVaultCard({
   });
   const [localError, setLocalError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [directoryBrowser, setDirectoryBrowser] = useState<DirectoryBrowserState>(() =>
+    cancelDirectoryBrowser(),
+  );
+  const directoryRequestId = useRef(0);
+
+  const navigateDirectory = async (path: string | null, opening = false) => {
+    const requestId = ++directoryRequestId.current;
+    setDirectoryBrowser((current) =>
+      opening ? openDirectoryBrowser() : beginDirectoryNavigation(current),
+    );
+    try {
+      const query = path === null ? "" : `?path=${encodeURIComponent(path)}`;
+      const listing = await settingsApi<DirectoryBrowserResponse>(`/api/node/directories${query}`);
+      if (requestId !== directoryRequestId.current) return;
+      setDirectoryBrowser((current) => finishDirectoryNavigation(current, listing));
+    } catch (error) {
+      if (requestId !== directoryRequestId.current) return;
+      setDirectoryBrowser((current) => failDirectoryNavigation(current, errorMessage(error)));
+    }
+  };
+
+  const closeDirectoryBrowser = () => {
+    directoryRequestId.current += 1;
+    setDirectoryBrowser(cancelDirectoryBrowser());
+  };
+
+  const chooseCurrentDirectory = () => {
+    const selection = selectCurrentDirectory(directoryBrowser);
+    if (selection.selectedPath) setRootPath(selection.selectedPath);
+    directoryRequestId.current += 1;
+    setDirectoryBrowser(selection.state);
+  };
 
   const setPermission = (key: keyof VaultPermission, value: boolean) => {
     if (
@@ -5122,13 +5173,25 @@ function AddVaultCard({
           <label className="text-xs font-medium" htmlFor="vault-root">
             Root path
           </label>
-          <Input
-            id="vault-root"
-            value={rootPath}
-            onChange={(e) => setRootPath(e.target.value)}
-            placeholder="/home/me/notes"
-            className="h-8 font-mono text-xs"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              id="vault-root"
+              value={rootPath}
+              onChange={(e) => setRootPath(e.target.value)}
+              placeholder="/home/me/notes"
+              className="h-8 min-w-0 font-mono text-xs"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5"
+              onClick={() => void navigateDirectory(null, true)}
+            >
+              <FolderTree className="size-3.5" />
+              Browse…
+            </Button>
+          </div>
         </div>
         <div className="rounded bg-muted/40 px-2 py-2 text-xs text-muted-foreground">
           The backend can only access folders configured here. It does not scan your filesystem.
@@ -5178,6 +5241,85 @@ function AddVaultCard({
           {submitting ? "Adding..." : "Add vault"}
         </Button>
       </form>
+      <Dialog
+        open={directoryBrowser.open}
+        onOpenChange={(open) => {
+          if (!open) closeDirectoryBrowser();
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Browse server folders</DialogTitle>
+            <DialogDescription>
+              Choose a folder visible to the AREPO backend. Selection fills the Root path field but
+              does not register the vault.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <div className="text-xs font-medium">Current folder</div>
+              <div className="rounded border bg-muted/30 px-3 py-2 font-mono text-xs break-all">
+                {directoryBrowser.listing?.currentPath ?? "Loading…"}
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={directoryBrowser.loading || !directoryBrowser.listing?.parentPath}
+              onClick={() => void navigateDirectory(directoryBrowser.listing?.parentPath ?? null)}
+            >
+              <ChevronUp className="size-3.5" />
+              Up
+            </Button>
+
+            <div className="max-h-72 min-h-36 overflow-y-auto rounded border p-1">
+              {directoryBrowser.loading && (
+                <div className="p-3 text-sm text-muted-foreground">Loading folders…</div>
+              )}
+              {!directoryBrowser.loading && directoryBrowser.error && (
+                <div className="m-2 rounded border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">
+                  {directoryBrowser.error}
+                </div>
+              )}
+              {!directoryBrowser.loading &&
+                !directoryBrowser.error &&
+                directoryBrowser.listing?.directories.map((directory) => (
+                  <button
+                    key={directory.path}
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => void navigateDirectory(directory.path)}
+                  >
+                    <FolderTree className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{directory.name}</span>
+                  </button>
+                ))}
+              {!directoryBrowser.loading &&
+                !directoryBrowser.error &&
+                directoryBrowser.listing?.directories.length === 0 && (
+                  <div className="p-3 text-sm text-muted-foreground">No child folders.</div>
+                )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeDirectoryBrowser}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={directoryBrowser.loading || !directoryBrowser.listing}
+              onClick={chooseCurrentDirectory}
+            >
+              Select this folder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

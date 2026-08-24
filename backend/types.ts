@@ -15,6 +15,8 @@ import type {
 import type { ValidationIssue } from "../src/lib/vault/indexer.js";
 
 export type {
+  DirectoryBrowserEntry,
+  DirectoryBrowserResponse,
   NodeInfo,
   NodeMode,
   OperationResult,

@@ -4,6 +4,7 @@ import type {
   IndexFilterResult,
   VaultIndexResponse,
 } from "./types.js";
+import { PublicApiError } from "./publicApiError.js";
 
 const FILTERS = new Set<IndexFilterKind>([
   "broken-links",
@@ -16,8 +17,10 @@ const FILTERS = new Set<IndexFilterKind>([
 
 export function parseIndexFilterKind(value: unknown): IndexFilterKind {
   if (typeof value !== "string" || !FILTERS.has(value as IndexFilterKind)) {
-    throw new Error(
+    throw new PublicApiError(
+      400,
       `Unknown index filter "${String(value ?? "")}". Expected one of: ${Array.from(FILTERS).join(", ")}`,
+      { code: "invalid-index-filter" },
     );
   }
   return value as IndexFilterKind;
