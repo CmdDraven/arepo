@@ -28,6 +28,7 @@ const currentBackendRoutes = [
   "GET /api/vaults",
   "POST /api/vaults",
   "DELETE /api/vaults/:vaultId",
+  "POST /api/vaults/:vaultId/rebind",
   "GET /api/vaults/:vaultId/files",
   "GET /api/vaults/:vaultId/file?path=...",
   "GET /api/vaults/:vaultId/status",
@@ -130,6 +131,14 @@ test("vault removal requires manageVaults and stronger confirmation", () => {
   const policy = policyFor("DELETE /api/vaults/:vaultId");
   assertRequires(policy, "manageVaults");
   assert.ok(policy.strongerConfirmation.includes("vaultRemoval"));
+  assert.equal(policy.dataAccess.sourceContent, false);
+  assert.equal(policy.dataAccess.sourceMutation, false);
+});
+
+test("vault rebind requires manageVaults and registration-level confirmation", () => {
+  const policy = policyFor("POST /api/vaults/:vaultId/rebind");
+  assertRequires(policy, "manageVaults");
+  assert.ok(policy.strongerConfirmation.includes("vaultRegistration"));
   assert.equal(policy.dataAccess.sourceContent, false);
   assert.equal(policy.dataAccess.sourceMutation, false);
 });

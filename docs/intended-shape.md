@@ -77,6 +77,7 @@ Graph data and layout are currently derived from that rebuildable index rather t
 V1 currently provides:
 
 * vault registration by absolute path
+* stable vault registration identity with explicit unavailable-root reporting and root rebinding
 * Tree view
 * Markdown editor
 * sanitized preview

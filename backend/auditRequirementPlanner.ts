@@ -15,6 +15,7 @@ export type AuditRequirementOperation =
   | "token-revoked"
   | "node-secret-rotated"
   | "vault-registered"
+  | "vault-rebound"
   | "vault-removed"
   | "vault-permissions-changed"
   | "file-created"
@@ -93,6 +94,7 @@ const requiredOperationReasons: Partial<
   "token-revoked": ["audit-required", "token-lifecycle"],
   "node-secret-rotated": ["audit-required", "node-secret-rotation"],
   "vault-registered": ["audit-required", "vault-lifecycle"],
+  "vault-rebound": ["audit-required", "vault-lifecycle"],
   "vault-removed": ["audit-required", "vault-lifecycle"],
   "vault-permissions-changed": ["audit-required", "vault-permission-change"],
   "file-created": ["audit-required", "source-mutation"],
@@ -205,6 +207,8 @@ function operationFromPolicy(policy: ProtectedRoutePolicy): AuditRequirementOper
   switch (policy.category) {
     case "vaultRegistration":
       return "vault-registered";
+    case "vaultRebind":
+      return "vault-rebound";
     case "vaultRemoval":
       return "vault-removed";
     case "fileCreate":

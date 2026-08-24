@@ -4,6 +4,7 @@ import path from "node:path";
 import { rebuildMachineIndex } from "./indexCache.js";
 import { listFolders, listSupportedTextFiles, readVaultFile, vaultFileKind } from "./vaultFs.js";
 import type { IndexFreshness, VaultInfo, VaultRuntimeStatus, WatchedFileStatus } from "./types.js";
+import { assessVaultAvailability } from "./vaultAvailability.js";
 
 type SnapshotEntry = {
   mtimeMs: number;
@@ -93,14 +94,29 @@ export async function startConfiguredVaultWatchers(
   vaults: VaultInfo[],
   cwd = process.cwd(),
 ): Promise<void> {
-  await Promise.all(vaults.map((vault) => ensureVaultWatcher(vault, cwd)));
-  const configuredIds = new Set(vaults.map((vault) => stateKey(cwd, vault.id)));
+  const availableVaults = (
+    await Promise.all(
+      vaults.map(async (vault) => ({
+        vault,
+        availability: await assessVaultAvailability(vault.rootPath),
+      })),
+    )
+  ).filter(({ availability }) => availability.status === "available");
+  await Promise.all(availableVaults.map(({ vault }) => ensureVaultWatcher(vault, cwd)));
+  const configuredIds = new Set(availableVaults.map(({ vault }) => stateKey(cwd, vault.id)));
   for (const key of states.keys()) {
     if (key.startsWith(`${cwd}:`) && !configuredIds.has(key)) {
       const [, vaultId] = key.split(":");
       if (vaultId) stopVaultWatcher(cwd, vaultId);
     }
   }
+}
+
+export async function stopVaultWatcherAndWait(cwd: string, vaultId: string): Promise<void> {
+  const state = states.get(stateKey(cwd, vaultId));
+  const rebuilding = state?.rebuilding;
+  stopVaultWatcher(cwd, vaultId);
+  if (rebuilding) await Promise.allSettled([rebuilding]);
 }
 
 export function stopVaultWatcher(cwd: string, vaultId: string): void {

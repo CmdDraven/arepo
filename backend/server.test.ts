@@ -714,6 +714,66 @@ test("protected mode enforces bearer credentials and vault route permissions", a
   assert.equal(serializedAudit.includes("salt"), false);
 });
 
+test("protected vault rebind requires authentication, manageVaults, and confirmation", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-vault-");
+  const replacementRoot = await makeTestTempDir(t, "arepo-vault-");
+  const vault = testVault(rootPath, "protected-rebind");
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
+  await writeProtectedAuthStores(appDataDir, { nodePermissions: [] });
+  const route = `/api/vaults/${vault.id}/rebind`;
+
+  const anonymous = await routeRequest(request("POST", route, { rootPath: replacementRoot }), cwd);
+  assert.equal(anonymous.status, 401);
+  assert.equal((await loadConfig(cwd)).vaults[0]?.rootPath, rootPath);
+
+  const unauthorized = await routeRequest(
+    request(
+      "POST",
+      route,
+      { rootPath: replacementRoot },
+      {
+        authorization: `Bearer ${protectedBearerToken}`,
+        "x-arepo-confirmation": "confirm",
+      },
+    ),
+    cwd,
+  );
+  assert.equal(unauthorized.status, 403);
+  assert.equal((await loadConfig(cwd)).vaults[0]?.rootPath, rootPath);
+
+  await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageVaults"] });
+  const unconfirmed = await routeRequest(
+    request(
+      "POST",
+      route,
+      { rootPath: replacementRoot },
+      {
+        authorization: `Bearer ${protectedBearerToken}`,
+      },
+    ),
+    cwd,
+  );
+  assert.equal(unconfirmed.status, 428);
+  assert.equal((await loadConfig(cwd)).vaults[0]?.rootPath, rootPath);
+
+  const confirmed = await routeRequest(
+    request(
+      "POST",
+      route,
+      { rootPath: replacementRoot },
+      {
+        authorization: `Bearer ${protectedBearerToken}`,
+        "x-arepo-confirmation": "confirm",
+      },
+    ),
+    cwd,
+  );
+  assert.equal(confirmed.status, 200);
+  assert.equal((await loadConfig(cwd)).vaults[0]?.rootPath, replacementRoot);
+});
+
 test("protected mode returns reduced anonymous status and full authorized status", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const appDataDir = await makeTestTempDir(t, "arepo-data-");
@@ -1870,6 +1930,218 @@ test("removing an inaccessible vault registration does not require the vault roo
   assert.equal(removed.status, 200);
   const list = await routeRequest(request("GET", "/api/vaults"), cwd);
   assert.deepEqual((list.body as { vaults: VaultInfo[] }).vaults, []);
+});
+
+test("one unavailable vault remains isolated from an available vault and node status", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const availableRoot = await makeTestTempDir(t, "arepo-vault-");
+  const missingRoot = path.join(cwd, "missing-vault");
+  await fs.writeFile(path.join(availableRoot, "working.md"), "# Working\n", "utf8");
+  await fs.writeFile(path.join(availableRoot, "working.txt"), "available body\n", "utf8");
+  const availableVault = testVault(availableRoot, "available");
+  const unavailableVault = testVault(missingRoot, "unavailable");
+  await writeConfig(cwd, appDataDir, { vaults: [availableVault, unavailableVault] });
+
+  const listing = await routeRequest(request("GET", "/api/vaults"), cwd);
+  assert.equal(listing.status, 200);
+  const listedVaults = (listing.body as { vaults: VaultInfo[] }).vaults;
+  assert.deepEqual(listedVaults.find((vault) => vault.id === "available")?.availability, {
+    status: "available",
+  });
+  assert.deepEqual(listedVaults.find((vault) => vault.id === "unavailable")?.availability, {
+    status: "unavailable",
+    reason: "root-not-found",
+  });
+
+  const [files, content, index] = await Promise.all([
+    routeRequest(request("GET", "/api/vaults/available/files"), cwd),
+    routeRequest(request("GET", "/api/vaults/available/file?path=working.txt"), cwd),
+    routeRequest(request("GET", "/api/vaults/available/index"), cwd),
+  ]);
+  assert.equal(files.status, 200);
+  assert.equal((content.body as { content: string }).content, "available body\n");
+  assert.ok((index.body as VaultIndexResponse).index.notes["working.md"]);
+
+  for (const url of [
+    "/api/vaults/unavailable/files",
+    "/api/vaults/unavailable/file?path=secret.md",
+    "/api/vaults/unavailable/index",
+    "/api/vaults/unavailable/status",
+    "/api/vaults/unavailable/storage",
+  ]) {
+    const response = await routeRequest(request("GET", url), cwd);
+    assert.equal(response.status, 503, url);
+    assert.deepEqual(response.body, {
+      ok: false,
+      error: "Vault root is unavailable.",
+      code: "VAULT_ROOT_UNAVAILABLE",
+      reason: "root-not-found",
+    });
+    assert.equal(JSON.stringify(response.body).includes(missingRoot), false);
+  }
+
+  const nodeStatus = await routeRequest(request("GET", "/api/node/status"), cwd);
+  assert.equal(nodeStatus.status, 200);
+  const status = nodeStatus.body as LocalNodeRuntimeStatus;
+  assert.equal(status.vaults.find((vault) => vault.vaultId === "available")?.watcherHealth, "ok");
+  assert.deepEqual(status.vaults.find((vault) => vault.vaultId === "unavailable")?.availability, {
+    status: "unavailable",
+    reason: "root-not-found",
+  });
+});
+
+test("rebind preserves identity and policy, replaces watcher state, and rebuilds from the new root", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootA = path.join(cwd, "root-a");
+  const rootB = path.join(cwd, "root-b");
+  await fs.mkdir(rootA);
+  await fs.writeFile(path.join(rootA, "old.md"), "# Old root\n", "utf8");
+  await fs.writeFile(path.join(rootA, "old.txt"), "old body\n", "utf8");
+  const original: VaultInfo = {
+    ...testVault(rootA, "stable-vault-id"),
+    displayName: "Durable vault",
+    permissions: {
+      readIndex: true,
+      readContent: true,
+      writeContent: false,
+      deleteFiles: false,
+    },
+    vaultIndexScope: { markdown: { minDepth: 0, maxDepth: 2 } },
+  };
+  await writeConfig(cwd, appDataDir, { vaults: [original] });
+  assert.equal(
+    (await routeRequest(request("GET", `/api/vaults/${original.id}/index`), cwd)).status,
+    200,
+  );
+  const oldIndexPath = await machineIndexPath(original, cwd);
+  assert.equal(await fileExists(oldIndexPath), true);
+
+  await fs.rename(rootA, rootB);
+  await fs.unlink(path.join(rootB, "old.md"));
+  await fs.writeFile(path.join(rootB, "new.md"), "# New root\n", "utf8");
+  await fs.writeFile(path.join(rootB, "new.txt"), "new body\n", "utf8");
+  await fs.writeFile(
+    path.join(rootB, "new.arepo-chat.json"),
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"new"},"messages":[]}\n',
+    "utf8",
+  );
+
+  const unavailable = await routeRequest(request("GET", "/api/vaults"), cwd);
+  assert.equal(
+    (unavailable.body as { vaults: VaultInfo[] }).vaults[0]?.availability?.status,
+    "unavailable",
+  );
+
+  const rebound = await routeRequest(
+    request("POST", `/api/vaults/${original.id}/rebind`, { rootPath: rootB }),
+    cwd,
+  );
+  assert.equal(rebound.status, 200);
+  const reboundVault = (rebound.body as { data: { vault: VaultInfo; indexRebuilt: boolean } }).data;
+  assert.equal(reboundVault.indexRebuilt, true);
+  assert.equal(reboundVault.vault.id, original.id);
+  assert.equal(reboundVault.vault.displayName, original.displayName);
+  assert.deepEqual(reboundVault.vault.permissions, original.permissions);
+  assert.deepEqual(reboundVault.vault.vaultIndexScope, original.vaultIndexScope);
+  assert.equal(reboundVault.vault.rootPath, rootB);
+  assert.deepEqual(reboundVault.vault.availability, { status: "available" });
+  const reboundIndexPath = await machineIndexPath(reboundVault.vault, cwd);
+  assert.notEqual(reboundIndexPath, oldIndexPath);
+  assert.equal(await fileExists(reboundIndexPath), true);
+
+  const persisted = await loadConfig(cwd);
+  assert.equal(persisted.vaults[0]?.rootPath, rootB);
+  assert.equal(persisted.vaults[0]?.id, original.id);
+  assert.deepEqual(persisted.vaults[0]?.permissions, original.permissions);
+  assert.deepEqual(persisted.vaults[0]?.vaultIndexScope, original.vaultIndexScope);
+
+  const files = await routeRequest(request("GET", `/api/vaults/${original.id}/files`), cwd);
+  assert.deepEqual(
+    (files.body as { files: { path: string }[] }).files.map((file) => file.path).sort(),
+    ["new.arepo-chat.json", "new.md", "new.txt", "old.txt"],
+  );
+  const content = await routeRequest(
+    request("GET", `/api/vaults/${original.id}/file?path=new.txt`),
+    cwd,
+  );
+  assert.equal((content.body as { content: string }).content, "new body\n");
+  const index = await routeRequest(request("GET", `/api/vaults/${original.id}/index`), cwd);
+  assert.deepEqual(Object.keys((index.body as VaultIndexResponse).index.notes), ["new.md"]);
+
+  await fs.mkdir(rootA);
+  await fs.writeFile(path.join(rootA, "stale.md"), "# Stale old watcher\n", "utf8");
+  await fs.writeFile(path.join(rootB, "after-rebind.txt"), "tracked\n", "utf8");
+  await fs.writeFile(
+    path.join(rootB, "after-rebind.arepo-chat.json"),
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"after"},"messages":[]}\n',
+    "utf8",
+  );
+  const statusResponse = await routeRequest(
+    request("GET", `/api/vaults/${original.id}/status`),
+    cwd,
+  );
+  const runtime = statusBody(statusResponse);
+  assert.ok(runtime.addedPaths.includes("after-rebind.txt"));
+  assert.ok(runtime.addedPaths.includes("after-rebind.arepo-chat.json"));
+  assert.equal(runtime.changedPaths.includes("stale.md"), false);
+  assert.equal(runtime.indexStatus, "fresh");
+
+  await fs.writeFile(path.join(rootB, "after-rebind.md"), "# Watched new root\n", "utf8");
+  const markdownStatus = await routeRequest(
+    request("GET", `/api/vaults/${original.id}/status`),
+    cwd,
+  );
+  assert.equal(statusBody(markdownStatus).indexStatus, "stale");
+  assert.ok(statusBody(markdownStatus).addedPaths.includes("after-rebind.md"));
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  const rebuilt = await routeRequest(request("GET", `/api/vaults/${original.id}/index`), cwd);
+  assert.ok((rebuilt.body as VaultIndexResponse).index.notes["after-rebind.md"]);
+  assert.equal(
+    Object.hasOwn((rebuilt.body as VaultIndexResponse).index.notes, "after-rebind.arepo-chat.json"),
+    false,
+  );
+});
+
+test("rebind rejects invalid targets atomically and does not alter the registration", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const originalRoot = await makeTestTempDir(t, "arepo-vault-");
+  const replacementFile = path.join(cwd, "replacement-file");
+  await fs.writeFile(replacementFile, "not a directory", "utf8");
+  const vault = testVault(originalRoot, "stable");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+
+  for (const rootPath of [
+    path.join(cwd, "missing"),
+    replacementFile,
+    "relative/path",
+    "\0unsafe",
+  ] as const) {
+    const response = await routeRequest(
+      request("POST", `/api/vaults/${vault.id}/rebind`, { rootPath }),
+      cwd,
+    );
+    assert.equal(response.status, 400);
+    assert.equal(JSON.stringify(response.body).includes(originalRoot), false);
+    assert.equal((await loadConfig(cwd)).vaults[0]?.rootPath, originalRoot);
+  }
+
+  const unknown = await routeRequest(
+    request("POST", "/api/vaults/unknown/rebind", { rootPath: originalRoot }),
+    cwd,
+  );
+  assert.equal(unknown.status, 400);
+  assert.match((unknown.body as { error: string }).error, /Unknown vault/);
+  assert.equal((await loadConfig(cwd)).vaults[0]?.rootPath, originalRoot);
+
+  const relativeRegistration = await routeRequest(
+    request("POST", "/api/vaults", { rootPath: "relative/path" }),
+    cwd,
+  );
+  assert.equal(relativeRegistration.status, 400);
+  assert.equal((relativeRegistration.body as { code: string }).code, "INVALID_VAULT_ROOT");
 });
 
 test("discard generated data refuses to delete unverified cache files", async (t) => {

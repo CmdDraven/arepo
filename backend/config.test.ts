@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { makeTestTempDir } from "./testTemp.js";
-import { loadConfig, resolveAppDataDir } from "./config.js";
+import { getNodeInfo, loadConfig, resolveAppDataDir } from "./config.js";
 
 async function writeConfig(cwd: string, config: unknown): Promise<void> {
   await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
@@ -20,7 +20,7 @@ test("config validation rejects parse errors clearly", async (t) => {
   await assert.rejects(() => loadConfig(cwd), /Invalid AREPO config JSON/);
 });
 
-test("config validation rejects duplicate vault ids and missing roots", async (t) => {
+test("config validation rejects duplicate vault ids but accepts a missing runtime root", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-config-");
   const rootPath = await makeTestTempDir(t, "arepo-root-");
   const permissions = {
@@ -59,7 +59,67 @@ test("config validation rejects duplicate vault ids and missing roots", async (t
       },
     ],
   });
-  await assert.rejects(() => loadConfig(cwd), /rootPath is not accessible/);
+  const config = await loadConfig(cwd);
+  assert.equal(config.vaults[0]?.id, "missing");
+  const node = await getNodeInfo(cwd);
+  assert.deepEqual(node.vaults[0]?.availability, {
+    status: "unavailable",
+    reason: "root-not-found",
+  });
+});
+
+test("a structurally valid file root is reported as unavailable without invalidating config", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
+  const rootFile = path.join(cwd, "not-a-directory");
+  await fs.writeFile(rootFile, "file", "utf8");
+  await writeConfig(cwd, {
+    node: { nodeId: "local", displayName: "Local Node", mode: "local", apiVersion: 1 },
+    vaults: [
+      {
+        id: "file-root",
+        displayName: "File root",
+        rootPath: rootFile,
+        permissions: {
+          readIndex: true,
+          readContent: true,
+          writeContent: true,
+          deleteFiles: false,
+        },
+      },
+    ],
+  });
+
+  assert.equal((await loadConfig(cwd)).vaults[0]?.id, "file-root");
+  assert.deepEqual((await getNodeInfo(cwd)).vaults[0]?.availability, {
+    status: "unavailable",
+    reason: "root-not-directory",
+  });
+});
+
+test("structural config validation still rejects malformed root path values", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-config-");
+  const config = {
+    node: { nodeId: "local", displayName: "Local Node", mode: "local", apiVersion: 1 },
+    vaults: [
+      {
+        id: "bad-root",
+        displayName: "Bad root",
+        rootPath: "relative/root",
+        permissions: {
+          readIndex: true,
+          readContent: true,
+          writeContent: true,
+          deleteFiles: false,
+        },
+      },
+    ],
+  };
+  await writeConfig(cwd, config);
+  await assert.rejects(() => loadConfig(cwd), /rootPath must be absolute/);
+
+  config.vaults[0]!.rootPath = `/tmp/bad\0root`;
+  await writeConfig(cwd, config);
+  await assert.rejects(() => loadConfig(cwd), /rootPath cannot contain null bytes/);
 });
 
 test("config validation rejects unsafe permission shapes", async (t) => {

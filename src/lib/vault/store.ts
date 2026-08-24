@@ -12,6 +12,7 @@ import {
   type VaultLoadData,
 } from "./contentLoading";
 import { globalErrorForLoadFailure } from "./loadFailure";
+import { hasVisibleVaultData, isVaultAvailable, preferredVaultId } from "./availability";
 import type {
   NodeInfo,
   OperationResult,
@@ -104,6 +105,7 @@ export type VaultStore = {
   reindex: () => Promise<boolean>;
   reindexVault: (vaultId: string) => Promise<boolean>;
   updateVaultIndexScope: (vaultId: string, scope: VaultIndexScope) => Promise<boolean>;
+  rebindVault: (vaultId: string, rootPath: string) => Promise<boolean>;
   hasExternalChange: (path: string) => Promise<boolean>;
   readFileFromDisk: (path: string) => Promise<FileResponse | null>;
   reloadFile: (path: string) => Promise<boolean>;
@@ -148,11 +150,13 @@ export function useVault(): VaultStore {
   const fileMetaRef = useRef<FileMetaMap>({});
 
   const vaults = useMemo(() => node?.vaults ?? [], [node]);
-  const activeVault = useMemo(
-    () => vaults.find((vault) => vault.id === activeVaultId) ?? vaults[0] ?? null,
-    [activeVaultId, vaults],
-  );
-  const hasCurrentVaultData = isCurrentVaultData(loadedVaultId, activeVault?.id);
+  const activeVault = useMemo(() => {
+    const id = preferredVaultId(vaults, activeVaultId);
+    return vaults.find((vault) => vault.id === id) ?? null;
+  }, [activeVaultId, vaults]);
+  const hasCurrentVaultData =
+    isCurrentVaultData(loadedVaultId, activeVault?.id) &&
+    hasVisibleVaultData(loadedVaultId, activeVault);
   const visibleFileContents = hasCurrentVaultData ? fileContents : EMPTY_FILE_CONTENTS;
   const visibleFileMeta = hasCurrentVaultData ? fileMeta : {};
   const visibleFolders = hasCurrentVaultData ? folders : [];
@@ -199,8 +203,9 @@ export function useVault(): VaultStore {
   const loadNode = useCallback(async () => {
     const nextNode = await api<NodeInfo>("/api/vaults");
     setNode(nextNode);
-    if (!activeVaultId && nextNode.vaults[0]) {
-      setActiveVaultId(nextNode.vaults[0].id);
+    const nextActiveVaultId = preferredVaultId(nextNode.vaults, activeVaultId);
+    if (nextActiveVaultId !== activeVaultId) {
+      setActiveVaultId(nextActiveVaultId);
     }
   }, [activeVaultId]);
 
@@ -290,6 +295,15 @@ export function useVault(): VaultStore {
   useEffect(() => {
     if (!activeVault) {
       clearVaultLoad();
+      return;
+    }
+    if (!isVaultAvailable(activeVault)) {
+      clearVaultLoad();
+      setError(null);
+      setLoading(false);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(LAST_VAULT_KEY, activeVault.id);
+      }
       return;
     }
     let cancelled = false;
@@ -522,6 +536,29 @@ export function useVault(): VaultStore {
     [activeVault?.id, loadNode, loadVault],
   );
 
+  const rebindVault = useCallback(
+    async (vaultId: string, rootPath: string) => {
+      setMutationError(null);
+      try {
+        await api<OperationResult<{ vault: VaultInfo; indexRebuilt: boolean }>>(
+          `/api/vaults/${encodeURIComponent(vaultId)}/rebind`,
+          {
+            method: "POST",
+            body: JSON.stringify({ rootPath }),
+          },
+        );
+        if (activeVaultId === vaultId) clearVaultLoad();
+        await loadNode();
+        setActiveVaultId(vaultId);
+        return true;
+      } catch (err) {
+        setMutationError(errorMessage(err));
+        return false;
+      }
+    },
+    [activeVaultId, clearVaultLoad, loadNode],
+  );
+
   const hasExternalChange = useCallback(
     async (path: string) => {
       if (!activeVault) return false;
@@ -706,6 +743,7 @@ export function useVault(): VaultStore {
     reindex,
     reindexVault,
     updateVaultIndexScope,
+    rebindVault,
     hasExternalChange,
     readFileFromDisk,
     reloadFile,

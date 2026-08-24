@@ -323,6 +323,8 @@ function matchRoutePolicy(request: RequestShapedCredentialInput): ProtectedRoute
       return policyFor(method, "/api/vaults/:vaultId");
     case "files":
       return policyFor(method, "/api/vaults/:vaultId/files");
+    case "rebind":
+      return policyFor(method, "/api/vaults/:vaultId/rebind");
     case "file":
       return policyFor(
         method,

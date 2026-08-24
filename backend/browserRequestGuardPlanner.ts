@@ -238,6 +238,7 @@ function requestClassForCategory(category: RoutePolicyCategory): BrowserRequestG
     case "reindex":
       return "source-mutation";
     case "vaultRegistration":
+    case "vaultRebind":
     case "vaultRemoval":
       return "vault-mutation";
     case "health":

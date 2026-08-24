@@ -103,6 +103,16 @@ test("vault registration removal and permission changes require audit", () => {
   assert.equal(routePlan.operation, "vault-registered");
 });
 
+test("vault rebind requires vault-lifecycle audit planning", () => {
+  const plan = planAuditRequirement({
+    request: { method: "POST", routePattern: "/api/vaults/:vaultId/rebind" },
+  });
+  assert.equal(plan.status, "required");
+  assert.equal(plan.auditRequired, true);
+  assert.equal(plan.operation, "vault-rebound");
+  assert.ok(plan.reasonCodes.includes("vault-lifecycle"));
+});
+
 test("source file create write rename delete require audit", () => {
   for (const requestShape of [
     { method: "POST" as const, routePattern: "/api/vaults/:vaultId/file" },

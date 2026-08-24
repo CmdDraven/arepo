@@ -41,6 +41,7 @@ import {
 } from "@/lib/vault/diff";
 import { buildGraph } from "@/lib/vault/graph";
 import { contentForLocalSearch } from "@/lib/vault/contentLoading";
+import { vaultAvailabilityLabel } from "@/lib/vault/availability";
 import {
   chatExportSearchTextFromSource,
   parseChatExportV1,
@@ -144,6 +145,7 @@ function VaultApp() {
     testHealth,
     reindexVault,
     updateVaultIndexScope,
+    rebindVault,
     hasExternalChange,
     readFileFromDisk,
     activeVault,
@@ -1727,6 +1729,7 @@ function VaultApp() {
             onRemoveVault={removeVault}
             onReindexVault={reindexVault}
             onUpdateVaultIndexScope={updateVaultIndexScope}
+            onRebindVault={rebindVault}
             onRefreshVaults={refreshNode}
             onTestHealth={testHealth}
           />
@@ -1753,13 +1756,37 @@ function VaultApp() {
             onRemoveVault={removeVault}
             onReindexVault={reindexVault}
             onUpdateVaultIndexScope={updateVaultIndexScope}
+            onRebindVault={rebindVault}
             onRefreshVaults={refreshNode}
             onTestHealth={testHealth}
           />
         </main>
       )}
 
-      {!showSettings && activeVault && (
+      {!showSettings && activeVault?.availability?.status === "unavailable" && (
+        <main className="flex-1 min-h-0 flex items-center justify-center p-6">
+          <div className="max-w-lg rounded-md border bg-muted/20 p-5 space-y-3">
+            <div>
+              <h2 className="text-base font-semibold">Vault unavailable</h2>
+              <p className="text-sm text-muted-foreground">
+                AREPO still knows this vault, but its configured source directory cannot be used.
+              </p>
+            </div>
+            <div className="rounded border bg-background px-3 py-2 text-xs font-mono break-all">
+              {activeVault.rootPath}
+            </div>
+            <p className="text-sm">
+              {vaultAvailabilityLabel(activeVault.availability.reason)}. Locate the vault in Vault
+              Settings or select another available vault.
+            </p>
+            <Button size="sm" onClick={() => setShowSettings(true)}>
+              Open Vault Settings
+            </Button>
+          </div>
+        </main>
+      )}
+
+      {!showSettings && activeVault && activeVault.availability?.status !== "unavailable" && (
         <>
           {/* Desktop: 3-pane with center editor/preview tabs */}
           <div
@@ -3706,6 +3733,7 @@ function VaultSettingsPanel({
   onRemoveVault,
   onReindexVault,
   onUpdateVaultIndexScope,
+  onRebindVault,
   onRefreshVaults,
   onTestHealth,
 }: {
@@ -3727,6 +3755,7 @@ function VaultSettingsPanel({
   ) => Promise<RemoveVaultResponse | null>;
   onReindexVault: (vaultId: string) => Promise<boolean>;
   onUpdateVaultIndexScope: (vaultId: string, scope: VaultIndexScope) => Promise<boolean>;
+  onRebindVault: (vaultId: string, rootPath: string) => Promise<boolean>;
   onRefreshVaults: () => Promise<boolean>;
   onTestHealth: () => Promise<boolean>;
 }) {
@@ -3755,6 +3784,19 @@ function VaultSettingsPanel({
     setSummaryError(null);
     const entries = await Promise.all(
       vaults.map(async (vault) => {
+        if (vault.availability?.status === "unavailable") {
+          return [
+            vault.id,
+            {
+              fileCount: 0,
+              indexedNoteCount: 0,
+              issueCount: 0,
+              storage: null,
+              status: "error" as const,
+              error: vaultAvailabilityLabel(vault.availability.reason),
+            },
+          ] as const;
+        }
         try {
           const [files, indexResponse, storage] = await Promise.all([
             settingsApi<{ files: { path: string }[] }>(
@@ -3871,6 +3913,17 @@ function VaultSettingsPanel({
               onUpdateVaultIndexScope={async (vaultId, scope) => {
                 setBusyVaultId(vaultId);
                 const ok = await onUpdateVaultIndexScope(vaultId, scope);
+                if (ok) {
+                  await onRefreshVaults();
+                  await refreshSummaries();
+                  await refreshNodeStatus();
+                }
+                setBusyVaultId(null);
+                return ok;
+              }}
+              onRebindVault={async (vaultId, rootPath) => {
+                setBusyVaultId(vaultId);
+                const ok = await onRebindVault(vaultId, rootPath);
                 if (ok) {
                   await onRefreshVaults();
                   await refreshSummaries();
@@ -4379,6 +4432,7 @@ function ConfiguredVaultsCard({
   onSelectVault,
   onReindexVault,
   onUpdateVaultIndexScope,
+  onRebindVault,
   onRemoveVault,
   onRefresh,
 }: {
@@ -4389,6 +4443,7 @@ function ConfiguredVaultsCard({
   onSelectVault: (vaultId: string) => void;
   onReindexVault: (vaultId: string) => Promise<void>;
   onUpdateVaultIndexScope: (vaultId: string, scope: VaultIndexScope) => Promise<boolean>;
+  onRebindVault: (vaultId: string, rootPath: string) => Promise<boolean>;
   onRemoveVault: (
     vaultId: string,
     generatedDataAction: GeneratedDataAction,
@@ -4399,6 +4454,8 @@ function ConfiguredVaultsCard({
   const [removeVaultId, setRemoveVaultId] = useState<string | null>(null);
   const [generatedDataAction, setGeneratedDataAction] = useState<GeneratedDataAction>("keep");
   const [removeResult, setRemoveResult] = useState<RemoveVaultResponse | null>(null);
+  const [rebindVaultId, setRebindVaultId] = useState<string | null>(null);
+  const [rebindRootPath, setRebindRootPath] = useState("");
   const generatedDataChoiceName = useId();
   const refresh = async () => {
     setRefreshing(true);
@@ -4463,6 +4520,9 @@ function ConfiguredVaultsCard({
           vaults.map((vault) => {
             const summary = summaries[vault.id];
             const selected = vault.id === activeVaultId;
+            const unavailable = vault.availability?.status === "unavailable";
+            const unavailableReason =
+              vault.availability?.status === "unavailable" ? vault.availability.reason : null;
             return (
               <div key={vault.id} className="p-3 space-y-3">
                 <div className="flex flex-wrap items-start gap-2">
@@ -4470,6 +4530,7 @@ function ConfiguredVaultsCard({
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold truncate">{vault.displayName}</h3>
                       {selected && <Badge variant="secondary">Selected</Badge>}
+                      {unavailable && <Badge variant="destructive">Unavailable</Badge>}
                     </div>
                     <div className="text-xs text-muted-foreground font-mono truncate">
                       {vault.id}
@@ -4489,7 +4550,7 @@ function ConfiguredVaultsCard({
                     size="sm"
                     className="h-7 text-xs"
                     onClick={() => void onReindexVault(vault.id)}
-                    disabled={busyVaultId === vault.id}
+                    disabled={busyVaultId === vault.id || unavailable}
                   >
                     {busyVaultId === vault.id ? "Indexing..." : "Rebuild index"}
                   </Button>
@@ -4511,6 +4572,76 @@ function ConfiguredVaultsCard({
                 <div className="text-xs font-mono break-all bg-muted/40 rounded px-2 py-1">
                   {vault.rootPath}
                 </div>
+                {unavailable && (
+                  <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-xs space-y-2">
+                    <div>
+                      <span className="font-medium">Status: unavailable.</span>{" "}
+                      {unavailableReason
+                        ? vaultAvailabilityLabel(unavailableReason)
+                        : "Unavailable"}
+                      .
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setRebindVaultId(vault.id);
+                        setRebindRootPath("");
+                      }}
+                    >
+                      Locate / Rebind
+                    </Button>
+                  </div>
+                )}
+                {rebindVaultId === vault.id && (
+                  <form
+                    className="rounded border p-3 text-xs space-y-2"
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      const confirmed = window.confirm(
+                        "Rebind this vault to the new directory? AREPO will not move or modify the directory itself.",
+                      );
+                      if (!confirmed) return;
+                      const ok = await onRebindVault(vault.id, rebindRootPath);
+                      if (ok) {
+                        setRebindVaultId(null);
+                        setRebindRootPath("");
+                      }
+                    }}
+                  >
+                    <label className="space-y-1 block">
+                      <span className="font-medium">New absolute root path</span>
+                      <Input
+                        value={rebindRootPath}
+                        onChange={(event) => setRebindRootPath(event.target.value)}
+                        placeholder="/path/to/moved-vault"
+                        autoComplete="off"
+                      />
+                    </label>
+                    <p className="text-muted-foreground">
+                      This changes AREPO&apos;s configured location only. Source files are not
+                      moved.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setRebindVaultId(null)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={!rebindRootPath.trim() || busyVaultId === vault.id}
+                      >
+                        {busyVaultId === vault.id ? "Rebinding..." : "Rebind vault"}
+                      </Button>
+                    </div>
+                  </form>
+                )}
                 <div className="grid gap-2 sm:grid-cols-2">
                   <PermissionList permissions={vault.permissions} />
                   <div className="text-xs space-y-1">
@@ -4519,7 +4650,7 @@ function ConfiguredVaultsCard({
                 </div>
                 <IndexScopeEditor
                   vault={vault}
-                  disabled={busyVaultId === vault.id}
+                  disabled={busyVaultId === vault.id || unavailable}
                   onApply={(scope) => onUpdateVaultIndexScope(vault.id, scope)}
                 />
                 {vault.permissions.deleteFiles && (

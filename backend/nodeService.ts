@@ -6,6 +6,7 @@ import { buildProtectedModeReadinessManifest } from "./protectedModeReadiness.js
 import { assessProtectedModeStartup } from "./protectedModeStartup.js";
 import { getRequestPolicyRuntimeStatus } from "./requestPolicyStatus.js";
 import { getVaultRuntimeStatus, startConfiguredVaultWatchers } from "./vaultWatch.js";
+import { assessVaultAvailability } from "./vaultAvailability.js";
 import type {
   LocalNodeHealth,
   LocalNodeRuntimeStatus,
@@ -126,13 +127,12 @@ async function summarizeVaultRuntime(
   vault: VaultInfo,
   cwd: string,
 ): Promise<LocalNodeVaultRuntimeSummary> {
-  try {
-    const status = await getVaultRuntimeStatus(vault, cwd);
-    return toVaultRuntimeSummary(vault, status);
-  } catch (error) {
+  const availability = await assessVaultAvailability(vault.rootPath);
+  if (availability.status === "unavailable") {
     return {
       vaultId: vault.id,
       displayName: vault.displayName,
+      availability,
       indexStatus: "error",
       changedExternally: false,
       watcherHealth: "error",
@@ -140,7 +140,25 @@ async function summarizeVaultRuntime(
       addedPathCount: 0,
       deletedPathCount: 0,
       storageSummaryAvailable: false,
-      error: error instanceof Error ? error.message : "Vault runtime status failed",
+      error: "Vault root is unavailable.",
+    };
+  }
+  try {
+    const status = await getVaultRuntimeStatus(vault, cwd);
+    return toVaultRuntimeSummary(vault, status);
+  } catch {
+    return {
+      vaultId: vault.id,
+      displayName: vault.displayName,
+      availability,
+      indexStatus: "error",
+      changedExternally: false,
+      watcherHealth: "error",
+      changedPathCount: 0,
+      addedPathCount: 0,
+      deletedPathCount: 0,
+      storageSummaryAvailable: false,
+      error: "Vault runtime status failed.",
     };
   }
 }
@@ -152,6 +170,7 @@ function toVaultRuntimeSummary(
   return {
     vaultId: vault.id,
     displayName: vault.displayName,
+    availability: { status: "available" },
     indexStatus: status.indexStatus,
     changedExternally: status.changedExternally,
     watcherHealth: status.indexStatus === "fresh" ? "ok" : status.indexStatus,
@@ -161,6 +180,6 @@ function toVaultRuntimeSummary(
     lastEventAt: status.lastEventAt,
     lastIndexedAt: status.lastIndexedAt,
     storageSummaryAvailable: true,
-    error: status.error,
+    error: status.error ? "Vault watcher reported an error." : undefined,
   };
 }

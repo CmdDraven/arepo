@@ -9,6 +9,7 @@ export type StrongerConfirmationOperation =
   | "delete-source-file"
   | "overwrite-conflict"
   | "register-vault"
+  | "rebind-vault"
   | "remove-vault"
   | "change-vault-permissions"
   | "change-auth-mode"
@@ -28,6 +29,7 @@ export type StrongerConfirmationReasonCode =
   | "delete-source-file"
   | "overwrite-conflict"
   | "vault-registration"
+  | "vault-rebind"
   | "vault-removal"
   | "vault-permission-change"
   | "auth-mode-change"
@@ -72,6 +74,7 @@ const operationReasons: Record<
   "delete-source-file": ["stronger-confirmation-required", "delete-source-file"],
   "overwrite-conflict": ["stronger-confirmation-required", "overwrite-conflict"],
   "register-vault": ["stronger-confirmation-required", "vault-registration"],
+  "rebind-vault": ["stronger-confirmation-required", "vault-rebind"],
   "remove-vault": ["stronger-confirmation-required", "vault-removal"],
   "change-vault-permissions": ["stronger-confirmation-required", "vault-permission-change"],
   "change-auth-mode": ["stronger-confirmation-required", "auth-mode-change"],
@@ -89,6 +92,7 @@ const operationConfirmations: Partial<
   "delete-source-file": ["delete"],
   "overwrite-conflict": ["conflictOverwrite"],
   "register-vault": ["vaultRegistration"],
+  "rebind-vault": ["vaultRegistration"],
   "remove-vault": ["vaultRemoval"],
   "change-vault-permissions": ["vaultRegistration"],
   "change-auth-mode": ["authChange"],
@@ -137,13 +141,18 @@ export function planStrongerConfirmation(
   }
 
   if (policy?.strongerConfirmation.length) {
+    const operation = operationFromPolicy(policy);
     return basePlan({
       status: "required",
       confirmationRequired: true,
-      operation: operationFromPolicy(policy),
+      operation,
       routePattern: policy.routePattern,
       requiredConfirmation: policy.strongerConfirmation,
-      reasonCodes: unique(["stronger-confirmation-required", "route-requires-confirmation"]),
+      reasonCodes: unique([
+        "stronger-confirmation-required",
+        "route-requires-confirmation",
+        ...(operation ? operationReasons[operation] : []),
+      ]),
     });
   }
 
@@ -180,6 +189,9 @@ function operationFromPolicy(
   policy: ProtectedRoutePolicy,
 ): StrongerConfirmationOperation | undefined {
   if (policy.routePattern === "/api/vaults" && policy.method === "POST") return "register-vault";
+  if (policy.routePattern === "/api/vaults/:vaultId/rebind" && policy.method === "POST") {
+    return "rebind-vault";
+  }
   if (policy.routePattern === "/api/vaults/:vaultId" && policy.method === "DELETE") {
     return "remove-vault";
   }

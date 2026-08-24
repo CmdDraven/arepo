@@ -23,7 +23,7 @@ export async function enforceProtectedMode(input: {
   url: URL;
   corsHeaders: Record<string, string>;
 }): Promise<ResponsePayload | null> {
-  const config = await loadConfig(input.cwd, { validateVaultRoots: false });
+  const config = await loadConfig(input.cwd);
   if (config.auth.mode !== "protected") return null;
 
   const runtime = resolveBackendRuntimeOptions();

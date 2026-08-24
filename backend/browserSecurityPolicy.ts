@@ -80,6 +80,7 @@ const categoryRequestClasses: Record<RoutePolicyCategory, BrowserSecurityRequest
   credentialRotation: "authManagement",
   vaultListing: "safeReadMetadata",
   vaultRegistration: "vaultManagement",
+  vaultRebind: "vaultManagement",
   vaultRemoval: "vaultManagement",
   fileListing: "safeReadMetadata",
   fileRead: "sourceContentRead",

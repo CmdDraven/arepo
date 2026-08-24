@@ -30,6 +30,7 @@ export type RoutePolicyCategory =
   | "credentialRotation"
   | "vaultListing"
   | "vaultRegistration"
+  | "vaultRebind"
   | "vaultRemoval"
   | "fileListing"
   | "fileRead"
@@ -311,6 +312,18 @@ export const PROTECTED_ROUTE_POLICIES = [
     networkExposureSafe: false,
     notes:
       "Removing a vault unregisters it from AREPO and may discard verified AREPO-generated cache; it must never delete source files.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/vaults/:vaultId/rebind",
+    category: "vaultRebind",
+    requiredPermissions: ["manageVaults"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: ["vaultRegistration"],
+    dataAccess: access({ generatedIndex: true, nodeManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Rebinding changes an existing vault registration's filesystem reach while preserving its identity and policy.",
   },
   {
     method: "GET",

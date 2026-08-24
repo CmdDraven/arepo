@@ -196,6 +196,15 @@ The UI can also add an existing local vault folder through the top bar. The
 backend never scans the whole filesystem; only configured vault roots are
 accessible.
 
+A vault registration has a stable ID and policy independent of whether its
+configured filesystem root is currently available. If a root is moved,
+deleted, inaccessible, or temporarily unmounted, AREPO keeps the structurally
+valid registration and reports that vault as unavailable without blocking
+other vaults. Vault Settings can Locate / Rebind the same registration to an
+existing directory. Rebinding changes only AREPO's configured root path: it
+does not move source files, and it preserves the vault ID, permissions, and
+index scope. Forget vault remains a separate option.
+
 Vault Settings also shows read-only local node diagnostics from
 `GET /api/node/status`, including backend host/port, startup warnings, vault
 runtime health, auth posture, protected-mode readiness, and disabled V1
@@ -221,6 +230,8 @@ AREPO cache files to appear beside user notes.
 - `GET /api/node/status`
 - `GET /api/vaults`
 - `POST /api/vaults`
+- `POST /api/vaults/:vaultId/rebind`
+- `DELETE /api/vaults/:vaultId`
 - `GET /api/vaults/:vaultId/files`
 - `GET /api/vaults/:vaultId/file?path=...`
 - `PUT /api/vaults/:vaultId/file?path=...`
@@ -282,8 +293,10 @@ and remote node registration are not active in V1.
 - If the frontend is served without the Vite dev proxy, the backend CORS
   allowlist must include that frontend origin.
 - Only configured vault roots in `.arepo/config.json` are accessible.
-- Config is validated at startup. Duplicate vault IDs, missing roots, malformed
-  JSON, and unsafe permission shapes are rejected.
+- Config structure is validated at startup. Duplicate vault IDs, malformed JSON,
+  malformed root-path values, and unsafe permission/index-scope shapes are
+  rejected. A structurally valid registration with a missing or inaccessible
+  root remains loadable and is reported as unavailable at runtime.
 - The index/cache is rebuildable from Markdown files and is not canonical state.
 - Syncthing, Git, and Borg/Restic/Kopia remain external responsibilities.
 

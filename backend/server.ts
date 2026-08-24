@@ -15,6 +15,7 @@ import { buildIndexSearchResponse } from "./indexSearch.js";
 import { getMachineIndex, rebuildMachineIndex } from "./indexCache.js";
 import {
   getLocalNodeHealth,
+  getLocalNodeInfo,
   getLocalNodeRuntimeStatus,
   getLocalVault,
   startLocalNode,
@@ -46,6 +47,8 @@ import {
   renameVaultPath,
   writeVaultFile,
 } from "./vaultFs.js";
+import { requireAvailableVault } from "./vaultAvailability.js";
+import { rebindVaultRoot } from "./vaultRelocation.js";
 
 export type RequestLike = Pick<http.IncomingMessage, "method" | "url" | "headers"> &
   AsyncIterable<Buffer> & {
@@ -106,12 +109,12 @@ export async function routeRequest(
     }
 
     if (method === "GET" && url.pathname === "/api/node/auth/dry-run") {
-      const config = await loadConfig(cwd, { validateVaultRoots: false });
+      const config = await loadConfig(cwd);
       return json(200, getProtectedRequestDryRunCanaryStatus(config.auth), cors.headers);
     }
 
     if (segments[0] === "api" && segments[1] === "node" && segments[2] === "credentials") {
-      const config = await loadConfig(cwd, { validateVaultRoots: false });
+      const config = await loadConfig(cwd);
       if (config.auth.mode !== "protected") {
         return json(
           404,
@@ -173,8 +176,7 @@ export async function routeRequest(
     }
 
     if (method === "GET" && url.pathname === "/api/vaults") {
-      const config = await loadConfig(cwd, { validateVaultRoots: false });
-      const node = { ...config.node, vaults: config.vaults };
+      const node = await getLocalNodeInfo(cwd);
       return json(200, node, cors.headers);
     }
 
@@ -202,7 +204,13 @@ export async function routeRequest(
         return json(200, { ok: true, data }, cors.headers);
       }
 
-      const vault = await getLocalVault(vaultId, cwd);
+      if (method === "POST" && action === "rebind") {
+        const body = asRecord(await readJson(request));
+        const data = await rebindVaultRoot(vaultId, body.rootPath, cwd);
+        return json(200, { ok: true, data }, cors.headers);
+      }
+
+      const vault = await requireAvailableVault(await getLocalVault(vaultId, cwd));
 
       if (method === "GET" && action === "files") {
         const [files, folders] = await Promise.all([
@@ -326,6 +334,7 @@ export async function routeRequest(
         ok: false,
         error: error instanceof Error ? error.message : "Unknown error",
         code: errorCode(error),
+        reason: errorReason(error),
       },
       cors.headers,
     );
@@ -400,6 +409,11 @@ function errorStatus(error: unknown): number {
 function errorCode(error: unknown): string | undefined {
   const code = (error as NodeJS.ErrnoException)?.code;
   return typeof code === "string" ? code : undefined;
+}
+
+function errorReason(error: unknown): string | undefined {
+  const reason = (error as { reason?: unknown })?.reason;
+  return typeof reason === "string" ? reason : undefined;
 }
 
 function corsHeaders(request: RequestLike): {

@@ -24,7 +24,7 @@ export async function removeVault(
   const generatedDataAction =
     input.generatedDataAction === "discard" ? "discard" : ("keep" as GeneratedDataAction);
 
-  const config = await loadConfig(cwd, { validateVaultRoots: false });
+  const config = await loadConfig(cwd);
   const index = config.vaults.findIndex((vault) => vault.id === vaultId);
   if (index < 0) throw new Error(`Unknown vault: ${vaultId}`);
 

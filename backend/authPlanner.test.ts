@@ -142,6 +142,16 @@ test("vault registration with manageVaults requires admin confirmation", () => {
   assert.deepEqual(result.requiredConfirmation, ["vaultRegistration"]);
 });
 
+test("vault rebind with manageVaults requires registration-level confirmation", () => {
+  const result = planProtectedRouteAuthorization({
+    policy: policyFor("POST /api/vaults/:vaultId/rebind"),
+    actor: credential({ nodePermissions: ["manageVaults"] }),
+    vaultId: "notes",
+  });
+  assert.equal(result.decision, "requires-confirmation");
+  assert.deepEqual(result.requiredConfirmation, ["vaultRegistration"]);
+});
+
 test("full node diagnostics require manageNode", () => {
   const denied = planProtectedRouteAuthorization({
     policy: policyFor("GET /api/node/status"),

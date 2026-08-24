@@ -88,6 +88,16 @@ test("vault registration and removal plan stronger confirmation required", () =>
   assert.deepEqual(removal.requiredConfirmation, ["vaultRemoval"]);
 });
 
+test("vault rebind plans registration-level stronger confirmation", () => {
+  const plan = planStrongerConfirmation({
+    request: { method: "POST", routePattern: "/api/vaults/:vaultId/rebind" },
+  });
+  assert.equal(plan.status, "required");
+  assert.equal(plan.operation, "rebind-vault");
+  assert.deepEqual(plan.requiredConfirmation, ["vaultRegistration"]);
+  assert.ok(plan.reasonCodes.includes("vault-rebind"));
+});
+
 test("vault permission changes plan stronger confirmation required", () => {
   const plan = planStrongerConfirmation({ operation: "change-vault-permissions" });
 

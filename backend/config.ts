@@ -17,6 +17,7 @@ import {
   type VaultConfigFile,
   type VaultInfo,
 } from "./types.js";
+import { validateVaultRoot, withVaultAvailability } from "./vaultAvailability.js";
 
 function defaultConfig(): VaultConfigFile {
   return {
@@ -34,18 +35,11 @@ function defaultConfig(): VaultConfigFile {
 const APP_DATA_ENV = "AREPO_APP_DATA_DIR";
 const configWriteLocks = new Map<string, Promise<void>>();
 
-type LoadConfigOptions = {
-  validateVaultRoots?: boolean;
-};
-
 export function configPath(cwd = process.cwd()): string {
   return path.join(cwd, ".arepo", "config.json");
 }
 
-export async function loadConfig(
-  cwd = process.cwd(),
-  options: LoadConfigOptions = {},
-): Promise<VaultConfigFile> {
+export async function loadConfig(cwd = process.cwd()): Promise<VaultConfigFile> {
   const file = configPath(cwd);
   try {
     const raw = await fs.readFile(file, "utf8");
@@ -79,7 +73,7 @@ export async function loadConfig(
           }))
         : [],
     };
-    await validateConfig(config, file, options);
+    await validateConfig(config, file);
     return config;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
@@ -112,7 +106,10 @@ export async function saveConfig(config: VaultConfigFile, cwd = process.cwd()): 
 
 export async function getNodeInfo(cwd = process.cwd()): Promise<NodeInfo> {
   const config = await loadConfig(cwd);
-  return { ...config.node, vaults: config.vaults };
+  return {
+    ...config.node,
+    vaults: await Promise.all(config.vaults.map((vault) => withVaultAvailability(vault))),
+  };
 }
 
 export async function getVault(vaultId: string, cwd = process.cwd()): Promise<VaultInfo> {
@@ -159,11 +156,7 @@ export function resolveAppDataDir(
   return path.join(cwd, ".arepo", "data");
 }
 
-async function validateConfig(
-  config: VaultConfigFile,
-  file: string,
-  options: LoadConfigOptions = {},
-): Promise<void> {
+async function validateConfig(config: VaultConfigFile, file: string): Promise<void> {
   if (!config || typeof config !== "object") {
     throw new Error(`Invalid AREPO config at ${file}: config must be an object`);
   }
@@ -225,21 +218,6 @@ async function validateConfig(
         `Invalid AREPO config at ${file}: vault ${vault.id} rootPath cannot contain null bytes`,
       );
     }
-    if (options.validateVaultRoots !== false) {
-      const stat = await fs.stat(vault.rootPath).catch((error) => {
-        throw new Error(
-          `Invalid AREPO config at ${file}: vault ${vault.id} rootPath is not accessible: ${
-            error instanceof Error ? error.message : "stat failed"
-          }`,
-        );
-      });
-      if (!stat.isDirectory()) {
-        throw new Error(
-          `Invalid AREPO config at ${file}: vault ${vault.id} rootPath is not a directory`,
-        );
-      }
-    }
-
     const permissions = vault.permissions;
     if (!permissions || typeof permissions !== "object") {
       throw new Error(`Invalid AREPO config at ${file}: vault ${vault.id} permissions required`);
@@ -352,9 +330,7 @@ export async function addVault(
   if (!input.rootPath || typeof input.rootPath !== "string") {
     throw new Error("rootPath is required");
   }
-  const rootPath = path.resolve(input.rootPath);
-  const stat = await fs.stat(rootPath);
-  if (!stat.isDirectory()) throw new Error("rootPath must be a directory");
+  const rootPath = await validateVaultRoot(input.rootPath);
 
   const config = await loadConfig(cwd);
   const displayName = typeof input.displayName === "string" ? input.displayName.trim() : "";

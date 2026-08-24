@@ -3,8 +3,11 @@ import type {
   VaultFile,
   VaultFileKind,
   VaultIndexResponse,
+  VaultAvailability,
+  VaultAvailabilityReason,
   VaultInfo,
   VaultPermission,
+  VaultRegistration,
 } from "../src/lib/vault/contracts.js";
 import type { ValidationIssue } from "../src/lib/vault/indexer.js";
 
@@ -19,8 +22,11 @@ export type {
   VaultFileWriteResponse,
   VaultIndexResponse,
   VaultIndexScope,
+  VaultAvailability,
+  VaultAvailabilityReason,
   VaultInfo,
   VaultPermission,
+  VaultRegistration,
 } from "../src/lib/vault/contracts.js";
 
 export type AuthMode = "disabled" | "protected";
@@ -718,6 +724,7 @@ export type LocalNodeRuntimeStatus = {
 export type LocalNodeVaultRuntimeSummary = {
   vaultId: string;
   displayName: string;
+  availability: VaultAvailability;
   indexStatus: IndexFreshness;
   changedExternally: boolean;
   watcherHealth: "ok" | "stale" | "rebuilding" | "error";
@@ -776,7 +783,7 @@ export type VaultConfigFile = {
   node: Omit<NodeInfo, "vaults">;
   auth: AuthConfig;
   appDataDir?: string;
-  vaults: VaultInfo[];
+  vaults: VaultRegistration[];
 };
 
 export type IndexFilterKind =

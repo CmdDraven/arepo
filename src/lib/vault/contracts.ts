@@ -16,12 +16,21 @@ export type VaultIndexScope = {
   };
 };
 
-export type VaultInfo = {
+export type VaultAvailabilityReason = "root-not-found" | "root-not-directory" | "root-inaccessible";
+
+export type VaultAvailability =
+  { status: "available" } | { status: "unavailable"; reason: VaultAvailabilityReason };
+
+export type VaultRegistration = {
   id: string;
   displayName: string;
   rootPath: string;
   permissions: VaultPermission;
   vaultIndexScope?: VaultIndexScope;
+};
+
+export type VaultInfo = VaultRegistration & {
+  availability?: VaultAvailability;
 };
 
 export type NodeInfo = {
