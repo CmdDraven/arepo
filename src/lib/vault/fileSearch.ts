@@ -5,7 +5,7 @@ export type LocalFileSearchDocument = {
   title: string;
   kind: VaultFileKind;
   tags: string[];
-  content: string;
+  content: string | null;
 };
 
 export type LocalFileSearchResult = {
@@ -27,7 +27,7 @@ export function searchLocalFiles(
     const inName =
       document.title.toLocaleLowerCase().includes(query) ||
       document.path.toLocaleLowerCase().includes(query);
-    const inBody = document.content.toLocaleLowerCase().includes(query);
+    const inBody = document.content?.toLocaleLowerCase().includes(query) ?? false;
     const inTags = document.tags.some((tag) => tag.toLocaleLowerCase().includes(query));
     if (inName || inBody || inTags) {
       results.push({

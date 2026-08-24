@@ -39,3 +39,29 @@ test("local search retains Markdown title, path, body, and tag matching", () => 
   assert.equal(searchLocalFiles(documents, "body")?.[0]?.inBody, true);
   assert.equal(searchLocalFiles(documents, "   "), null);
 });
+
+test("local search finds failed files by metadata and searches only loaded bodies", () => {
+  const partialDocuments: LocalFileSearchDocument[] = [
+    ...documents,
+    {
+      path: "Reference/unreadable.txt",
+      title: "unreadable.txt",
+      kind: "plain-text",
+      tags: [],
+      content: null,
+    },
+  ];
+
+  assert.deepEqual(searchLocalFiles(partialDocuments, "unreadable"), [
+    {
+      path: "Reference/unreadable.txt",
+      title: "unreadable.txt",
+      kind: "plain-text",
+      inName: true,
+      inBody: false,
+      inTags: false,
+    },
+  ]);
+  assert.equal(searchLocalFiles(partialDocuments, "Markdown body")?.[0]?.path, "Notes/hello.md");
+  assert.deepEqual(searchLocalFiles(partialDocuments, "missing body token"), []);
+});

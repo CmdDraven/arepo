@@ -340,6 +340,12 @@ endpoint. That path requires `readContent`; it does not obtain bodies from the
 structural index. Plain-text results are identified separately from Markdown
 notes.
 
+Individual source-content reads are isolated from the vault metadata and
+structural-index load. If one supported file cannot be read, AREPO keeps the
+Tree, file metadata, Markdown index, issues, and successfully loaded files
+available. The unreadable file is reported individually; filename/path search
+still includes it, while body search covers only successfully loaded content.
+
 The Inspect panel can show read-only file-level machine-index details for a
 selected note or structural filter result, including headings, anchors, outgoing
 links, backlinks, broken outgoing links, duplicate IDs, duplicate anchors, and

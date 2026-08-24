@@ -39,6 +39,7 @@ import {
   type ContextLineDiffRow,
 } from "@/lib/vault/diff";
 import { buildGraph } from "@/lib/vault/graph";
+import { contentForLocalSearch } from "@/lib/vault/contentLoading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -119,7 +120,7 @@ function effectiveCenterMin(
 function VaultApp() {
   const vault = useVault();
   const {
-    files,
+    fileContents,
     fileMeta,
     index,
     issues,
@@ -149,7 +150,7 @@ function VaultApp() {
     mutationError,
   } = vault;
 
-  const paths = useMemo(() => Object.keys(files).sort((a, b) => a.localeCompare(b)), [files]);
+  const paths = useMemo(() => Object.keys(fileMeta).sort((a, b) => a.localeCompare(b)), [fileMeta]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const [buffer, setBuffer] = useState<string>("");
@@ -377,18 +378,30 @@ function VaultApp() {
 
   // Load buffer when active file changes
   useEffect(() => {
-    if (activePath && files[activePath] !== undefined) {
-      setBuffer(files[activePath]);
-      setSavedSnapshot(files[activePath]);
-    } else {
+    if (!activePath) {
+      setBuffer("");
+      setSavedSnapshot("");
+      return;
+    }
+    if (!fileMeta[activePath]) {
       setActivePath(null);
       setBuffer("");
       setSavedSnapshot("");
+      return;
     }
-  }, [activePath, files]);
+    const contentState = fileContents[activePath];
+    if (contentState?.status === "loaded") {
+      setBuffer(contentState.content);
+      setSavedSnapshot(contentState.content);
+      return;
+    }
+    setBuffer("");
+    setSavedSnapshot("");
+  }, [activePath, fileContents, fileMeta]);
 
   const activeFileKind = activePath ? fileMeta[activePath]?.kind : undefined;
   const activeIsPlainText = activeFileKind === "plain-text";
+  const activeContentState = activePath ? fileContents[activePath] : undefined;
   const dirty = activeFileKind === "markdown" && buffer !== savedSnapshot;
   const dirtyPaths = useMemo(
     () => new Set(dirty && activePath ? [activePath] : []),
@@ -940,10 +953,10 @@ function VaultApp() {
           title: note?.title ?? path.split("/").pop() ?? path,
           kind: fileMeta[path]?.kind ?? "markdown",
           tags: note?.tags ?? [],
-          content: files[path] ?? "",
+          content: contentForLocalSearch(fileContents[path]),
         };
       }),
-    [fileMeta, files, index.notes, paths],
+    [fileContents, fileMeta, index.notes, paths],
   );
   const buildLocalSearchResults = useCallback(
     (rawQuery: string) => searchLocalFiles(localSearchDocuments, rawQuery),
@@ -1098,7 +1111,7 @@ function VaultApp() {
             }}
           />
         </TreeUtilityPanel>
-        {activeVault && !files["index.md"] && (
+        {activeVault && !fileMeta["index.md"] && (
           <TreeUtilityPanel
             title="Optional homepage note"
             description="index.md is optional and treated as a normal note."
@@ -1309,6 +1322,37 @@ function VaultApp() {
     </div>
   );
 
+  const unavailableContentPane = (
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      {fileActionBar}
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-6">
+        <div className="w-full max-w-lg space-y-3">
+          <StateMessage tone={activeContentState?.status === "failed" ? "error" : "loading"}>
+            <span className="block font-medium">
+              {activeContentState?.status === "failed"
+                ? "Source content unavailable"
+                : "Loading source content..."}
+            </span>
+            {activePath && <span className="mt-1 block break-all font-mono">{activePath}</span>}
+            {activeContentState?.status === "failed" && (
+              <span className="mt-1 block">{activeContentState.error}</span>
+            )}
+          </StateMessage>
+          {activeContentState?.status === "failed" && activePath && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => void reloadFile(activePath)}
+            >
+              <RefreshCw className="size-3.5" /> Retry content load
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   const emptyDocumentPane = (
     <div className="flex h-full min-h-0 min-w-0 items-center justify-center overflow-hidden p-6 text-center">
       <div className="space-y-1">
@@ -1351,11 +1395,13 @@ function VaultApp() {
   );
 
   const centerPane = activePath
-    ? activeIsPlainText
-      ? plainTextPane
-      : centerTab === "edit"
-        ? editorPane
-        : previewPane
+    ? activeContentState?.status !== "loaded"
+      ? unavailableContentPane
+      : activeIsPlainText
+        ? plainTextPane
+        : centerTab === "edit"
+          ? editorPane
+          : previewPane
     : centerWorkspaceView === "tree"
       ? centerTreePane
       : centerWorkspaceView === "graph"
@@ -1684,10 +1730,18 @@ function VaultApp() {
               {vaultPane}
             </div>
             <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "edit"}>
-              {activePath ? (activeIsPlainText ? plainTextPane : editorPane) : emptyDocumentPane}
+              {activePath
+                ? activeContentState?.status !== "loaded"
+                  ? unavailableContentPane
+                  : activeIsPlainText
+                    ? plainTextPane
+                    : editorPane
+                : emptyDocumentPane}
             </div>
             <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "preview"}>
-              {activePath && !activeIsPlainText ? previewPane : emptyDocumentPane}
+              {activePath && !activeIsPlainText && activeContentState?.status === "loaded"
+                ? previewPane
+                : emptyDocumentPane}
             </div>
             <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "inspect"}>
               {inspectorPane}

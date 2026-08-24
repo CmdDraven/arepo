@@ -1,10 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildIndex, type VaultIndex, type ValidationIssue } from "./indexer";
+import {
+  CONTENT_LOAD_FAILURE,
+  loadedFileContents,
+  isCurrentVaultData,
+  prepareVaultLoad,
+  settleFileContent,
+  settleVaultContents,
+  type FileContentStateMap,
+  type FileMetadataMap,
+  type VaultLoadData,
+} from "./contentLoading";
+import { globalErrorForLoadFailure } from "./loadFailure";
 import type {
   NodeInfo,
   OperationResult,
   VaultFileListResponse,
-  VaultFileKind,
   VaultFileResponse,
   VaultFileWriteResponse,
   VaultIndexResponse,
@@ -12,17 +23,14 @@ import type {
   VaultInfo,
   VaultPermission,
 } from "./contracts";
-import { foldersFromFilePaths } from "./tree";
 
 export type { VaultIndexScope, VaultInfo, VaultPermission } from "./contracts";
 
 const LAST_VAULT_KEY = "vault:lastVaultId";
+const EMPTY_FILE_CONTENTS: FileContentStateMap = {};
 
 type FilesMap = Record<string, string>;
-type FileMetaMap = Record<
-  string,
-  { kind: VaultFileKind; mtimeMs: number; size: number; hash: string }
->;
+type FileMetaMap = FileMetadataMap;
 
 export type GeneratedDataAction = "keep" | "discard";
 
@@ -74,6 +82,7 @@ export type HealthResponse = {
 
 export type VaultStore = {
   files: FilesMap;
+  fileContents: FileContentStateMap;
   fileMeta: FileMetaMap;
   index: VaultIndex;
   issues: ValidationIssue[];
@@ -122,7 +131,7 @@ export function useVault(): VaultStore {
     if (typeof window === "undefined") return null;
     return window.localStorage.getItem(LAST_VAULT_KEY);
   });
-  const [files, setFiles] = useState<FilesMap>({});
+  const [fileContents, setFileContents] = useState<FileContentStateMap>({});
   const [fileMeta, setFileMeta] = useState<FileMetaMap>({});
   const [folders, setFolders] = useState<string[]>([]);
   const [index, setIndex] = useState<VaultIndex>(EMPTY_INDEX);
@@ -132,12 +141,60 @@ export function useVault(): VaultStore {
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [vaultStatus, setVaultStatus] = useState<VaultRuntimeStatus | null>(null);
+  const [loadedVaultId, setLoadedVaultId] = useState<string | null>(null);
+  const loadRequestId = useRef(0);
+  const loadedVaultIdRef = useRef<string | null>(null);
+  const fileContentsRef = useRef<FileContentStateMap>({});
+  const fileMetaRef = useRef<FileMetaMap>({});
 
   const vaults = useMemo(() => node?.vaults ?? [], [node]);
   const activeVault = useMemo(
     () => vaults.find((vault) => vault.id === activeVaultId) ?? vaults[0] ?? null,
     [activeVaultId, vaults],
   );
+  const hasCurrentVaultData = isCurrentVaultData(loadedVaultId, activeVault?.id);
+  const visibleFileContents = hasCurrentVaultData ? fileContents : EMPTY_FILE_CONTENTS;
+  const visibleFileMeta = hasCurrentVaultData ? fileMeta : {};
+  const visibleFolders = hasCurrentVaultData ? folders : [];
+  const visibleIndex = hasCurrentVaultData ? index : EMPTY_INDEX;
+  const visibleIssues = hasCurrentVaultData ? issues : [];
+  const files = useMemo(() => loadedFileContents(visibleFileContents), [visibleFileContents]);
+  const visibleVaultStatus =
+    activeVault && vaultStatus?.vaultId === activeVault.id ? vaultStatus : null;
+
+  useEffect(() => {
+    fileContentsRef.current = fileContents;
+  }, [fileContents]);
+
+  useEffect(() => {
+    fileMetaRef.current = fileMeta;
+  }, [fileMeta]);
+
+  const publishVaultLoad = useCallback((data: VaultLoadData) => {
+    loadedVaultIdRef.current = data.vaultId;
+    fileContentsRef.current = data.fileContents;
+    fileMetaRef.current = data.fileMeta;
+    setLoadedVaultId(data.vaultId);
+    setFileContents(data.fileContents);
+    setFileMeta(data.fileMeta);
+    setFolders(data.folders);
+    setIndex(data.index);
+    setIssues(data.issues);
+  }, []);
+
+  const clearVaultLoad = useCallback(() => {
+    loadRequestId.current += 1;
+    loadedVaultIdRef.current = null;
+    fileContentsRef.current = {};
+    fileMetaRef.current = {};
+    setLoadedVaultId(null);
+    setFileContents({});
+    setFileMeta({});
+    setFolders([]);
+    setIndex(EMPTY_INDEX);
+    setIssues([]);
+    setVaultStatus(null);
+  }, []);
 
   const loadNode = useCallback(async () => {
     const nextNode = await api<NodeInfo>("/api/vaults");
@@ -171,36 +228,35 @@ export function useVault(): VaultStore {
     }
   }, [loadNode]);
 
-  const loadVault = useCallback(async (vaultId: string) => {
-    const [fileList, indexResponse] = await Promise.all([
-      api<FileListResponse>(`/api/vaults/${encodeURIComponent(vaultId)}/files`),
-      api<IndexResponse>(`/api/vaults/${encodeURIComponent(vaultId)}/index`),
-    ]);
-    const fileData = await Promise.all(
-      fileList.files.map(async (file) => {
-        return api<FileResponse>(
+  const loadVault = useCallback(
+    async (vaultId: string) => {
+      const requestId = ++loadRequestId.current;
+      const [fileList, indexResponse] = await Promise.all([
+        api<FileListResponse>(`/api/vaults/${encodeURIComponent(vaultId)}/files`),
+        api<IndexResponse>(`/api/vaults/${encodeURIComponent(vaultId)}/index`),
+      ]);
+      if (requestId !== loadRequestId.current) return;
+      const previous =
+        loadedVaultIdRef.current === vaultId
+          ? { fileContents: fileContentsRef.current, fileMeta: fileMetaRef.current }
+          : undefined;
+      const initial = prepareVaultLoad(vaultId, fileList, indexResponse, previous);
+      publishVaultLoad(initial);
+      const settled = await settleVaultContents(initial, fileList.files, (file) =>
+        api<FileResponse>(
           `/api/vaults/${encodeURIComponent(vaultId)}/file?path=${encodeURIComponent(file.path)}`,
-        );
-      }),
-    );
-    const fileEntries = fileData.map((data) => [data.path, data.content] as const);
-    const metaEntries = fileData.map(
-      (data) =>
-        [
-          data.path,
-          { kind: data.kind, mtimeMs: data.mtimeMs, size: data.size, hash: data.hash },
-        ] as const,
-    );
-    setFiles(Object.fromEntries(fileEntries));
-    setFileMeta(Object.fromEntries(metaEntries));
-    setFolders(foldersFromFilePaths(fileList.files.map((file) => file.path)));
-    setIndex(indexResponse.index);
-    setIssues(indexResponse.issues);
-    const status = await api<VaultRuntimeStatus>(
-      `/api/vaults/${encodeURIComponent(vaultId)}/status`,
-    );
-    setVaultStatus(status);
-  }, []);
+        ),
+      );
+      if (requestId !== loadRequestId.current) return;
+      publishVaultLoad(settled);
+      const status = await api<VaultRuntimeStatus>(
+        `/api/vaults/${encodeURIComponent(vaultId)}/status`,
+      );
+      if (requestId !== loadRequestId.current) return;
+      setVaultStatus(status);
+    },
+    [publishVaultLoad],
+  );
 
   const refreshActiveVault = useCallback(async () => {
     if (!activeVault) return false;
@@ -209,7 +265,7 @@ export function useVault(): VaultStore {
       await loadVault(activeVault.id);
       return true;
     } catch (err) {
-      setMutationError(errorMessage(err));
+      setMutationError(globalErrorForLoadFailure("whole-vault", err));
       return false;
     }
   }, [activeVault, loadVault]);
@@ -233,12 +289,7 @@ export function useVault(): VaultStore {
 
   useEffect(() => {
     if (!activeVault) {
-      setFiles({});
-      setFileMeta({});
-      setFolders([]);
-      setIndex(EMPTY_INDEX);
-      setIssues([]);
-      setVaultStatus(null);
+      clearVaultLoad();
       return;
     }
     let cancelled = false;
@@ -249,7 +300,7 @@ export function useVault(): VaultStore {
     }
     loadVault(activeVault.id)
       .catch((err) => {
-        if (!cancelled) setError(errorMessage(err));
+        if (!cancelled) setError(globalErrorForLoadFailure("whole-vault", err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -257,7 +308,7 @@ export function useVault(): VaultStore {
     return () => {
       cancelled = true;
     };
-  }, [activeVault, loadVault]);
+  }, [activeVault, clearVaultLoad, loadVault]);
 
   const mutate = useCallback(
     async (fn: (vault: VaultInfo) => Promise<void>) => {
@@ -294,7 +345,10 @@ export function useVault(): VaultStore {
           },
         );
         const data = operationData(response);
-        setFiles((prev) => ({ ...prev, [data.path]: content }));
+        setFileContents((prev) => ({
+          ...prev,
+          [data.path]: { status: "loaded", content },
+        }));
         setFileMeta((prev) => ({
           ...prev,
           [data.path]: {
@@ -326,7 +380,10 @@ export function useVault(): VaultStore {
           },
         );
         const data = operationData(response);
-        setFiles((prev) => ({ ...prev, [data.path]: content }));
+        setFileContents((prev) => ({
+          ...prev,
+          [data.path]: { status: "loaded", content },
+        }));
         setFileMeta((prev) => ({
           ...prev,
           [data.path]: {
@@ -469,15 +526,14 @@ export function useVault(): VaultStore {
     async (path: string) => {
       if (!activeVault) return false;
       const meta = fileMeta[path];
-      if (!meta) return false;
+      if (!meta?.hash) return false;
       setMutationError(null);
       try {
         const current = await api<FileResponse>(
           `/api/vaults/${encodeURIComponent(activeVault.id)}/file?path=${encodeURIComponent(path)}`,
         );
         return current.hash !== meta.hash;
-      } catch (err) {
-        setMutationError(errorMessage(err));
+      } catch {
         return true;
       }
     },
@@ -487,15 +543,31 @@ export function useVault(): VaultStore {
   const refreshVaultStatus = useCallback(
     async (path?: string | null) => {
       if (!activeVault) return null;
+      const vaultId = activeVault.id;
+      const requestId = loadRequestId.current;
       try {
         const query = path ? `?path=${encodeURIComponent(path)}` : "";
         const status = await api<VaultRuntimeStatus>(
-          `/api/vaults/${encodeURIComponent(activeVault.id)}/status${query}`,
+          `/api/vaults/${encodeURIComponent(vaultId)}/status${query}`,
         );
         setVaultStatus(status);
         return status;
       } catch (err) {
-        setMutationError(errorMessage(err));
+        if (path) {
+          // Path-scoped status computes a hash by reading that source body.
+          if (
+            requestId === loadRequestId.current &&
+            loadedVaultIdRef.current === vaultId &&
+            fileMetaRef.current[path]
+          ) {
+            setFileContents((prev) => ({
+              ...prev,
+              [path]: { status: "failed", error: CONTENT_LOAD_FAILURE },
+            }));
+          }
+          return null;
+        }
+        setMutationError(globalErrorForLoadFailure("whole-vault", err));
         return null;
       }
     },
@@ -510,8 +582,7 @@ export function useVault(): VaultStore {
         return await api<FileResponse>(
           `/api/vaults/${encodeURIComponent(activeVault.id)}/file?path=${encodeURIComponent(path)}`,
         );
-      } catch (err) {
-        setMutationError(errorMessage(err));
+      } catch {
         return null;
       }
     },
@@ -521,29 +592,41 @@ export function useVault(): VaultStore {
   const reloadFile = useCallback(
     async (path: string) => {
       if (!activeVault) return false;
+      const vaultId = activeVault.id;
+      const requestId = loadRequestId.current;
       setMutationError(null);
+      const listed = fileMeta[path];
+      if (!listed) return false;
+      setFileContents((prev) => ({ ...prev, [path]: { status: "loading" } }));
       try {
-        const data = await api<FileResponse>(
-          `/api/vaults/${encodeURIComponent(activeVault.id)}/file?path=${encodeURIComponent(path)}`,
+        const result = await settleFileContent(
+          { path, kind: listed.kind, mtimeMs: listed.mtimeMs, size: listed.size },
+          () =>
+            api<FileResponse>(
+              `/api/vaults/${encodeURIComponent(vaultId)}/file?path=${encodeURIComponent(path)}`,
+            ),
         );
-        setFiles((prev) => ({ ...prev, [data.path]: data.content }));
-        setFileMeta((prev) => ({
-          ...prev,
-          [data.path]: {
-            kind: data.kind,
-            mtimeMs: data.mtimeMs,
-            size: data.size,
-            hash: data.hash,
-          },
-        }));
+        if (requestId !== loadRequestId.current || loadedVaultIdRef.current !== vaultId) {
+          return false;
+        }
+        setFileContents((prev) => ({ ...prev, [path]: result.state }));
+        if (result.metadata) {
+          setFileMeta((prev) => ({
+            ...prev,
+            [path]: { ...prev[path], ...result.metadata },
+          }));
+        }
+        if (result.state.status === "failed") {
+          return false;
+        }
         await refreshVaultStatus(path);
         return true;
       } catch (err) {
-        setMutationError(errorMessage(err));
+        setMutationError(globalErrorForLoadFailure("source-content", err));
         return false;
       }
     },
-    [activeVault, refreshVaultStatus],
+    [activeVault, fileMeta, refreshVaultStatus],
   );
 
   const addVault = useCallback(
@@ -601,17 +684,18 @@ export function useVault(): VaultStore {
 
   return {
     files,
-    fileMeta,
-    index,
-    issues,
-    folders,
+    fileContents: visibleFileContents,
+    fileMeta: visibleFileMeta,
+    index: visibleIndex,
+    issues: visibleIssues,
+    folders: visibleFolders,
     vaults,
     activeVault,
     loading,
     error,
     mutationError,
     health,
-    vaultStatus,
+    vaultStatus: visibleVaultStatus,
     write,
     overwriteFile,
     createFile,
