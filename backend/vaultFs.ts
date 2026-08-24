@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { buildIndex, validate } from "../src/lib/vault/indexer.js";
+import { sourceKindForPath, sourcePolicy } from "../src/lib/vault/sourcePolicy.js";
 import { defaultVaultIndexScope, markdownPathInScope } from "./indexScope.js";
 import {
   normalizeMarkdownFilePath,
@@ -27,7 +28,9 @@ type WritePrecondition = {
 const fileWriteLocks = new Map<string, Promise<void>>();
 
 export async function listMarkdownFiles(vault: VaultInfo): Promise<VaultFile[]> {
-  return (await listSupportedTextFiles(vault)).filter((file) => file.kind === "markdown");
+  return (await listSupportedTextFiles(vault)).filter(
+    (file) => sourcePolicy(file.kind).contributesToMarkdownIndex,
+  );
 }
 
 export async function listSupportedTextFiles(vault: VaultInfo): Promise<VaultFile[]> {
@@ -149,7 +152,10 @@ export async function renameVaultPath(
     kind === "folder" ? normalizeVaultFolderPath(toPath) : normalizeMarkdownFilePath(toPath);
   const fromAbsolute = await resolveExistingVaultPath(vault, from);
   const toAbsolute = await resolveCreatableVaultPath(vault, to);
-  if (kind === "folder") await assertNoSymlinksInTree(fromAbsolute);
+  if (kind === "folder") {
+    await assertNoSymlinksInTree(fromAbsolute);
+    await assertNoImmutableSupportedSourcesInTree(fromAbsolute);
+  }
   await fs.mkdir(path.dirname(toAbsolute), { recursive: true });
   try {
     await fs.lstat(toAbsolute);
@@ -314,6 +320,18 @@ async function assertNoSymlinksInTree(root: string): Promise<void> {
   }
 }
 
+async function assertNoImmutableSupportedSourcesInTree(root: string): Promise<void> {
+  await walk(root, async (absolutePath, dirent) => {
+    if (!dirent.isFile()) return;
+    const kind = sourceKindForPath(absolutePath);
+    if (kind && !sourcePolicy(kind).mutable) {
+      throw new Error(
+        "Folder rename is not allowed because the folder contains read-only source content",
+      );
+    }
+  });
+}
+
 function ensureInside(root: string, absolutePath: string): void {
   const relative = path.relative(root, absolutePath);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -348,11 +366,7 @@ function hashContent(content: string): string {
 }
 
 export function vaultFileKind(filePath: string): VaultFileKind | null {
-  const lower = filePath.toLowerCase();
-  if (lower.endsWith(".md")) return "markdown";
-  if (lower.endsWith(".txt")) return "plain-text";
-  if (lower.endsWith(".arepo-chat.json")) return "chat-json";
-  return null;
+  return sourceKindForPath(filePath);
 }
 
 function requiredVaultFileKind(filePath: string): VaultFileKind {

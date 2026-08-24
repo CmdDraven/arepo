@@ -20,6 +20,7 @@
     "../src/lib/vault/diff.ts",
     "../src/lib/vault/indexer.ts",
     "../src/lib/vault/render.ts",
-    "../src/lib/vault/graph.ts"
+    "../src/lib/vault/graph.ts",
+    "../src/lib/vault/sourcePolicy.ts"
   ]
 }

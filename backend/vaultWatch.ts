@@ -1,6 +1,7 @@
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { sourcePolicy } from "../src/lib/vault/sourcePolicy.js";
 import { rebuildMachineIndex } from "./indexCache.js";
 import { listFolders, listSupportedTextFiles, readVaultFile, vaultFileKind } from "./vaultFs.js";
 import type { IndexFreshness, VaultInfo, VaultRuntimeStatus, WatchedFileStatus } from "./types.js";
@@ -205,9 +206,10 @@ async function rescanVault(
     }
     state.snapshot = after;
     await refreshDirectoryWatchers(state);
-    const markdownChanged = [...diff.added, ...diff.changed, ...diff.deleted].some(
-      (filePath) => vaultFileKind(filePath) === "markdown",
-    );
+    const markdownChanged = [...diff.added, ...diff.changed, ...diff.deleted].some((filePath) => {
+      const kind = vaultFileKind(filePath);
+      return kind ? sourcePolicy(kind).contributesToMarkdownIndex : false;
+    });
     if (markdownChanged) {
       markStale(state);
       if (options.scheduleRebuild) scheduleRebuild(state);

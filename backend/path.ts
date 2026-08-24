@@ -1,4 +1,5 @@
 import path from "node:path";
+import { sourceKindForPath, sourcePolicy } from "../src/lib/vault/sourcePolicy.js";
 
 function normalizeVaultRelativePath(input: unknown): string {
   if (typeof input !== "string") {
@@ -29,8 +30,7 @@ function normalizeVaultRelativePath(input: unknown): string {
 
 export function normalizeReadableTextFilePath(input: unknown): string {
   const normalized = normalizeVaultRelativePath(input);
-  const lower = normalized.toLowerCase();
-  if (!lower.endsWith(".md") && !lower.endsWith(".txt") && !lower.endsWith(".arepo-chat.json")) {
+  if (!sourceKindForPath(normalized)) {
     throw new Error("Readable source files must use .md, .txt, or the .arepo-chat.json suffix");
   }
   return normalized;
@@ -38,7 +38,8 @@ export function normalizeReadableTextFilePath(input: unknown): string {
 
 export function normalizeMarkdownFilePath(input: unknown): string {
   const normalized = normalizeVaultRelativePath(input);
-  if (!normalized.toLowerCase().endsWith(".md")) {
+  const kind = sourceKindForPath(normalized);
+  if (kind !== "markdown" || !sourcePolicy(kind).mutable) {
     throw new Error("Mutable note files must use the .md extension");
   }
   return normalized;

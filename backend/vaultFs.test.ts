@@ -33,6 +33,31 @@ async function makeVault(t: TestContext): Promise<VaultInfo> {
   };
 }
 
+async function assertFolderRenameRejectedAtomically(
+  vault: VaultInfo,
+  files: Record<string, string>,
+): Promise<void> {
+  for (const [relativePath, content] of Object.entries(files)) {
+    const absolutePath = path.join(vault.rootPath, "source", relativePath);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, content, "utf8");
+  }
+
+  await assert.rejects(
+    () => renameVaultPath(vault, "source", "destination/renamed", "folder"),
+    /folder contains read-only source content/,
+  );
+
+  await fs.access(path.join(vault.rootPath, "source"));
+  for (const [relativePath, content] of Object.entries(files)) {
+    assert.equal(
+      await fs.readFile(path.join(vault.rootPath, "source", relativePath), "utf8"),
+      content,
+    );
+  }
+  await assert.rejects(() => fs.access(path.join(vault.rootPath, "destination")), /ENOENT/);
+}
+
 test("reads and writes files inside the vault root", async (t) => {
   const vault = await makeVault(t);
   await createVaultFile(vault, "Notes/a.md", "# A\n");
@@ -136,6 +161,77 @@ test("chat sources cannot be created, written, renamed, or deleted", async (t) =
   );
   await assert.rejects(() => deleteVaultFile(vault, "conversation.arepo-chat.json"), /\.md/);
   assert.equal(await fs.readFile(sourcePath, "utf8"), source);
+});
+
+test("folder rename succeeds when supported descendants are all mutable Markdown", async (t) => {
+  const vault = await makeVault(t);
+  await fs.mkdir(path.join(vault.rootPath, "source", "nested"), { recursive: true });
+  await fs.writeFile(path.join(vault.rootPath, "source", "note.md"), "# Note\n", "utf8");
+  await fs.writeFile(
+    path.join(vault.rootPath, "source", "nested", "other.MD"),
+    "# Other\n",
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(vault.rootPath, "source", "nested", "attachment.bin"),
+    "attachment\n",
+    "utf8",
+  );
+
+  await renameVaultPath(vault, "source", "destination/renamed", "folder");
+
+  await assert.rejects(() => fs.access(path.join(vault.rootPath, "source")), /ENOENT/);
+  assert.equal(
+    await fs.readFile(path.join(vault.rootPath, "destination", "renamed", "note.md"), "utf8"),
+    "# Note\n",
+  );
+  assert.equal(
+    await fs.readFile(
+      path.join(vault.rootPath, "destination", "renamed", "nested", "other.MD"),
+      "utf8",
+    ),
+    "# Other\n",
+  );
+  assert.equal(
+    await fs.readFile(
+      path.join(vault.rootPath, "destination", "renamed", "nested", "attachment.bin"),
+      "utf8",
+    ),
+    "attachment\n",
+  );
+});
+
+test("folder rename rejects a direct plain-text descendant atomically", async (t) => {
+  await assertFolderRenameRejectedAtomically(await makeVault(t), {
+    "read-only.txt": "plain\n",
+  });
+});
+
+test("folder rename rejects a direct chat-json descendant atomically", async (t) => {
+  await assertFolderRenameRejectedAtomically(await makeVault(t), {
+    "conversation.arepo-chat.json": '{"format":"arepo-chat-export"}\n',
+  });
+});
+
+test("folder rename rejects mixed Markdown and plain-text descendants atomically", async (t) => {
+  await assertFolderRenameRejectedAtomically(await makeVault(t), {
+    "note.md": "# Note\n",
+    "read-only.txt": "plain\n",
+  });
+});
+
+test("folder rename rejects mixed Markdown and chat-json descendants atomically", async (t) => {
+  await assertFolderRenameRejectedAtomically(await makeVault(t), {
+    "note.md": "# Note\n",
+    "conversation.arepo-chat.json": '{"format":"arepo-chat-export"}\n',
+  });
+});
+
+test("folder rename rejects a deeply nested immutable source atomically", async (t) => {
+  await assertFolderRenameRejectedAtomically(await makeVault(t), {
+    "note.md": "# Note\n",
+    "one/two/three/read-only.txt": "deep plain text\n",
+  });
 });
 
 test("rejects stale writes when the file changed on disk", async (t) => {

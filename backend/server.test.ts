@@ -2045,6 +2045,38 @@ test("file mutation endpoints reject chat-json targets", async (t) => {
   await assert.rejects(() => fs.access(path.join(rootPath, "new.arepo-chat.json")));
 });
 
+test("folder rename rejects immutable source descendants with a bounded atomic failure", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  const sourceFolder = path.join(rootPath, "source", "nested");
+  await fs.mkdir(sourceFolder, { recursive: true });
+  await fs.writeFile(path.join(rootPath, "source", "note.md"), "# Note\n", "utf8");
+  await fs.writeFile(path.join(sourceFolder, "read-only.txt"), "unchanged\n", "utf8");
+  const vault = testVault(rootPath, "folder-rename-policy");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+
+  const response = await routeRequest(
+    request("POST", `/api/vaults/${vault.id}/rename`, {
+      fromPath: "source",
+      toPath: "destination/renamed",
+      kind: "folder",
+    }),
+    cwd,
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((response.body as { ok: boolean }).ok, false);
+  assert.equal(
+    (response.body as { error: string }).error,
+    "Folder rename is not allowed because the folder contains read-only source content",
+  );
+  assert.equal(JSON.stringify(response.body).includes(rootPath), false);
+  assert.equal(await fs.readFile(path.join(rootPath, "source", "note.md"), "utf8"), "# Note\n");
+  assert.equal(await fs.readFile(path.join(sourceFolder, "read-only.txt"), "utf8"), "unchanged\n");
+  await assert.rejects(() => fs.access(path.join(rootPath, "destination")), /ENOENT/);
+});
+
 test("vault index scope update persists config and rebuilds the machine index", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const rootPath = await makeTestTempDir(t, "arepo-vault-");
