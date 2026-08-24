@@ -3,21 +3,28 @@ import {
   ChevronRight,
   ChevronDown,
   FileText,
+  FileType2,
   Folder,
   FolderOpen,
   Plus,
   FolderPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { VaultFileKind } from "@/lib/vault/contracts";
 
 type TreeNode = {
   name: string;
   path: string;
   kind: "file" | "folder";
+  fileKind?: VaultFileKind;
   children?: TreeNode[];
 };
 
-function buildTree(paths: string[], folders: string[]): TreeNode {
+function buildTree(
+  paths: string[],
+  folders: string[],
+  fileKinds: Record<string, VaultFileKind>,
+): TreeNode {
   const root: TreeNode = { name: "", path: "", kind: "folder", children: [] };
   const ensureFolder = (segments: string[]): TreeNode => {
     let cur = root;
@@ -38,7 +45,7 @@ function buildTree(paths: string[], folders: string[]): TreeNode {
     const segs = p.split("/");
     const file = segs.pop()!;
     const parent = ensureFolder(segs);
-    parent.children!.push({ name: file, path: p, kind: "file" });
+    parent.children!.push({ name: file, path: p, kind: "file", fileKind: fileKinds[p] });
   }
   const sort = (n: TreeNode) => {
     if (!n.children) return;
@@ -55,6 +62,7 @@ function buildTree(paths: string[], folders: string[]): TreeNode {
 export type FileTreeProps = {
   paths: string[];
   folders: string[];
+  fileKinds: Record<string, VaultFileKind>;
   activePath: string | null;
   dirtyPaths: Set<string>;
   expanded: Set<string>;
@@ -65,7 +73,10 @@ export type FileTreeProps = {
 };
 
 export function FileTree(props: FileTreeProps) {
-  const tree = useMemo(() => buildTree(props.paths, props.folders), [props.paths, props.folders]);
+  const tree = useMemo(
+    () => buildTree(props.paths, props.folders, props.fileKinds),
+    [props.paths, props.folders, props.fileKinds],
+  );
   return (
     <div className="text-sm">
       <Node node={tree} depth={-1} {...props} />
@@ -83,7 +94,7 @@ function Node({
   onSelect,
   onNewFile,
   onNewFolder,
-}: { node: TreeNode; depth: number } & Omit<FileTreeProps, "paths" | "folders">) {
+}: { node: TreeNode; depth: number } & Omit<FileTreeProps, "paths" | "folders" | "fileKinds">) {
   if (node.kind === "folder") {
     const isRoot = depth === -1;
     const open = isRoot || expanded.has(node.path);
@@ -157,8 +168,17 @@ function Node({
       style={{ paddingLeft: depth * 12 + 22 }}
       onClick={() => onSelect(node.path)}
     >
-      <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+      {node.fileKind === "plain-text" ? (
+        <FileType2 className="size-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+      ) : (
+        <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+      )}
       <span className="truncate flex-1">{node.name}</span>
+      {node.fileKind === "plain-text" && (
+        <span className="rounded bg-sky-500/10 px-1 text-[9px] font-medium text-sky-700 dark:text-sky-300">
+          TXT
+        </span>
+      )}
       {isDirty && <span className="size-1.5 rounded-full bg-amber-500" title="Unsaved changes" />}
     </div>
   );

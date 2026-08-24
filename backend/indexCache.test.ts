@@ -12,6 +12,7 @@ async function makeVault(): Promise<{ cwd: string; vault: VaultInfo }> {
   const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-index-cache-vault-"));
   await writeFile(rootPath, "note.md", "# Note\n\nbody-only-cache-secret\n\n[[other]]\n");
   await writeFile(rootPath, "other.md", "# Other\n");
+  await writeFile(rootPath, "plain.txt", "plain-text-cache-secret [[not-indexed]]\n");
   return {
     cwd,
     vault: {
@@ -52,6 +53,8 @@ test("machine index cache writes tolerate concurrent writes to the same vault", 
   assert.equal(stored.kind, "arepo.machineIndex");
   assert.equal(stored.version, 2);
   assert.equal(raw.includes("body-only-cache-secret"), false);
+  assert.equal(raw.includes("plain-text-cache-secret"), false);
+  assert.equal(Object.hasOwn(stored.data.index.notes, "plain.txt"), false);
   assert.equal(
     Object.values(stored.data.index.notes).some((note) => Object.hasOwn(note, "body")),
     false,

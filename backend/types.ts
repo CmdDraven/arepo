@@ -1,6 +1,7 @@
 import type {
   NodeInfo,
   VaultFile,
+  VaultFileKind,
   VaultIndexResponse,
   VaultInfo,
   VaultPermission,
@@ -12,6 +13,7 @@ export type {
   NodeMode,
   OperationResult,
   VaultFile,
+  VaultFileKind,
   VaultFileListResponse,
   VaultFileResponse,
   VaultFileWriteResponse,

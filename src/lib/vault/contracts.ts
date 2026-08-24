@@ -32,8 +32,11 @@ export type NodeInfo = {
   vaults: VaultInfo[];
 };
 
+export type VaultFileKind = "markdown" | "plain-text";
+
 export type VaultFile = {
   path: string;
+  kind: VaultFileKind;
   size: number;
   mtimeMs: number;
 };

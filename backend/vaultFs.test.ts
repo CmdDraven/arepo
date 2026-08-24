@@ -7,7 +7,10 @@ import {
   atomicWriteFile,
   buildVaultIndex,
   createVaultFile,
+  deleteVaultFile,
+  listSupportedTextFiles,
   readVaultFile,
+  renameVaultPath,
   writeVaultFile,
 } from "./vaultFs.js";
 import { renderMarkdown } from "../src/lib/vault/render.js";
@@ -39,6 +42,48 @@ test("reads and writes files inside the vault root", async () => {
   const after = await readVaultFile(vault, "Notes/a.md");
   assert.equal(after.content, "# A2\n");
   assert.equal(written.hash, after.hash);
+});
+
+test("discovers and reads supported UTF-8 text files with explicit kinds", async () => {
+  const vault = await makeVault();
+  await fs.writeFile(
+    path.join(vault.rootPath, "z.txt"),
+    "Zażółć gęślą jaźń — こんにちは\n",
+    "utf8",
+  );
+  await fs.writeFile(path.join(vault.rootPath, "A.TXT"), "UPPER\n", "utf8");
+  await fs.writeFile(path.join(vault.rootPath, "note.md"), "# Note\n", "utf8");
+  await fs.writeFile(path.join(vault.rootPath, "ignored.json"), "{}\n", "utf8");
+
+  const files = await listSupportedTextFiles(vault);
+  assert.deepEqual(
+    files.map(({ path: filePath, kind }) => ({ path: filePath, kind })),
+    [
+      { path: "A.TXT", kind: "plain-text" },
+      { path: "note.md", kind: "markdown" },
+      { path: "z.txt", kind: "plain-text" },
+    ],
+  );
+  const plain = await readVaultFile(vault, "z.txt");
+  assert.equal(plain.kind, "plain-text");
+  assert.equal(plain.content, "Zażółć gęślą jaźń — こんにちは\n");
+});
+
+test("plain-text files cannot be created, written, renamed, or deleted", async () => {
+  const vault = await makeVault();
+  await fs.writeFile(path.join(vault.rootPath, "read-only.txt"), "disk content\n", "utf8");
+
+  await assert.rejects(() => createVaultFile(vault, "new.txt", "nope\n"), /\.md/);
+  await assert.rejects(() => writeVaultFile(vault, "read-only.txt", "nope\n"), /\.md/);
+  await assert.rejects(
+    () => renameVaultPath(vault, "read-only.txt", "renamed.txt", "file"),
+    /\.md/,
+  );
+  await assert.rejects(() => deleteVaultFile(vault, "read-only.txt"), /\.md/);
+  assert.equal(
+    await fs.readFile(path.join(vault.rootPath, "read-only.txt"), "utf8"),
+    "disk content\n",
+  );
 });
 
 test("rejects stale writes when the file changed on disk", async () => {
@@ -129,6 +174,21 @@ test("structural indexes exclude source bodies", async () => {
 
   assert.equal(Object.hasOwn(result.index.notes["secret.md"] ?? {}, "body"), false);
   assert.equal(JSON.stringify(result).includes("body-only-token"), false);
+});
+
+test("Markdown indexing ignores plain-text files and their contents", async () => {
+  const vault = await makeVault();
+  await createVaultFile(vault, "note.md", "---\nid: note\ntitle: Note\n---\n# Note\n");
+  await fs.writeFile(
+    path.join(vault.rootPath, "plain.txt"),
+    "plain-only-secret [[missing-from-plain]]\n",
+    "utf8",
+  );
+
+  const result = await buildVaultIndex(vault);
+  assert.deepEqual(Object.keys(result.index.notes), ["note.md"]);
+  assert.equal(JSON.stringify(result).includes("plain-only-secret"), false);
+  assert.equal(JSON.stringify(result).includes("missing-from-plain"), false);
 });
 
 test("backend index ignores wikilinks in fenced and inline code", async () => {
@@ -488,6 +548,7 @@ test("explicit file operations reject symlinks inside vault paths", async (t) =>
   const vault = await makeVault();
   const outside = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-outside-"));
   await fs.writeFile(path.join(outside, "escape.md"), "# Escape\n", "utf8");
+  await fs.writeFile(path.join(outside, "escape.txt"), "Escape\n", "utf8");
   try {
     await fs.symlink(outside, path.join(vault.rootPath, "linked"), "dir");
   } catch (error) {
@@ -499,4 +560,23 @@ test("explicit file operations reject symlinks inside vault paths", async (t) =>
   }
 
   await assert.rejects(() => readVaultFile(vault, "linked/escape.md"), /Symlinks/);
+  await assert.rejects(() => readVaultFile(vault, "linked/escape.txt"), /Symlinks/);
+});
+
+test("supported text discovery ignores symlinked plain-text files", async (t) => {
+  const vault = await makeVault();
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-outside-"));
+  const outsideFile = path.join(outside, "escape.txt");
+  await fs.writeFile(outsideFile, "escape\n", "utf8");
+  try {
+    await fs.symlink(outsideFile, path.join(vault.rootPath, "escape.txt"), "file");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EPERM") {
+      t.skip("symlinks unavailable");
+      return;
+    }
+    throw error;
+  }
+
+  assert.deepEqual(await listSupportedTextFiles(vault), []);
 });

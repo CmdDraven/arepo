@@ -3,16 +3,21 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { buildIndex, validate } from "../src/lib/vault/indexer.js";
 import { defaultVaultIndexScope, markdownPathInScope } from "./indexScope.js";
-import { normalizeVaultPath, resolveInsideVault, toVaultPath } from "./path.js";
-import type { VaultFile, VaultIndexResponse, VaultInfo } from "./types.js";
-
-type FileData = {
-  path: string;
-  content: string;
-  mtimeMs: number;
-  size: number;
-  hash: string;
-};
+import {
+  normalizeMarkdownFilePath,
+  normalizeReadableTextFilePath,
+  normalizeVaultFolderPath,
+  resolveInsideVault,
+  toVaultPath,
+} from "./path.js";
+import type {
+  VaultFile,
+  VaultFileKind,
+  VaultFileResponse,
+  VaultFileWriteResponse,
+  VaultIndexResponse,
+  VaultInfo,
+} from "./types.js";
 
 type WritePrecondition = {
   expectedMtimeMs?: unknown;
@@ -22,15 +27,20 @@ type WritePrecondition = {
 const fileWriteLocks = new Map<string, Promise<void>>();
 
 export async function listMarkdownFiles(vault: VaultInfo): Promise<VaultFile[]> {
+  return (await listSupportedTextFiles(vault)).filter((file) => file.kind === "markdown");
+}
+
+export async function listSupportedTextFiles(vault: VaultInfo): Promise<VaultFile[]> {
   const root = await realVaultRoot(vault);
   const out: VaultFile[] = [];
   await walk(root, async (absolutePath, dirent) => {
-    if (dirent.isSymbolicLink() || !dirent.isFile() || !dirent.name.toLowerCase().endsWith(".md")) {
-      return;
-    }
+    if (dirent.isSymbolicLink() || !dirent.isFile()) return;
+    const kind = vaultFileKind(absolutePath);
+    if (!kind) return;
     const stat = await fs.lstat(absolutePath);
     out.push({
       path: toVaultPath(root, absolutePath),
+      kind,
       size: stat.size,
       mtimeMs: stat.mtimeMs,
     });
@@ -50,9 +60,12 @@ export async function listFolders(vault: VaultInfo): Promise<string[]> {
   return folders.sort((a, b) => a.localeCompare(b));
 }
 
-export async function readVaultFile(vault: VaultInfo, rawPath: unknown): Promise<FileData> {
+export async function readVaultFile(
+  vault: VaultInfo,
+  rawPath: unknown,
+): Promise<VaultFileResponse> {
   requirePermission(vault.permissions.readContent, "Vault is not readable");
-  const vaultPath = normalizeVaultPath(rawPath, "file");
+  const vaultPath = normalizeReadableTextFilePath(rawPath);
   const absolutePath = await resolveExistingVaultPath(vault, vaultPath);
   const [content, stat] = await Promise.all([
     fs.readFile(absolutePath, "utf8"),
@@ -60,6 +73,7 @@ export async function readVaultFile(vault: VaultInfo, rawPath: unknown): Promise
   ]);
   return {
     path: vaultPath,
+    kind: requiredVaultFileKind(vaultPath),
     content,
     mtimeMs: stat.mtimeMs,
     size: stat.size,
@@ -72,16 +86,22 @@ export async function writeVaultFile(
   rawPath: unknown,
   content: unknown,
   precondition: WritePrecondition = {},
-): Promise<{ path: string; mtimeMs: number; size: number; hash: string }> {
+): Promise<VaultFileWriteResponse> {
   requirePermission(vault.permissions.writeContent, "Vault is not writable");
   if (typeof content !== "string") throw new Error("content must be a string");
-  const vaultPath = normalizeVaultPath(rawPath, "file");
+  const vaultPath = normalizeMarkdownFilePath(rawPath);
   const absolutePath = await resolveWritableVaultPath(vault, vaultPath);
   return withFileWriteLock(absolutePath, async () => {
     await assertUnchangedIfExpected(absolutePath, precondition);
     await atomicWriteFileUnlocked(absolutePath, content);
     const stat = await fs.lstat(absolutePath);
-    return { path: vaultPath, mtimeMs: stat.mtimeMs, size: stat.size, hash: hashContent(content) };
+    return {
+      path: vaultPath,
+      kind: "markdown" as const,
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      hash: hashContent(content),
+    };
   });
 }
 
@@ -89,10 +109,10 @@ export async function createVaultFile(
   vault: VaultInfo,
   rawPath: unknown,
   content = "",
-): Promise<{ path: string; mtimeMs: number; size: number }> {
+): Promise<VaultFile> {
   requirePermission(vault.permissions.writeContent, "Vault is not writable");
   if (typeof content !== "string") throw new Error("content must be a string");
-  const vaultPath = normalizeVaultPath(rawPath, "file");
+  const vaultPath = normalizeMarkdownFilePath(rawPath);
   const absolutePath = await resolveCreatableVaultPath(vault, vaultPath);
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   const handle = await fs.open(absolutePath, "wx");
@@ -102,7 +122,7 @@ export async function createVaultFile(
     await handle.close();
   }
   const stat = await fs.lstat(absolutePath);
-  return { path: vaultPath, mtimeMs: stat.mtimeMs, size: stat.size };
+  return { path: vaultPath, kind: "markdown" as const, mtimeMs: stat.mtimeMs, size: stat.size };
 }
 
 export async function createVaultFolder(
@@ -110,7 +130,7 @@ export async function createVaultFolder(
   rawPath: unknown,
 ): Promise<{ path: string }> {
   requirePermission(vault.permissions.writeContent, "Vault is not writable");
-  const vaultPath = normalizeVaultPath(rawPath, "folder");
+  const vaultPath = normalizeVaultFolderPath(rawPath);
   const absolutePath = await resolveCreatableVaultPath(vault, vaultPath);
   await fs.mkdir(absolutePath, { recursive: false });
   return { path: vaultPath };
@@ -123,8 +143,10 @@ export async function renameVaultPath(
   kind: "file" | "folder" = "file",
 ): Promise<{ fromPath: string; toPath: string }> {
   requirePermission(vault.permissions.writeContent, "Vault is not writable");
-  const from = normalizeVaultPath(fromPath, kind);
-  const to = normalizeVaultPath(toPath, kind);
+  const from =
+    kind === "folder" ? normalizeVaultFolderPath(fromPath) : normalizeMarkdownFilePath(fromPath);
+  const to =
+    kind === "folder" ? normalizeVaultFolderPath(toPath) : normalizeMarkdownFilePath(toPath);
   const fromAbsolute = await resolveExistingVaultPath(vault, from);
   const toAbsolute = await resolveCreatableVaultPath(vault, to);
   if (kind === "folder") await assertNoSymlinksInTree(fromAbsolute);
@@ -144,7 +166,7 @@ export async function deleteVaultFile(
   rawPath: unknown,
 ): Promise<{ path: string }> {
   requirePermission(vault.permissions.deleteFiles, "Vault is not configured for deletes");
-  const vaultPath = normalizeVaultPath(rawPath, "file");
+  const vaultPath = normalizeMarkdownFilePath(rawPath);
   const absolutePath = await resolveExistingVaultPath(vault, vaultPath);
   await fs.unlink(absolutePath);
   return { path: vaultPath };
@@ -323,6 +345,19 @@ async function assertUnchangedIfExpected(
 
 function hashContent(content: string): string {
   return crypto.createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+export function vaultFileKind(filePath: string): VaultFileKind | null {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".md")) return "markdown";
+  if (lower.endsWith(".txt")) return "plain-text";
+  return null;
+}
+
+function requiredVaultFileKind(filePath: string): VaultFileKind {
+  const kind = vaultFileKind(filePath);
+  if (!kind) throw new Error("Unsupported readable text file extension");
+  return kind;
 }
 
 async function syncDirectory(directory: string): Promise<void> {

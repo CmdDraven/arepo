@@ -41,7 +41,7 @@ import {
   createVaultFolder,
   deleteVaultFile,
   listFolders,
-  listMarkdownFiles,
+  listSupportedTextFiles,
   readVaultFile,
   renameVaultPath,
   writeVaultFile,
@@ -205,7 +205,10 @@ export async function routeRequest(
       const vault = await getLocalVault(vaultId, cwd);
 
       if (method === "GET" && action === "files") {
-        const [files, folders] = await Promise.all([listMarkdownFiles(vault), listFolders(vault)]);
+        const [files, folders] = await Promise.all([
+          listSupportedTextFiles(vault),
+          listFolders(vault),
+        ]);
         return json(200, { files, folders }, cors.headers);
       }
 

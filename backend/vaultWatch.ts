@@ -2,7 +2,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { rebuildMachineIndex } from "./indexCache.js";
-import { listFolders, listMarkdownFiles, readVaultFile } from "./vaultFs.js";
+import { listFolders, listSupportedTextFiles, readVaultFile, vaultFileKind } from "./vaultFs.js";
 import type { IndexFreshness, VaultInfo, VaultRuntimeStatus, WatchedFileStatus } from "./types.js";
 
 type SnapshotEntry = {
@@ -129,7 +129,6 @@ async function refreshDirectoryWatchers(state: VaultWatchState): Promise<void> {
     try {
       const watcher = fsSync.watch(absoluteDir, { persistent: false }, () => {
         state.lastEventAt = Date.now();
-        markStale(state);
         scheduleScan(state);
       });
       watcher.on("error", (error) => {
@@ -176,9 +175,14 @@ async function rescanVault(
       state.addedPaths.delete(item);
     }
     state.snapshot = after;
-    markStale(state);
     await refreshDirectoryWatchers(state);
-    if (options.scheduleRebuild) scheduleRebuild(state);
+    const markdownChanged = [...diff.added, ...diff.changed, ...diff.deleted].some(
+      (filePath) => vaultFileKind(filePath) === "markdown",
+    );
+    if (markdownChanged) {
+      markStale(state);
+      if (options.scheduleRebuild) scheduleRebuild(state);
+    }
   }
 }
 
@@ -247,7 +251,7 @@ async function fileStatus(state: VaultWatchState, filePath: string): Promise<Wat
 }
 
 async function snapshotVault(vault: VaultInfo): Promise<Map<string, SnapshotEntry>> {
-  const files = await listMarkdownFiles(vault);
+  const files = await listSupportedTextFiles(vault);
   return new Map(files.map((file) => [file.path, { mtimeMs: file.mtimeMs, size: file.size }]));
 }
 

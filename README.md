@@ -13,6 +13,13 @@ AREPO automatically builds a machine index from the Markdown files in each
 configured vault. A user-authored `index.md` file is optional; if it exists, it
 is treated as a normal Markdown note, not as the app's machine index.
 
+The first deliberately narrow non-Markdown experiment supports UTF-8 `.txt`
+files as read-only source files. They appear in Tree, can be opened as plain
+text, participate in browser-local filename/body search, and refresh after
+external disk changes. They are not notes: `.txt` files never enter the machine
+index, graph, backlinks, Markdown preview, frontmatter, tags, headings, or
+validation. AREPO does not create, save, rename, or delete them.
+
 Sync, history, and backups are intentionally external:
 
 - Syncthing for device sync
@@ -278,8 +285,8 @@ revocation, failure checks, and audit sanitization steps.
 
 The backend accepts only POSIX-style relative vault paths. It rejects absolute
 paths, `..`, empty segments, duplicate slashes, symlink path traversal, and paths
-that resolve outside the configured vault root. Note file operations require
-`.md`.
+that resolve outside the configured vault root. Content reads accept `.md` and
+`.txt`; all file mutation operations require `.md`.
 
 File saves write and sync a uniquely named temporary file in the same directory,
 rename it into place, and clean up the temporary file if the operation fails.
@@ -327,9 +334,11 @@ fields such as file paths, titles, frontmatter IDs, tags, headings, anchors,
 outgoing link targets, and backlinks. It is not AI search, vector search, or
 full document body search.
 
-The Tree's browser-local text search can match note bodies only after the
-frontend has fetched those files through the content-read endpoint. That path
-requires `readContent`; it does not obtain bodies from the structural index.
+The Tree's browser-local text search can match Markdown and plain-text bodies
+only after the frontend has fetched those files through the content-read
+endpoint. That path requires `readContent`; it does not obtain bodies from the
+structural index. Plain-text results are identified separately from Markdown
+notes.
 
 The Inspect panel can show read-only file-level machine-index details for a
 selected note or structural filter result, including headings, anchors, outgoing
@@ -378,18 +387,28 @@ CommonMark AST pipeline.
 
 ## External Changes
 
-The local backend watches configured vault roots for Markdown file changes,
-additions, deletions, and renames. It does not watch outside configured vault
-roots and continues to ignore symlink escapes. Watch events are debounced so
-large Syncthing or Git bursts mark the vault stale first and rebuild the
-generated machine index after the event burst settles.
+The local backend watches configured vault roots for supported `.md` and `.txt`
+file changes, additions, deletions, and renames. It does not watch outside
+configured vault roots and continues to ignore symlink escapes. Watch events
+are debounced. Markdown changes mark the vault index stale and rebuild it after
+the event burst settles; plain-text-only changes remain visible in watcher
+status without staling or rebuilding the Markdown machine index.
 
-The frontend polls vault status from the local backend. If the open file changes
-on disk and the editor has no unsaved changes, AREPO refreshes from disk. If
-the editor is dirty, AREPO keeps the browser buffer intact and shows a
+The frontend polls vault status from the local backend. If the open Markdown
+file changes on disk and the editor has no unsaved changes, AREPO refreshes from
+disk. Open plain-text files always reload their read-only view from disk. If the
+Markdown editor is dirty, AREPO keeps the browser buffer intact and shows a
 conflict warning with actions to keep edits, reload the disk version, or save
-the buffer as a new file. If the open file is deleted on disk, AREPO shows a
-warning and lets the user close the buffer or save it as a new file.
+the buffer as a new file. If an open Markdown file is deleted on disk, AREPO
+shows a warning and lets the user close the buffer or save it as a new file; a
+deleted plain-text file offers only the read-only close path.
+
+The `.txt` experiment uses Node's normal UTF-8 decoding and does not detect
+legacy encodings; invalid UTF-8 may therefore be displayed with replacement
+characters. A plain-text rename is treated as deletion of the old path plus
+discovery of the new path. The old read-only buffer is closed or refreshed
+before the new path is opened; AREPO does not assign stable identity across the
+rename.
 
 Manual Rebuild index remains available. It forces the generated machine index
 to be rebuilt from current Markdown files and is useful after very large
@@ -400,7 +419,7 @@ Watcher limitations:
 - The backend watches only configured vault roots.
 - Directory watchers are refreshed as folders appear and disappear.
 - Filesystem events can be coalesced or dropped by the operating system during
-  large bursts, so status polling also rescans Markdown metadata.
+  large bursts, so status polling also rescans supported file metadata.
 - This is change detection only. It is not sync, version history, or backup.
 
 ## Local Storage

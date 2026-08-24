@@ -578,7 +578,9 @@ test("protected mode enforces bearer credentials and vault route permissions", a
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
   const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
   const sourceBody = "# Protected\n\nsource-body-secret\n";
+  const plainBody = "protected plain text — こんにちは\n";
   await fs.writeFile(path.join(rootPath, "note.md"), sourceBody, "utf8");
+  await fs.writeFile(path.join(rootPath, "plain.txt"), plainBody, "utf8");
   const vault = testVault(rootPath);
 
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
@@ -605,8 +607,35 @@ test("protected mode enforces bearer credentials and vault route permissions", a
     if (indexRoute.endsWith("/index")) {
       const indexResponse = indexed.body as VaultIndexResponse;
       assert.equal(Object.hasOwn(indexResponse.index.notes["note.md"] ?? {}, "body"), false);
+      assert.equal(Object.hasOwn(indexResponse.index.notes, "plain.txt"), false);
+      assert.equal(JSON.stringify(indexResponse).includes(plainBody.trim()), false);
     }
   }
+  const plainStructuralSearch = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/search?q=plain.txt`, undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.deepEqual((plainStructuralSearch.body as IndexSearchResponse).results, []);
+
+  const listed = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/files`, undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(listed.status, 200);
+  assert.deepEqual(
+    (listed.body as { files: { path: string; kind: string }[] }).files.map(
+      ({ path: filePath, kind }) => ({ path: filePath, kind }),
+    ),
+    [
+      { path: "note.md", kind: "markdown" },
+      { path: "plain.txt", kind: "plain-text" },
+    ],
+  );
+  assert.equal(JSON.stringify(listed.body).includes(plainBody.trim()), false);
 
   const route = `/api/vaults/${vault.id}/file?path=note.md`;
   const missing = await routeRequest(request("GET", route), cwd);
@@ -629,6 +658,13 @@ test("protected mode enforces bearer credentials and vault route permissions", a
   );
   assert.equal(unauthorized.status, 403);
   assert.equal((unauthorized.body as { code: string }).code, "requires-authorization");
+  const unauthorizedPlain = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/file?path=plain.txt`, undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(unauthorizedPlain.status, 403);
 
   await writeProtectedAuthStores(appDataDir, {
     vaultId: vault.id,
@@ -642,6 +678,15 @@ test("protected mode enforces bearer credentials and vault route permissions", a
   );
   assert.equal(allowed.status, 200);
   assert.equal((allowed.body as { content: string }).content, sourceBody);
+  const allowedPlain = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/file?path=plain.txt`, undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(allowedPlain.status, 200);
+  assert.equal((allowedPlain.body as { content: string; kind: string }).content, plainBody);
+  assert.equal((allowedPlain.body as { content: string; kind: string }).kind, "plain-text");
 
   const paths = resolveAuthStoragePaths(appDataDir);
   const audit = await readAuthAuditEvents(paths.auditEvents);
@@ -1486,6 +1531,55 @@ test("vault registration and file APIs stay inside configured root", async () =>
   assert.equal(traversal.status, 400);
 });
 
+test("file mutation endpoints reject plain-text targets", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  await fs.writeFile(path.join(rootPath, "read-only.txt"), "unchanged\n", "utf8");
+  const vault: VaultInfo = {
+    ...testVault(rootPath, "plain-text-mutations"),
+    permissions: {
+      readIndex: true,
+      readContent: true,
+      writeContent: true,
+      deleteFiles: true,
+    },
+  };
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+
+  const responses = await Promise.all([
+    routeRequest(
+      request("PUT", `/api/vaults/${vault.id}/file?path=read-only.txt`, {
+        content: "changed\n",
+      }),
+      cwd,
+    ),
+    routeRequest(
+      request("POST", `/api/vaults/${vault.id}/file`, {
+        path: "new.txt",
+        content: "new\n",
+      }),
+      cwd,
+    ),
+    routeRequest(
+      request("POST", `/api/vaults/${vault.id}/rename`, {
+        fromPath: "read-only.txt",
+        toPath: "renamed.txt",
+        kind: "file",
+      }),
+      cwd,
+    ),
+    routeRequest(request("DELETE", `/api/vaults/${vault.id}/file?path=read-only.txt`), cwd),
+  ]);
+
+  assert.deepEqual(
+    responses.map((response) => response.status),
+    [400, 400, 400, 400],
+  );
+  assert.equal(await fs.readFile(path.join(rootPath, "read-only.txt"), "utf8"), "unchanged\n");
+  await assert.rejects(() => fs.access(path.join(rootPath, "new.txt")));
+});
+
 test("vault index scope update persists config and rebuilds the machine index", async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
   const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-vault-"));
@@ -2007,6 +2101,68 @@ test("external additions and deletions are reflected in status and rebuilt index
   const { index } = indexResponse.body as VaultIndexResponse;
   assert.equal(index.notes["a.md"], undefined);
   assert.ok(index.notes["b.md"]);
+});
+
+test("plain-text watcher changes stay visible without staling or rebuilding the Markdown index", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir);
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
+  await fs.writeFile(path.join(rootPath, "plain.txt"), "first\n", "utf8");
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  assert.equal(created.status, 201);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  const initialIndex = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  assert.equal(initialIndex.status, 200);
+  const cachePath = await machineIndexPath(vault, cwd);
+  const cacheBefore = await fs.readFile(cachePath, "utf8");
+  const cacheStatBefore = await fs.stat(cachePath);
+
+  await fs.writeFile(path.join(rootPath, "plain.txt"), "second — こんにちは\n", "utf8");
+  const changed = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/status?path=plain.txt`),
+    cwd,
+  );
+  assert.equal(changed.status, 200);
+  const changedStatus = statusBody(changed);
+  assert.equal(changedStatus.indexStatus, "fresh");
+  assert.ok(changedStatus.changedPaths.includes("plain.txt"));
+  assert.equal(changedStatus.file?.exists, true);
+
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  const settled = await routeRequest(request("GET", `/api/vaults/${vault.id}/status`), cwd);
+  assert.equal(statusBody(settled).indexStatus, "fresh");
+  assert.ok(statusBody(settled).changedPaths.includes("plain.txt"));
+  assert.equal(await fs.readFile(cachePath, "utf8"), cacheBefore);
+  assert.equal((await fs.stat(cachePath)).mtimeMs, cacheStatBefore.mtimeMs);
+});
+
+test("mixed Markdown and plain-text watcher changes rebuild only the Markdown index", async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-server-"));
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-data-"));
+  await writeConfig(cwd, appDataDir);
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "arepo-root-"));
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Before\n", "utf8");
+  await fs.writeFile(path.join(rootPath, "plain.txt"), "before\n", "utf8");
+
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  await fs.writeFile(path.join(rootPath, "note.md"), "# After\n", "utf8");
+  await fs.writeFile(path.join(rootPath, "plain.txt"), "after\n", "utf8");
+
+  const changed = await routeRequest(request("GET", `/api/vaults/${vault.id}/status`), cwd);
+  assert.equal(statusBody(changed).indexStatus, "stale");
+  assert.ok(statusBody(changed).changedPaths.includes("note.md"));
+  assert.ok(statusBody(changed).changedPaths.includes("plain.txt"));
+
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  const rebuilt = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  const rebuiltIndex = rebuilt.body as VaultIndexResponse;
+  assert.equal(rebuiltIndex.index.notes["note.md"]?.title, "After");
+  assert.equal(Object.hasOwn(rebuiltIndex.index.notes, "plain.txt"), false);
 });
 
 test("watch/index status ignores symlink escapes", async (t) => {

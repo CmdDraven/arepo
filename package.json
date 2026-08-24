@@ -15,7 +15,7 @@
     "format": "prettier --write .",
     "backend:dev:server": "npm run backend:build && node dist-backend/backend/server.js",
     "frontend:menu": "node scripts/frontend-menu.mjs",
-    "frontend:test": "node --experimental-strip-types --test src/lib/workspace/*.test.ts"
+    "frontend:test": "node --experimental-strip-types --test src/lib/workspace/*.test.ts src/lib/vault/*.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

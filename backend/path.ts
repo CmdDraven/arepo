@@ -1,8 +1,6 @@
 import path from "node:path";
 
-export type VaultPathKind = "file" | "folder";
-
-export function normalizeVaultPath(input: unknown, kind: VaultPathKind): string {
+function normalizeVaultRelativePath(input: unknown): string {
   if (typeof input !== "string") {
     throw new Error("Path must be a string");
   }
@@ -26,13 +24,31 @@ export function normalizeVaultPath(input: unknown, kind: VaultPathKind): string 
     throw new Error("Path cannot escape the vault");
   }
 
-  if (kind === "file" && !normalized.toLowerCase().endsWith(".md")) {
-    throw new Error("Note files must use the .md extension");
+  return normalized;
+}
+
+export function normalizeReadableTextFilePath(input: unknown): string {
+  const normalized = normalizeVaultRelativePath(input);
+  const lower = normalized.toLowerCase();
+  if (!lower.endsWith(".md") && !lower.endsWith(".txt")) {
+    throw new Error("Readable text files must use the .md or .txt extension");
   }
-  if (kind === "folder" && normalized.toLowerCase().endsWith(".md")) {
+  return normalized;
+}
+
+export function normalizeMarkdownFilePath(input: unknown): string {
+  const normalized = normalizeVaultRelativePath(input);
+  if (!normalized.toLowerCase().endsWith(".md")) {
+    throw new Error("Mutable note files must use the .md extension");
+  }
+  return normalized;
+}
+
+export function normalizeVaultFolderPath(input: unknown): string {
+  const normalized = normalizeVaultRelativePath(input);
+  if (normalized.toLowerCase().endsWith(".md")) {
     throw new Error("Folder paths must not end with .md");
   }
-
   return normalized;
 }
 

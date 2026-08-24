@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Database,
   FileText,
+  FileType2,
   Link2,
   FolderTree,
   Pencil,
@@ -41,7 +42,11 @@ import { buildGraph } from "@/lib/vault/graph";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { type NoteIndex } from "@/lib/vault/indexer";
+import {
+  searchLocalFiles,
+  type LocalFileSearchDocument,
+  type LocalFileSearchResult,
+} from "@/lib/vault/fileSearch";
 import {
   DEFAULT_THEME,
   centerViewAfterAssignment,
@@ -74,8 +79,7 @@ export const Route = createFileRoute("/")({
       { title: "AREPO — Local Knowledge Mapping" },
       {
         name: "description",
-        content:
-          "Local-first Markdown editor, indexer, and viewer. Your notes stay as plain .md files.",
+        content: "Local-first Markdown editor and indexer with read-only UTF-8 plain-text viewing.",
       },
     ],
   }),
@@ -83,13 +87,6 @@ export const Route = createFileRoute("/")({
 });
 
 type WorkspaceTreeUiState = TreeUiState<IndexFilterKind, IndexFilterResponse, IndexSearchResponse>;
-
-type LocalSearchResult = {
-  note: NoteIndex;
-  inName: boolean;
-  inBody: boolean;
-  inTags: boolean;
-};
 
 const LEFT_PANE_DEFAULT = 260;
 const LEFT_PANE_MIN = 220;
@@ -152,7 +149,7 @@ function VaultApp() {
     mutationError,
   } = vault;
 
-  const paths = useMemo(() => Object.keys(files), [files]);
+  const paths = useMemo(() => Object.keys(files).sort((a, b) => a.localeCompare(b)), [files]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const [buffer, setBuffer] = useState<string>("");
@@ -390,7 +387,9 @@ function VaultApp() {
     }
   }, [activePath, files]);
 
-  const dirty = buffer !== savedSnapshot;
+  const activeFileKind = activePath ? fileMeta[activePath]?.kind : undefined;
+  const activeIsPlainText = activeFileKind === "plain-text";
+  const dirty = activeFileKind === "markdown" && buffer !== savedSnapshot;
   const dirtyPaths = useMemo(
     () => new Set(dirty && activePath ? [activePath] : []),
     [dirty, activePath],
@@ -420,6 +419,10 @@ function VaultApp() {
     }
     const meta = fileMeta[activePath];
     if (!file.hash || !meta || file.hash === meta.hash) return;
+    if (activeIsPlainText) {
+      void reloadFile(activePath);
+      return;
+    }
     if (dirty) {
       const selfWrite = selfWriteSuppressionRef.current;
       if (
@@ -437,7 +440,16 @@ function VaultApp() {
       selfWriteSuppressionRef.current = null;
     }
     void reloadFile(activePath);
-  }, [activePath, buffer, dirty, fileMeta, reloadFile, suppressedConflict, vaultStatus]);
+  }, [
+    activeIsPlainText,
+    activePath,
+    buffer,
+    dirty,
+    fileMeta,
+    reloadFile,
+    suppressedConflict,
+    vaultStatus,
+  ]);
 
   useEffect(() => {
     if (!vaultStatus?.changedExternally || !vaultStatus.lastEventAt || dirty) return;
@@ -458,7 +470,12 @@ function VaultApp() {
       return next;
     });
   }, [index.notes]);
-  const metadataPath = selectedNotePaths.length === 1 ? selectedNotePaths[0] : activePath;
+  const metadataPath =
+    selectedNotePaths.length === 1
+      ? selectedNotePaths[0]
+      : activeFileKind === "markdown"
+        ? activePath
+        : null;
   const metadataNote = metadataPath ? index.notes[metadataPath] : null;
   const metadataFileMeta = metadataPath ? fileMeta[metadataPath] : undefined;
   const combinedMetadata = useMemo(() => {
@@ -492,10 +509,10 @@ function VaultApp() {
   }, [fileMeta, index.backlinks, index.notes, issues, selectedNotePaths]);
   const previewBody = useMemo(() => {
     // Re-parse the live buffer so preview matches what's in the editor
-    if (!activePath) return "";
+    if (!activePath || activeIsPlainText) return "";
     const stripped = buffer.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
     return renderMarkdown(stripped, index);
-  }, [buffer, index, activePath]);
+  }, [activeIsPlainText, buffer, index, activePath]);
 
   const backlinks = metadataPath ? (index.backlinks[metadataPath] ?? []) : [];
   const fileIssues = useMemo(
@@ -504,7 +521,7 @@ function VaultApp() {
   );
 
   const save = useCallback(async () => {
-    if (!activePath || saving) return false;
+    if (!activePath || activeFileKind !== "markdown" || saving) return false;
     setSaving(true);
     const changedOnDisk = await hasExternalChange(activePath);
     if (changedOnDisk) {
@@ -531,7 +548,7 @@ function VaultApp() {
     }
     setSaving(false);
     return ok;
-  }, [activePath, buffer, hasExternalChange, refreshVaultStatus, saving, write]);
+  }, [activeFileKind, activePath, buffer, hasExternalChange, refreshVaultStatus, saving, write]);
 
   // Ctrl/Cmd+S
   useEffect(() => {
@@ -820,7 +837,7 @@ function VaultApp() {
     setExpanded((prev) => new Set(prev).add(path));
   };
   const handleRename = async () => {
-    if (!activePath) return;
+    if (!activePath || activeFileKind !== "markdown") return;
     if (dirty) {
       const shouldSave = window.confirm("Save current edits before renaming?");
       if (!shouldSave) return;
@@ -834,7 +851,7 @@ function VaultApp() {
   };
   const openSettings = () => setShowSettings(true);
   const handleSaveAsNew = async () => {
-    if (!activePath) return;
+    if (!activePath || activeFileKind !== "markdown") return;
     const next = window.prompt("Save current buffer as new Markdown file", activePath);
     if (!next || next === activePath) return;
     const ok = await createFileWithContent(next, buffer);
@@ -894,7 +911,7 @@ function VaultApp() {
     setConflictMessage(null);
   };
   const handleOverwriteDisk = async () => {
-    if (!activePath) return;
+    if (!activePath || activeFileKind !== "markdown") return;
     const okToOverwrite = window.confirm(
       "Overwrite the current disk version with your AREPO editor buffer? The external disk changes for this file will be replaced.",
     );
@@ -914,21 +931,23 @@ function VaultApp() {
     await refreshVaultStatus(activePath);
   };
 
+  const localSearchDocuments = useMemo<LocalFileSearchDocument[]>(
+    () =>
+      paths.map((path) => {
+        const note = index.notes[path];
+        return {
+          path,
+          title: note?.title ?? path.split("/").pop() ?? path,
+          kind: fileMeta[path]?.kind ?? "markdown",
+          tags: note?.tags ?? [],
+          content: files[path] ?? "",
+        };
+      }),
+    [fileMeta, files, index.notes, paths],
+  );
   const buildLocalSearchResults = useCallback(
-    (rawQuery: string): LocalSearchResult[] | null => {
-      const q = rawQuery.trim().toLowerCase();
-      if (!q) return null;
-      return Object.values(index.notes).reduce<LocalSearchResult[]>((results, note) => {
-        const inName = note.path.toLowerCase().includes(q);
-        const inBody = (files[note.path] ?? "").toLowerCase().includes(q);
-        const inTags = note.tags.some((tag) => tag.toLowerCase().includes(q));
-        if (inName || inBody || inTags) {
-          results.push({ note, inName, inBody, inTags });
-        }
-        return results;
-      }, []);
-    },
-    [files, index],
+    (rawQuery: string) => searchLocalFiles(localSearchDocuments, rawQuery),
+    [localSearchDocuments],
   );
 
   const sidebarResults = useMemo(
@@ -945,6 +964,10 @@ function VaultApp() {
   const activeVaultIndexScope = activeVault?.vaultIndexScope ?? defaultVaultIndexScope();
 
   const graphData = useMemo(() => buildGraph(index, issues), [index, issues]);
+  const fileKinds = useMemo(
+    () => Object.fromEntries(paths.map((path) => [path, fileMeta[path]?.kind ?? "markdown"])),
+    [fileMeta, paths],
+  );
   const suppressedActiveConflict =
     Boolean(activePath) &&
     Boolean(suppressedConflict) &&
@@ -1115,6 +1138,7 @@ function VaultApp() {
           <FileTree
             paths={paths}
             folders={vault.folders}
+            fileKinds={fileKinds}
             activePath={activePath}
             dirtyPaths={dirtyPaths}
             expanded={expanded}
@@ -1178,14 +1202,23 @@ function VaultApp() {
 
   const fileActionBar = (
     <div className="flex h-10 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b px-3 text-xs">
-      <SegBtn active={centerTab === "edit"} onClick={() => setCenterTab("edit")}>
-        <Pencil className="size-3.5" /> Edit
-      </SegBtn>
-      <SegBtn active={centerTab === "preview"} onClick={() => setCenterTab("preview")}>
-        <Eye className="size-3.5" /> Preview
-      </SegBtn>
-      <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+      {!activeIsPlainText && (
+        <>
+          <SegBtn active={centerTab === "edit"} onClick={() => setCenterTab("edit")}>
+            <Pencil className="size-3.5" /> Edit
+          </SegBtn>
+          <SegBtn active={centerTab === "preview"} onClick={() => setCenterTab("preview")}>
+            <Eye className="size-3.5" /> Preview
+          </SegBtn>
+        </>
+      )}
+      {activeIsPlainText ? (
+        <FileType2 className="size-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+      ) : (
+        <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+      )}
       <span className="font-mono truncate min-w-0 flex-1">{activePath ?? "—"}</span>
+      {activeIsPlainText && <Badge variant="outline">Plain text · Read only</Badge>}
       {dirty && <span className="text-amber-500 font-medium shrink-0">●</span>}
       {suppressedActiveConflict && (
         <Button
@@ -1211,26 +1244,30 @@ function VaultApp() {
       >
         Close
       </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 text-xs shrink-0"
-        onClick={() => void handleRename()}
-        disabled={!activePath}
-      >
-        Rename
-      </Button>
-      <Button
-        variant="default"
-        size="sm"
-        className="h-7 gap-1.5 text-xs shrink-0"
-        onClick={() => void save()}
-        disabled={!dirty || saving}
-      >
-        <Save className="size-3.5" />
-        Save
-        <kbd className="ml-1 hidden md:inline-block font-mono text-[10px] opacity-70">⌘S</kbd>
-      </Button>
+      {!activeIsPlainText && (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs shrink-0"
+            onClick={() => void handleRename()}
+            disabled={!activePath}
+          >
+            Rename
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            className="h-7 gap-1.5 text-xs shrink-0"
+            onClick={() => void save()}
+            disabled={!dirty || saving}
+          >
+            <Save className="size-3.5" />
+            Save
+            <kbd className="ml-1 hidden md:inline-block font-mono text-[10px] opacity-70">⌘S</kbd>
+          </Button>
+        </>
+      )}
     </div>
   );
 
@@ -1259,13 +1296,27 @@ function VaultApp() {
     </div>
   );
 
+  const plainTextPane = (
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      {fileActionBar}
+      <textarea
+        aria-label="Read-only plain-text file"
+        readOnly
+        spellCheck={false}
+        value={buffer}
+        className="min-h-0 min-w-0 flex-1 resize-none bg-muted/20 p-4 font-mono text-[13px] leading-relaxed text-foreground outline-none"
+      />
+    </div>
+  );
+
   const emptyDocumentPane = (
     <div className="flex h-full min-h-0 min-w-0 items-center justify-center overflow-hidden p-6 text-center">
       <div className="space-y-1">
         <FileText className="mx-auto size-5 text-muted-foreground" />
         <div className="text-sm font-medium">No document open</div>
         <div className="text-xs text-muted-foreground">
-          Select a Markdown file from the tree, graph, search, or index views to open it here.
+          Select a Markdown or plain-text file from the tree, search, or index views to open it
+          here.
         </div>
       </div>
     </div>
@@ -1300,41 +1351,46 @@ function VaultApp() {
   );
 
   const centerPane = activePath
-    ? centerTab === "edit"
-      ? editorPane
-      : previewPane
+    ? activeIsPlainText
+      ? plainTextPane
+      : centerTab === "edit"
+        ? editorPane
+        : previewPane
     : centerWorkspaceView === "tree"
       ? centerTreePane
       : centerWorkspaceView === "graph"
         ? centerGraphPane
         : emptyDocumentPane;
 
-  const inspectorPane = (
-    <IndexInspectPanel
-      selectedCount={selectedNotePaths.length}
-      activeVault={activeVault}
-      indexedNoteCount={Object.keys(index.notes).length}
-      indexScope={activeVaultIndexScope}
-      indexStatus={vaultStatus?.indexStatus}
-      lastIndexedAt={vaultStatus?.lastIndexedAt}
-      brokenLinkCount={index.brokenLinks.length}
-      orphanCount={index.orphanNotes.length}
-      inspectData={inspectData}
-      inspectLoading={inspectLoading}
-      inspectError={inspectError}
-      backlinks={backlinks}
-      noteTitles={index.notes}
-      fileIssues={fileIssues}
-      combinedMetadata={combinedMetadata}
-      metadataNote={metadataNote}
-      metadataPath={metadataPath}
-      metadataFileMeta={metadataFileMeta}
-      onPick={inspectPath}
-      onAnchor={openAnchor}
-      onReindex={() => void reindex()}
-      onOpenSettings={openSettings}
-    />
-  );
+  const inspectorPane =
+    activeIsPlainText && activePath ? (
+      <PlainTextInspector path={activePath} size={fileMeta[activePath]?.size ?? 0} />
+    ) : (
+      <IndexInspectPanel
+        selectedCount={selectedNotePaths.length}
+        activeVault={activeVault}
+        indexedNoteCount={Object.keys(index.notes).length}
+        indexScope={activeVaultIndexScope}
+        indexStatus={vaultStatus?.indexStatus}
+        lastIndexedAt={vaultStatus?.lastIndexedAt}
+        brokenLinkCount={index.brokenLinks.length}
+        orphanCount={index.orphanNotes.length}
+        inspectData={inspectData}
+        inspectLoading={inspectLoading}
+        inspectError={inspectError}
+        backlinks={backlinks}
+        noteTitles={index.notes}
+        fileIssues={fileIssues}
+        combinedMetadata={combinedMetadata}
+        metadataNote={metadataNote}
+        metadataPath={metadataPath}
+        metadataFileMeta={metadataFileMeta}
+        onPick={inspectPath}
+        onAnchor={openAnchor}
+        onReindex={() => void reindex()}
+        onOpenSettings={openSettings}
+      />
+    );
 
   return (
     <div
@@ -1453,9 +1509,16 @@ function VaultApp() {
           {conflictMessage && <span className="text-destructive">{conflictMessage}</span>}
           {diffError && <span className="text-destructive">{diffError}</span>}
           <div className="ml-auto flex flex-wrap gap-1">
-            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleKeepEditing}>
-              Keep editing
-            </Button>
+            {!activeIsPlainText && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={handleKeepEditing}
+              >
+                Keep editing
+              </Button>
+            )}
             {externalNotice.kind === "conflict" && (
               <>
                 <Button
@@ -1495,14 +1558,16 @@ function VaultApp() {
                 Reload disk version
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => void handleSaveAsNew()}
-            >
-              Save as new file
-            </Button>
+            {!activeIsPlainText && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => void handleSaveAsNew()}
+              >
+                Save as new file
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -1619,10 +1684,10 @@ function VaultApp() {
               {vaultPane}
             </div>
             <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "edit"}>
-              {activePath ? editorPane : emptyDocumentPane}
+              {activePath ? (activeIsPlainText ? plainTextPane : editorPane) : emptyDocumentPane}
             </div>
             <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "preview"}>
-              {activePath ? previewPane : emptyDocumentPane}
+              {activePath && !activeIsPlainText ? previewPane : emptyDocumentPane}
             </div>
             <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "inspect"}>
               {inspectorPane}
@@ -1639,7 +1704,7 @@ function VaultApp() {
               active={mobileTab === "edit"}
               onClick={() => setMobileTab("edit")}
               icon={<Pencil className="size-4" />}
-              label="Edit"
+              label={activeIsPlainText ? "View" : "Edit"}
               dot={dirty}
             />
             <TabBtn
@@ -1647,6 +1712,7 @@ function VaultApp() {
               onClick={() => setMobileTab("preview")}
               icon={<Eye className="size-4" />}
               label="Preview"
+              disabled={activeIsPlainText}
             />
             <TabBtn
               active={mobileTab === "inspect"}
@@ -1691,6 +1757,7 @@ function TabBtn({
   label,
   dot,
   badge,
+  disabled,
 }: {
   active: boolean;
   onClick: () => void;
@@ -1698,13 +1765,16 @@ function TabBtn({
   label: string;
   dot?: boolean;
   badge?: number;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={cn(
         "relative flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium",
         active ? "text-foreground" : "text-muted-foreground",
+        disabled && "cursor-not-allowed opacity-40",
       )}
     >
       <span className="relative">
@@ -2032,6 +2102,35 @@ function IndexInspectPanel({
           <Empty>Select one file, or shift-select graph nodes to view combined metadata.</Empty>
         )}
       </Section>
+    </div>
+  );
+}
+
+function PlainTextInspector({ path, size }: { path: string; size: number }) {
+  return (
+    <div className="h-full min-h-0 min-w-0 overflow-auto p-4 text-xs">
+      <div className="mb-4 flex items-center gap-2">
+        <FileType2 className="size-4 text-sky-600 dark:text-sky-400" />
+        <div className="font-medium">Plain-text file</div>
+      </div>
+      <dl className="space-y-3">
+        <div>
+          <dt className="text-muted-foreground">Path</dt>
+          <dd className="mt-1 break-all font-mono">{path}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Size</dt>
+          <dd className="mt-1">{size.toLocaleString()} bytes</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Mode</dt>
+          <dd className="mt-1">UTF-8 plain text · read only</dd>
+        </div>
+      </dl>
+      <p className="mt-5 text-muted-foreground">
+        This file is intentionally excluded from Markdown metadata, backlinks, graph, validation,
+        and machine-index inspection.
+      </p>
     </div>
   );
 }
@@ -2490,7 +2589,7 @@ function SearchResults({
   results,
   onPick,
 }: {
-  results: LocalSearchResult[];
+  results: LocalFileSearchResult[];
   onPick: (path: string) => void;
 }) {
   if (!results.length)
@@ -2498,15 +2597,20 @@ function SearchResults({
   return (
     <ul className="min-w-0 space-y-1 overflow-hidden">
       {results.map((r) => (
-        <li key={r.note.path}>
+        <li key={r.path}>
           <button
-            onClick={() => onPick(r.note.path)}
+            onClick={() => onPick(r.path)}
             className="w-full min-w-0 rounded px-2 py-1.5 text-left hover:bg-muted"
           >
-            <div className="text-xs font-medium truncate">{r.note.title}</div>
-            <div className="text-[10px] text-muted-foreground font-mono truncate">
-              {r.note.path}
+            <div className="flex items-center gap-1.5 text-xs font-medium">
+              <span className="truncate">{r.title}</span>
+              {r.kind === "plain-text" && (
+                <Badge variant="outline" className="shrink-0 text-[9px] py-0">
+                  plain text
+                </Badge>
+              )}
             </div>
+            <div className="text-[10px] text-muted-foreground font-mono truncate">{r.path}</div>
             <div className="flex gap-1 mt-0.5">
               {r.inName && (
                 <Badge variant="outline" className="text-[9px] py-0">

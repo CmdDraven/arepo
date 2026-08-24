@@ -1,4 +1,4 @@
-export function indexedFoldersFromNotePaths(paths: readonly string[]): string[] {
+export function foldersFromFilePaths(paths: readonly string[]): string[] {
   const folders = new Set<string>();
   for (const path of paths) {
     const segments = path.split("/").filter(Boolean);
@@ -11,3 +11,5 @@ export function indexedFoldersFromNotePaths(paths: readonly string[]): string[] 
   }
   return Array.from(folders).sort((a, b) => a.localeCompare(b));
 }
+
+export const indexedFoldersFromNotePaths = foldersFromFilePaths;

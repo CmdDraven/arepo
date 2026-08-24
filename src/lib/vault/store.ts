@@ -4,6 +4,7 @@ import type {
   NodeInfo,
   OperationResult,
   VaultFileListResponse,
+  VaultFileKind,
   VaultFileResponse,
   VaultFileWriteResponse,
   VaultIndexResponse,
@@ -11,14 +12,17 @@ import type {
   VaultInfo,
   VaultPermission,
 } from "./contracts";
-import { indexedFoldersFromNotePaths } from "./tree";
+import { foldersFromFilePaths } from "./tree";
 
 export type { VaultIndexScope, VaultInfo, VaultPermission } from "./contracts";
 
 const LAST_VAULT_KEY = "vault:lastVaultId";
 
 type FilesMap = Record<string, string>;
-type FileMetaMap = Record<string, { mtimeMs: number; size: number; hash: string }>;
+type FileMetaMap = Record<
+  string,
+  { kind: VaultFileKind; mtimeMs: number; size: number; hash: string }
+>;
 
 export type GeneratedDataAction = "keep" | "discard";
 
@@ -172,10 +176,8 @@ export function useVault(): VaultStore {
       api<FileListResponse>(`/api/vaults/${encodeURIComponent(vaultId)}/files`),
       api<IndexResponse>(`/api/vaults/${encodeURIComponent(vaultId)}/index`),
     ]);
-    const indexedPathSet = new Set(Object.keys(indexResponse.index.notes));
-    const indexedFiles = fileList.files.filter((file) => indexedPathSet.has(file.path));
     const fileData = await Promise.all(
-      indexedFiles.map(async (file) => {
+      fileList.files.map(async (file) => {
         return api<FileResponse>(
           `/api/vaults/${encodeURIComponent(vaultId)}/file?path=${encodeURIComponent(file.path)}`,
         );
@@ -183,11 +185,15 @@ export function useVault(): VaultStore {
     );
     const fileEntries = fileData.map((data) => [data.path, data.content] as const);
     const metaEntries = fileData.map(
-      (data) => [data.path, { mtimeMs: data.mtimeMs, size: data.size, hash: data.hash }] as const,
+      (data) =>
+        [
+          data.path,
+          { kind: data.kind, mtimeMs: data.mtimeMs, size: data.size, hash: data.hash },
+        ] as const,
     );
     setFiles(Object.fromEntries(fileEntries));
     setFileMeta(Object.fromEntries(metaEntries));
-    setFolders(indexedFoldersFromNotePaths(indexedFiles.map((file) => file.path)));
+    setFolders(foldersFromFilePaths(fileList.files.map((file) => file.path)));
     setIndex(indexResponse.index);
     setIssues(indexResponse.issues);
     const status = await api<VaultRuntimeStatus>(
@@ -291,7 +297,12 @@ export function useVault(): VaultStore {
         setFiles((prev) => ({ ...prev, [data.path]: content }));
         setFileMeta((prev) => ({
           ...prev,
-          [data.path]: { mtimeMs: data.mtimeMs, size: data.size, hash: data.hash },
+          [data.path]: {
+            kind: data.kind,
+            mtimeMs: data.mtimeMs,
+            size: data.size,
+            hash: data.hash,
+          },
         }));
       }),
     [fileMeta, mutate],
@@ -318,7 +329,12 @@ export function useVault(): VaultStore {
         setFiles((prev) => ({ ...prev, [data.path]: content }));
         setFileMeta((prev) => ({
           ...prev,
-          [data.path]: { mtimeMs: data.mtimeMs, size: data.size, hash: data.hash },
+          [data.path]: {
+            kind: data.kind,
+            mtimeMs: data.mtimeMs,
+            size: data.size,
+            hash: data.hash,
+          },
         }));
       }),
     [mutate],
@@ -513,7 +529,12 @@ export function useVault(): VaultStore {
         setFiles((prev) => ({ ...prev, [data.path]: data.content }));
         setFileMeta((prev) => ({
           ...prev,
-          [data.path]: { mtimeMs: data.mtimeMs, size: data.size, hash: data.hash },
+          [data.path]: {
+            kind: data.kind,
+            mtimeMs: data.mtimeMs,
+            size: data.size,
+            hash: data.hash,
+          },
         }));
         await refreshVaultStatus(path);
         return true;

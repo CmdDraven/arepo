@@ -332,7 +332,7 @@ export const PROTECTED_ROUTE_POLICIES = [
     strongerConfirmation: [],
     dataAccess: access({ sourceContent: true }),
     networkExposureSafe: false,
-    notes: "Direct source Markdown reads require source-content access.",
+    notes: "Direct supported text-file reads require source-content access.",
   },
   {
     method: "GET",

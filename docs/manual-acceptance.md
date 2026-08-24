@@ -544,6 +544,32 @@ Run this on a desktop-width browser window.
 6. Expected result: renaming to an existing file path is rejected rather than
    overwriting the destination.
 
+### 9A. Read-only UTF-8 plain-text experiment
+
+1. Create a temporary UTF-8 file directly on disk:
+
+   ```bash
+   printf 'Plain text — Zażółć gęślą jaźń — こんにちは\n' > <absolute path to test-vault>/Reference/plain-text-check.txt
+   ```
+
+2. Expected result: `plain-text-check.txt` appears in Tree with a distinct
+   plain-text marker and opens in a read-only plain-text viewer.
+3. Expected result: no Save, Rename, Markdown Preview, frontmatter, headings,
+   backlinks, graph node, validation, or machine-index inspection is offered
+   for the file.
+4. Search Tree for `こんにちは`.
+5. Expected result: the `.txt` file is returned as a plain-text body match.
+6. Edit the file externally and save it.
+7. Expected result: the open read-only view reloads from disk, while the
+   generated Markdown index remains fresh.
+8. Attempt direct `PUT`, `POST`, rename, and `DELETE` file API requests targeting
+   `.txt` paths.
+9. Expected result: every mutation is rejected by the backend and the disk file
+   is unchanged.
+10. Rebuild the machine index and confirm the `.txt` filename and body do not
+    appear in index, graph, backlinks, or validation data.
+11. Remove the temporary file directly on disk when finished.
+
 ## 10. Rebuild Machine Index
 
 1. Open the Vaults or Settings screen.
