@@ -16,15 +16,28 @@ import {
 } from "./reducedAnonymousStatusPlanner.js";
 import { getRequestPolicyRuntimeStatus } from "./requestPolicyStatus.js";
 import type { RequestLike, ResponsePayload } from "./server.js";
+import type { VaultListAccess } from "./vaultListVisibility.js";
+
+export type ProtectedModeEnforcementResult = {
+  response: ResponsePayload | null;
+  vaultListAccess: VaultListAccess;
+};
 
 export async function enforceProtectedMode(input: {
   request: RequestLike;
   cwd: string;
   url: URL;
   corsHeaders: Record<string, string>;
-}): Promise<ResponsePayload | null> {
+}): Promise<ProtectedModeEnforcementResult> {
   const config = await loadConfig(input.cwd);
-  if (config.auth.mode !== "protected") return null;
+  if (config.auth.mode !== "protected") {
+    return { response: null, vaultListAccess: { authMode: "disabled" } };
+  }
+  const protectedAccess: VaultListAccess = {
+    authMode: "protected",
+    nodePermissions: [],
+    vaultGrants: [],
+  };
 
   const runtime = resolveBackendRuntimeOptions();
   const appDataDir = resolveAppDataDir(config, input.cwd);
@@ -58,33 +71,39 @@ export async function enforceProtectedMode(input: {
         result: "rejected",
         reasonCode: "non-local-bootstrap-denied",
       });
-      return json(
-        403,
-        {
-          ok: false,
-          error: "Credential bootstrap is only available from the local machine.",
-          code: "local-bootstrap-required",
-          authRequired: true,
-          protectedModeOperational: readiness.protectedModeOperational,
-          enforcementActive: readiness.enforcementActive,
-          networkExposureSafe: false,
-        },
-        input.corsHeaders,
+      return enforcementResult(
+        json(
+          403,
+          {
+            ok: false,
+            error: "Credential bootstrap is only available from the local machine.",
+            code: "local-bootstrap-required",
+            authRequired: true,
+            protectedModeOperational: readiness.protectedModeOperational,
+            enforcementActive: readiness.enforcementActive,
+            networkExposureSafe: false,
+          },
+          input.corsHeaders,
+        ),
+        protectedAccess,
       );
     }
     if (!credentialLifecycle.storeAvailable) {
-      return json(
-        503,
-        {
-          ok: false,
-          error: "Credential stores are not available for bootstrap.",
-          code: "credential-store-unavailable",
-          authRequired: true,
-          protectedModeOperational: false,
-          enforcementActive: false,
-          networkExposureSafe: false,
-        },
-        input.corsHeaders,
+      return enforcementResult(
+        json(
+          503,
+          {
+            ok: false,
+            error: "Credential stores are not available for bootstrap.",
+            code: "credential-store-unavailable",
+            authRequired: true,
+            protectedModeOperational: false,
+            enforcementActive: false,
+            networkExposureSafe: false,
+          },
+          input.corsHeaders,
+        ),
+        protectedAccess,
       );
     }
     if (credentialLifecycle.activeCredentialCount > 0) {
@@ -93,45 +112,54 @@ export async function enforceProtectedMode(input: {
         result: "rejected",
         reasonCode: "active-credential-exists",
       });
-      return json(
-        409,
-        {
-          ok: false,
-          error: "Credential bootstrap is only available when no active credentials exist.",
-          code: "active-credential-exists",
-          authRequired: true,
-          protectedModeOperational: readiness.protectedModeOperational,
-          enforcementActive: readiness.enforcementActive,
-          networkExposureSafe: false,
-        },
-        input.corsHeaders,
+      return enforcementResult(
+        json(
+          409,
+          {
+            ok: false,
+            error: "Credential bootstrap is only available when no active credentials exist.",
+            code: "active-credential-exists",
+            authRequired: true,
+            protectedModeOperational: readiness.protectedModeOperational,
+            enforcementActive: readiness.enforcementActive,
+            networkExposureSafe: false,
+          },
+          input.corsHeaders,
+        ),
+        protectedAccess,
       );
     }
-    return null;
+    return enforcementResult(null, protectedAccess);
   }
 
   if (!readiness.readyForEnforcement) {
     if (endpoint) {
-      return json(503, reducedStatusBody(endpoint, warnings), input.corsHeaders);
+      return enforcementResult(
+        json(503, reducedStatusBody(endpoint, warnings), input.corsHeaders),
+        protectedAccess,
+      );
     }
-    return json(
-      503,
-      {
-        ok: false,
-        error: "Protected mode is configured but not operational.",
-        code: "protected-mode-not-ready",
-        reasonCodes: ["protected-mode-not-ready", ...readiness.blockers],
-        authRequired: true,
-        protectedModeOperational: false,
-        enforcementActive: false,
-        networkExposureSafe: false,
-      },
-      input.corsHeaders,
+    return enforcementResult(
+      json(
+        503,
+        {
+          ok: false,
+          error: "Protected mode is configured but not operational.",
+          code: "protected-mode-not-ready",
+          reasonCodes: ["protected-mode-not-ready", ...readiness.blockers],
+          authRequired: true,
+          protectedModeOperational: false,
+          enforcementActive: false,
+          networkExposureSafe: false,
+        },
+        input.corsHeaders,
+      ),
+      protectedAccess,
     );
   }
 
   if (endpoint === "dryRunCanary" && noCredential && config.auth.dryRunRequestPolicy === true) {
-    return null;
+    return enforcementResult(null, protectedAccess);
   }
 
   const pipeline = await planProtectedRequestPipeline({
@@ -159,16 +187,41 @@ export async function enforceProtectedMode(input: {
     protectedModeReady: readiness.readyForEnforcement,
   });
 
-  if (responsePlan.kind === "allow") return null;
+  if (responsePlan.kind === "allow") {
+    const credential = pipeline.credential;
+    return enforcementResult(
+      null,
+      credential.status === "verified"
+        ? {
+            authMode: "protected",
+            nodePermissions: credential.nodePermissions,
+            vaultGrants: credential.vaultGrants,
+          }
+        : protectedAccess,
+    );
+  }
   if (responsePlan.kind === "reduced-anonymous" && endpoint) {
-    return json(200, reducedStatusBody(endpoint, warnings), input.corsHeaders);
+    return enforcementResult(
+      json(200, reducedStatusBody(endpoint, warnings), input.corsHeaders),
+      protectedAccess,
+    );
   }
 
-  return json(
-    responsePlan.httpStatus,
-    protectedErrorBody(responsePlan, readiness.protectedModeOperational),
-    input.corsHeaders,
+  return enforcementResult(
+    json(
+      responsePlan.httpStatus,
+      protectedErrorBody(responsePlan, readiness.protectedModeOperational),
+      input.corsHeaders,
+    ),
+    protectedAccess,
   );
+}
+
+function enforcementResult(
+  response: ResponsePayload | null,
+  vaultListAccess: VaultListAccess,
+): ProtectedModeEnforcementResult {
+  return { response, vaultListAccess };
 }
 
 function protectedErrorBody(

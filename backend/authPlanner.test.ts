@@ -67,6 +67,18 @@ test("anonymous vault routes are denied", () => {
   assert.equal(result.networkExposureSafe, false);
 });
 
+test("authenticated vault collection discovery defers visibility to response shaping", () => {
+  const policy = policyFor("GET /api/vaults");
+  const zeroGrant = planProtectedRouteAuthorization({ policy, actor: credential() });
+  const manager = planProtectedRouteAuthorization({
+    policy,
+    actor: credential({ nodePermissions: ["manageVaults"] }),
+  });
+  assert.equal(zeroGrant.decision, "allow");
+  assert.deepEqual(zeroGrant.requiredPermissions, []);
+  assert.equal(manager.decision, "allow");
+});
+
 test("readIndex credential can access generated index routes for an authorized vault", () => {
   for (const route of [
     "GET /api/vaults/:vaultId/index",

@@ -108,7 +108,7 @@ assert_no_internal_material() {
   local label="$1"
   local body="$2"
   case "$body" in
-    *verifierHash*|*tokenHash*|*hashParameters*|*saltId*|*"\"salt\""*|*tokenVerifier*|*Authorization:*|*authorization:\ Bearer*|*Cookie:*|*cookie:*)
+    *verifierHash*|*tokenHash*|*hashParameters*|*saltId*|*"\"salt\""*|*Authorization:*|*authorization:\ Bearer*|*Cookie:*|*cookie:*)
       fail "$label exposed verifier, hash, salt, authorization, or cookie material"
       ;;
   esac

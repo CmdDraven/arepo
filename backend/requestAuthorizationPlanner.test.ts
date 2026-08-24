@@ -170,6 +170,20 @@ test("source file read with only readIndex produces wouldDeny requiring readCont
   assert.ok(plan.reasonCodes.includes("requires-authorization"));
 });
 
+test("valid zero-grant credentials may invoke vault discovery without gaining vault access", () => {
+  const plan = planRouteAwareRequestAuthorization({
+    request: bearerRequest("GET", "/api/vaults"),
+    stores: storesForCredential(
+      credential([], [], {
+        vaultGrants: [],
+      }),
+    ),
+    now: new Date(now),
+  });
+  assert.equal(plan.wouldAllow, true);
+  assert.deepEqual(plan.requiredPermissions, []);
+});
+
 test("source write requires writeContent plus readContent", () => {
   const denied = planRouteAwareRequestAuthorization({
     request: bearerRequest("PUT", "/api/vaults/notes/file?path=Notes/note.md"),

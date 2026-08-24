@@ -14,7 +14,6 @@ import {
 import { globalErrorForLoadFailure } from "./loadFailure";
 import { hasVisibleVaultData, isVaultAvailable, preferredVaultId } from "./availability";
 import type {
-  NodeInfo,
   OperationResult,
   VaultFileListResponse,
   VaultFileResponse,
@@ -22,10 +21,18 @@ import type {
   VaultIndexResponse,
   VaultIndexScope,
   VaultInfo,
+  VaultListItem,
+  VaultListResponse,
   VaultPermission,
 } from "./contracts";
 
-export type { VaultIndexScope, VaultInfo, VaultPermission } from "./contracts";
+export type {
+  VaultIndexScope,
+  VaultInfo,
+  VaultListItem,
+  VaultListResponse,
+  VaultPermission,
+} from "./contracts";
 
 const LAST_VAULT_KEY = "vault:lastVaultId";
 const EMPTY_FILE_CONTENTS: FileContentStateMap = {};
@@ -88,8 +95,9 @@ export type VaultStore = {
   index: VaultIndex;
   issues: ValidationIssue[];
   folders: string[];
-  vaults: VaultInfo[];
-  activeVault: VaultInfo | null;
+  vaultView: VaultListResponse["vaultView"];
+  vaults: VaultListItem[];
+  activeVault: VaultListItem | null;
   loading: boolean;
   error: string | null;
   mutationError: string | null;
@@ -128,7 +136,7 @@ export type VaultStore = {
 const EMPTY_INDEX = buildIndex({});
 
 export function useVault(): VaultStore {
-  const [node, setNode] = useState<NodeInfo | null>(null);
+  const [node, setNode] = useState<VaultListResponse | null>(null);
   const [activeVaultId, setActiveVaultId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return window.localStorage.getItem(LAST_VAULT_KEY);
@@ -201,11 +209,18 @@ export function useVault(): VaultStore {
   }, []);
 
   const loadNode = useCallback(async () => {
-    const nextNode = await api<NodeInfo>("/api/vaults");
+    const nextNode = await api<VaultListResponse>("/api/vaults");
     setNode(nextNode);
     const nextActiveVaultId = preferredVaultId(nextNode.vaults, activeVaultId);
     if (nextActiveVaultId !== activeVaultId) {
       setActiveVaultId(nextActiveVaultId);
+      if (typeof window !== "undefined") {
+        if (nextActiveVaultId) {
+          window.localStorage.setItem(LAST_VAULT_KEY, nextActiveVaultId);
+        } else {
+          window.localStorage.removeItem(LAST_VAULT_KEY);
+        }
+      }
     }
   }, [activeVaultId]);
 
@@ -325,7 +340,7 @@ export function useVault(): VaultStore {
   }, [activeVault, clearVaultLoad, loadVault]);
 
   const mutate = useCallback(
-    async (fn: (vault: VaultInfo) => Promise<void>) => {
+    async (fn: (vault: VaultListItem) => Promise<void>) => {
       if (!activeVault) {
         setMutationError("No vault selected");
         return false;
@@ -726,6 +741,7 @@ export function useVault(): VaultStore {
     index: visibleIndex,
     issues: visibleIssues,
     folders: visibleFolders,
+    vaultView: node?.vaultView ?? "management",
     vaults,
     activeVault,
     loading,

@@ -6,6 +6,9 @@ import type {
   VaultAvailability,
   VaultAvailabilityReason,
   VaultInfo,
+  VaultListItem,
+  VaultListResponse,
+  OperationalVaultSummary,
   VaultPermission,
   VaultRegistration,
 } from "../src/lib/vault/contracts.js";
@@ -25,6 +28,9 @@ export type {
   VaultAvailability,
   VaultAvailabilityReason,
   VaultInfo,
+  VaultListItem,
+  VaultListResponse,
+  OperationalVaultSummary,
   VaultPermission,
   VaultRegistration,
 } from "../src/lib/vault/contracts.js";

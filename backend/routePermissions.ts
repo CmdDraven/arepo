@@ -277,7 +277,7 @@ export const PROTECTED_ROUTE_POLICIES = [
     method: "GET",
     routePattern: "/api/vaults",
     category: "vaultListing",
-    requiredPermissions: ["readIndex"],
+    requiredPermissions: [],
     conditionalPermissions: [
       {
         permissions: ["manageVaults"],
@@ -288,7 +288,8 @@ export const PROTECTED_ROUTE_POLICIES = [
     strongerConfirmation: [],
     dataAccess: access({ generatedIndex: true }),
     networkExposureSafe: false,
-    notes: "Scoped protected-mode callers should only see vaults they are authorized to inspect.",
+    notes:
+      "Any verified protected credential may invoke discovery, but endpoint-specific response shaping exposes only granted vaults. Full registration metadata requires manageVaults; conditionalPermissions are descriptive here, not generic planner enforcement.",
   },
   {
     method: "POST",

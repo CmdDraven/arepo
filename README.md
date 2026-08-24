@@ -267,6 +267,13 @@ and remote node registration are not active in V1.
   Protected mode verifies bearer tokens, enforces route permissions, fails
   closed when readiness is incomplete, returns reduced anonymous status, and
   writes sanitized audit records.
+- In protected mode, vault-scoped credentials discover only vaults for which
+  they have an applicable vault grant. Ordinary source grants do not reveal
+  unrelated registrations or configured absolute root paths. Root paths and
+  full registration policy are management metadata; a credential with
+  `manageVaults` receives the complete vault-management view.
+- Disabled/local auth mode retains complete local registration visibility,
+  including configured roots needed by the local Vault Settings UI.
 - Protected mode still does not make LAN, reverse-proxy, or internet exposure
   safe.
 - Bearer tokens are secrets. Raw bearer tokens are returned only once during

@@ -75,8 +75,10 @@ import {
   type RemoveVaultResponse,
   type VaultIndexScope,
   type VaultInfo,
+  type VaultListItem,
   type VaultPermission,
 } from "@/lib/vault/store";
+import { isManagementVaultInfo } from "@/lib/vault/contracts";
 import { renderMarkdown } from "@/lib/vault/render";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -181,6 +183,7 @@ function VaultApp() {
   const [mobileTab, setMobileTab] = useState<"vault" | "edit" | "preview" | "inspect">("vault");
   const [vaultMode, setVaultMode] = useState<"tree" | "graph">("tree");
   const [showSettings, setShowSettings] = useState(false);
+  const canManageVaults = vault.vaultView === "management";
   const [externalNotice, setExternalNotice] = useState<{
     kind: "conflict" | "deleted";
     path: string;
@@ -877,7 +880,13 @@ function VaultApp() {
     const ok = await rename(activePath, next);
     if (ok) openDocumentInCenter(next);
   };
-  const openSettings = () => setShowSettings(true);
+  const openSettings = () => {
+    if (canManageVaults) setShowSettings(true);
+  };
+
+  useEffect(() => {
+    if (!canManageVaults) setShowSettings(false);
+  }, [canManageVaults]);
   const handleSaveAsNew = async () => {
     if (!activePath || activeFileKind !== "markdown") return;
     const next = window.prompt("Save current buffer as new Markdown file", activePath);
@@ -994,7 +1003,10 @@ function VaultApp() {
 
   const totalIssues = issues.length;
   const errorCount = issues.filter((i) => i.severity === "error").length;
-  const activeVaultIndexScope = activeVault?.vaultIndexScope ?? defaultVaultIndexScope();
+  const activeVaultIndexScope =
+    activeVault && isManagementVaultInfo(activeVault)
+      ? (activeVault.vaultIndexScope ?? defaultVaultIndexScope())
+      : defaultVaultIndexScope();
 
   const graphData = useMemo(() => buildGraph(index, issues), [index, issues]);
   const fileKinds = useMemo(
@@ -1500,6 +1512,7 @@ function VaultApp() {
       <IndexInspectPanel
         selectedCount={selectedNotePaths.length}
         activeVault={activeVault}
+        canManageVaults={canManageVaults}
         indexedNoteCount={Object.keys(index.notes).length}
         indexScope={activeVaultIndexScope}
         indexStatus={vaultStatus?.indexStatus}
@@ -1565,25 +1578,29 @@ function VaultApp() {
               ))}
             </select>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1.5 hidden sm:inline-flex"
-            onClick={openSettings}
-            title="Open vault settings"
-          >
-            <Settings className="size-3.5" />
-            Vaults
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 sm:hidden"
-            onClick={openSettings}
-            title="Vault settings"
-          >
-            <Settings className="size-3.5" />
-          </Button>
+          {canManageVaults && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 hidden sm:inline-flex"
+                onClick={openSettings}
+                title="Open vault settings"
+              >
+                <Settings className="size-3.5" />
+                Vaults
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 sm:hidden"
+                onClick={openSettings}
+                title="Vault settings"
+              >
+                <Settings className="size-3.5" />
+              </Button>
+            </>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -1716,10 +1733,10 @@ function VaultApp() {
         />
       )}
 
-      {showSettings && (
+      {showSettings && canManageVaults && (
         <main className="flex-1 min-h-0 overflow-auto">
           <VaultSettingsPanel
-            vaults={vault.vaults}
+            vaults={vault.vaults.filter(isManagementVaultInfo)}
             activeVaultId={activeVault?.id ?? null}
             health={health}
             mutationError={mutationError}
@@ -1744,22 +1761,28 @@ function VaultApp() {
 
       {!showSettings && !loading && !activeVault && (
         <main className="flex-1 min-h-0 overflow-auto">
-          <VaultSettingsPanel
-            vaults={vault.vaults}
-            activeVaultId={null}
-            health={health}
-            mutationError={mutationError}
-            firstRun
-            onClose={() => setShowSettings(false)}
-            onSelectVault={vault.selectVault}
-            onAddVault={addVault}
-            onRemoveVault={removeVault}
-            onReindexVault={reindexVault}
-            onUpdateVaultIndexScope={updateVaultIndexScope}
-            onRebindVault={rebindVault}
-            onRefreshVaults={refreshNode}
-            onTestHealth={testHealth}
-          />
+          {canManageVaults ? (
+            <VaultSettingsPanel
+              vaults={vault.vaults.filter(isManagementVaultInfo)}
+              activeVaultId={null}
+              health={health}
+              mutationError={mutationError}
+              firstRun
+              onClose={() => setShowSettings(false)}
+              onSelectVault={vault.selectVault}
+              onAddVault={addVault}
+              onRemoveVault={removeVault}
+              onReindexVault={reindexVault}
+              onUpdateVaultIndexScope={updateVaultIndexScope}
+              onRebindVault={rebindVault}
+              onRefreshVaults={refreshNode}
+              onTestHealth={testHealth}
+            />
+          ) : (
+            <div className="flex min-h-[60vh] items-center justify-center p-6">
+              <StateMessage>No vaults are authorized for this credential.</StateMessage>
+            </div>
+          )}
         </main>
       )}
 
@@ -1772,16 +1795,20 @@ function VaultApp() {
                 AREPO still knows this vault, but its configured source directory cannot be used.
               </p>
             </div>
-            <div className="rounded border bg-background px-3 py-2 text-xs font-mono break-all">
-              {activeVault.rootPath}
-            </div>
+            {isManagementVaultInfo(activeVault) && (
+              <div className="rounded border bg-background px-3 py-2 text-xs font-mono break-all">
+                {activeVault.rootPath}
+              </div>
+            )}
             <p className="text-sm">
-              {vaultAvailabilityLabel(activeVault.availability.reason)}. Locate the vault in Vault
-              Settings or select another available vault.
+              {vaultAvailabilityLabel(activeVault.availability.reason)}. Select another available
+              vault{canManageVaults ? " or locate this vault in Vault Settings" : ""}.
             </p>
-            <Button size="sm" onClick={() => setShowSettings(true)}>
-              Open Vault Settings
-            </Button>
+            {canManageVaults && (
+              <Button size="sm" onClick={() => setShowSettings(true)}>
+                Open Vault Settings
+              </Button>
+            )}
           </div>
         </main>
       )}
@@ -2141,6 +2168,7 @@ function StateMessage({
 function IndexInspectPanel({
   selectedCount,
   activeVault,
+  canManageVaults,
   indexedNoteCount,
   indexScope,
   indexStatus,
@@ -2171,6 +2199,7 @@ function IndexInspectPanel({
     return (
       <VaultInspector
         vault={activeVault}
+        canManageVaults={canManageVaults}
         indexedNoteCount={indexedNoteCount}
         indexScope={indexScope}
         indexStatus={indexStatus}
@@ -2358,6 +2387,7 @@ function ChatJsonInspector({
 
 function VaultInspector({
   vault,
+  canManageVaults,
   indexedNoteCount,
   indexScope,
   indexStatus,
@@ -2367,7 +2397,8 @@ function VaultInspector({
   onReindex,
   onOpenSettings,
 }: {
-  vault: VaultInfo | null;
+  vault: VaultListItem | null;
+  canManageVaults: boolean;
   indexedNoteCount: number;
   indexScope: VaultIndexScope;
   indexStatus?: string;
@@ -2391,14 +2422,22 @@ function VaultInspector({
             <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
               <dt className="text-muted-foreground">name</dt>
               <dd className="truncate">{vault.displayName}</dd>
-              <dt className="text-muted-foreground">path</dt>
-              <dd className="font-mono truncate" title={vault.rootPath}>
-                {vault.rootPath}
-              </dd>
+              {isManagementVaultInfo(vault) && (
+                <>
+                  <dt className="text-muted-foreground">path</dt>
+                  <dd className="font-mono truncate" title={vault.rootPath}>
+                    {vault.rootPath}
+                  </dd>
+                </>
+              )}
               <dt className="text-muted-foreground">indexed notes</dt>
               <dd>{indexedNoteCount}</dd>
-              <dt className="text-muted-foreground">Index Scope</dt>
-              <dd>{indexScopeSummary(indexScope)}</dd>
+              {canManageVaults && (
+                <>
+                  <dt className="text-muted-foreground">Index Scope</dt>
+                  <dd>{indexScopeSummary(indexScope)}</dd>
+                </>
+              )}
               <dt className="text-muted-foreground">index status</dt>
               <dd>{indexStatus ?? "checking"}</dd>
               <dt className="text-muted-foreground">last indexed</dt>
@@ -2418,15 +2457,17 @@ function VaultInspector({
                 <RefreshCw className="size-3.5" />
                 Reindex Vault
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 gap-1.5 text-xs"
-                onClick={onOpenSettings}
-              >
-                <Settings className="size-3.5" />
-                Vault Settings
-              </Button>
+              {canManageVaults && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={onOpenSettings}
+                >
+                  <Settings className="size-3.5" />
+                  Vault Settings
+                </Button>
+              )}
             </div>
           </div>
         ) : (
@@ -3685,7 +3726,8 @@ type CombinedInspectMetadata = {
 
 type IndexInspectPanelProps = {
   selectedCount: number;
-  activeVault: VaultInfo | null;
+  activeVault: VaultListItem | null;
+  canManageVaults: boolean;
   indexedNoteCount: number;
   indexScope: VaultIndexScope;
   indexStatus?: string;

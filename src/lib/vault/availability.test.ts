@@ -7,7 +7,11 @@ import {
   preferredVaultId,
   vaultAvailabilityLabel,
 } from "./availability.ts";
-import type { VaultInfo } from "./contracts.ts";
+import {
+  isManagementVaultInfo,
+  type OperationalVaultSummary,
+  type VaultInfo,
+} from "./contracts.ts";
 
 const permissions = {
   readIndex: true,
@@ -58,4 +62,29 @@ test("availability reasons have bounded user-facing labels", () => {
   assert.equal(vaultAvailabilityLabel("root-not-directory"), "Configured root is not a directory");
   assert.equal(vaultAvailabilityLabel("root-inaccessible"), "Root is inaccessible");
   assert.equal(JSON.stringify(vault("missing", "unavailable")).includes("ENOENT"), false);
+});
+
+test("a remembered hidden vault reconciles to the first visible operational vault", () => {
+  const visible: OperationalVaultSummary[] = [
+    { id: "vault-a", displayName: "Vault A", availability: { status: "available" } },
+  ];
+  assert.equal(preferredVaultId(visible, "vault-b"), "vault-a");
+  assert.equal(hasVisibleVaultData("vault-b", visible[0] ?? null), false);
+  assert.equal(hasVisibleVaultData("vault-a", visible[0] ?? null), true);
+});
+
+test("an empty scoped listing clears remembered selection and cannot expose stale content", () => {
+  assert.equal(preferredVaultId([], "vault-b"), null);
+  assert.equal(hasVisibleVaultData("vault-b", null), false);
+});
+
+test("operational summaries are distinct from management registrations", () => {
+  const summary: OperationalVaultSummary = {
+    id: "vault-a",
+    displayName: "Vault A",
+    availability: { status: "available" },
+  };
+  assert.equal(isManagementVaultInfo(summary), false);
+  assert.equal(isManagementVaultInfo(vault("managed", "available")), true);
+  assert.equal(JSON.stringify(summary).includes("rootPath"), false);
 });

@@ -1,11 +1,11 @@
-import type { VaultAvailabilityReason, VaultInfo } from "./contracts";
+import type { VaultAvailabilityReason, VaultListItem } from "./contracts";
 
-export function isVaultAvailable(vault: VaultInfo | null | undefined): boolean {
+export function isVaultAvailable(vault: VaultListItem | null | undefined): boolean {
   return Boolean(vault && vault.availability?.status !== "unavailable");
 }
 
 export function preferredVaultId(
-  vaults: readonly VaultInfo[],
+  vaults: readonly VaultListItem[],
   requestedId: string | null,
 ): string | null {
   if (requestedId && vaults.some((vault) => vault.id === requestedId)) return requestedId;
@@ -14,7 +14,7 @@ export function preferredVaultId(
 
 export function hasVisibleVaultData(
   loadedVaultId: string | null,
-  activeVault: VaultInfo | null,
+  activeVault: VaultListItem | null,
 ): boolean {
   return Boolean(activeVault && isVaultAvailable(activeVault) && loadedVaultId === activeVault.id);
 }

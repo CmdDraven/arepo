@@ -41,6 +41,30 @@ export type NodeInfo = {
   vaults: VaultInfo[];
 };
 
+export type OperationalVaultSummary = {
+  id: string;
+  displayName: string;
+  availability?: VaultAvailability;
+};
+
+export type VaultListItem = VaultInfo | OperationalVaultSummary;
+
+type VaultListNode = Omit<NodeInfo, "vaults">;
+
+export type VaultListResponse =
+  | (VaultListNode & {
+      vaultView: "management";
+      vaults: VaultInfo[];
+    })
+  | (VaultListNode & {
+      vaultView: "operational";
+      vaults: OperationalVaultSummary[];
+    });
+
+export function isManagementVaultInfo(vault: VaultListItem): vault is VaultInfo {
+  return "rootPath" in vault;
+}
+
 export type VaultFileKind = "markdown" | "plain-text" | "chat-json";
 
 export type VaultFile = {

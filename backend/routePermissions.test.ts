@@ -88,6 +88,19 @@ test("future permission vocabulary includes auth and audit permissions", () => {
   ]);
 });
 
+test("vault collection discovery is authenticated then shaped by endpoint-specific grants", () => {
+  const policy = policyFor("GET /api/vaults");
+  assert.deepEqual(policy.requiredPermissions, []);
+  assert.deepEqual(policy.conditionalPermissions, [
+    {
+      permissions: ["manageVaults"],
+      when: "Returning full vault registration metadata, filesystem roots, or vault permissions.",
+    },
+  ]);
+  assert.match(policy.notes, /endpoint-specific response shaping/);
+  assert.match(policy.notes, /not generic planner enforcement/);
+});
+
 test("generated-index routes require readIndex without readContent", () => {
   for (const route of [
     "GET /api/vaults/:vaultId/index",

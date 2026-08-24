@@ -13,6 +13,7 @@ import {
   writeRevocationStore,
   writeTokenVerifierStore,
   type CredentialMetadata,
+  type VaultScopedGrant,
 } from "./credentialStore.js";
 import { createTokenVerifierMetadata, TOKEN_VERIFIER_SCHEME } from "./credentialVerifier.js";
 import { machineIndexPath } from "./indexCache.js";
@@ -98,6 +99,7 @@ async function writeProtectedAuthStores(
   input: {
     vaultId?: string;
     vaultPermissions?: readonly RoutePermission[];
+    vaultGrants?: readonly VaultScopedGrant[];
     nodePermissions?: readonly RoutePermission[];
   },
 ): Promise<void> {
@@ -108,9 +110,11 @@ async function writeProtectedAuthStores(
     actorKind: "apiToken",
     label: "Server protected test token",
     nodePermissions: input.nodePermissions ?? [],
-    vaultGrants: input.vaultId
-      ? [{ vaultId: input.vaultId, permissions: input.vaultPermissions ?? [] }]
-      : [],
+    vaultGrants:
+      input.vaultGrants ??
+      (input.vaultId
+        ? [{ vaultId: input.vaultId, permissions: input.vaultPermissions ?? [] }]
+        : []),
     createdAt: protectedNow,
     expiresAt: protectedFuture,
     verifierIds: [verifierId],
@@ -196,6 +200,28 @@ test("auth policy plumbing does not reject existing routes or accept credentials
   assert.equal(body.requestPolicy.acceptsBearerTokens, false);
   assert.equal(body.requestPolicy.acceptsSessions, false);
   assert.equal(body.requestPolicy.acceptsCredentials, false);
+});
+
+test("disabled local vault listing preserves complete management visibility", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootA = await makeTestTempDir(t, "arepo-local-root-");
+  const rootB = await makeTestTempDir(t, "arepo-local-root-");
+  const vaultA = { ...testVault(rootA, "local-a"), displayName: "Local A" };
+  const vaultB = { ...testVault(rootB, "local-b"), displayName: "Local B" };
+  await writeConfig(cwd, appDataDir, { auth: { mode: "disabled" }, vaults: [vaultA, vaultB] });
+
+  const response = await routeRequest(request("GET", "/api/vaults"), cwd);
+  assert.equal(response.status, 200);
+  const body = response.body as { vaultView: string; vaults: VaultInfo[] };
+  assert.equal(body.vaultView, "management");
+  assert.deepEqual(
+    body.vaults.map((vault) => vault.id),
+    [vaultA.id, vaultB.id],
+  );
+  assert.equal(body.vaults[0]?.rootPath, rootA);
+  assert.equal(body.vaults[1]?.rootPath, rootB);
+  assert.deepEqual(body.vaults[0]?.permissions, vaultA.permissions);
 });
 
 test("node status endpoint reports local runtime posture", async (t) => {
@@ -712,6 +738,248 @@ test("protected mode enforces bearer credentials and vault route permissions", a
   assert.equal(serializedAudit.includes(invalidSecret), false);
   assert.equal(serializedAudit.includes("verifierHash"), false);
   assert.equal(serializedAudit.includes("salt"), false);
+});
+
+test("protected vault listing reveals only one granted vault and no registration paths", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootA = await makeTestTempDir(t, "arepo-visible-root-");
+  const rootB = await makeTestTempDir(t, "arepo-hidden-root-");
+  const rootC = await makeTestTempDir(t, "arepo-hidden-root-");
+  const vaultA = { ...testVault(rootA, "vault-a"), displayName: "VISIBLE VAULT A" };
+  const vaultB = {
+    ...testVault(rootB, "vault-super-secret"),
+    displayName: "SECRET HIDDEN VAULT",
+  };
+  const vaultC = { ...testVault(rootC, "vault-c-hidden"), displayName: "HIDDEN VAULT C" };
+  await writeConfig(cwd, appDataDir, {
+    auth: { mode: "protected" },
+    vaults: [vaultA, vaultB, vaultC],
+  });
+  await writeProtectedAuthStores(appDataDir, {
+    vaultGrants: [{ vaultId: vaultA.id, permissions: ["readIndex"] }],
+  });
+
+  const response = await routeRequest(
+    request("GET", "/api/vaults", undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    nodeId: "local",
+    displayName: "Local Node",
+    mode: "local",
+    apiVersion: 1,
+    vaultView: "operational",
+    vaults: [
+      {
+        id: vaultA.id,
+        displayName: vaultA.displayName,
+        availability: { status: "available" },
+      },
+    ],
+  });
+
+  const serialized = JSON.stringify(response.body);
+  for (const hidden of [
+    vaultB.id,
+    vaultB.displayName,
+    vaultB.rootPath,
+    vaultC.id,
+    vaultC.displayName,
+    vaultC.rootPath,
+    vaultA.rootPath,
+    "permissions",
+    "vaultIndexScope",
+  ]) {
+    assert.equal(serialized.includes(hidden), false, `response leaked ${hidden}`);
+  }
+
+  const audit = await readAuthAuditEvents(resolveAuthStoragePaths(appDataDir).auditEvents);
+  const serializedAudit = JSON.stringify(audit.events);
+  for (const hidden of [vaultB.id, vaultB.displayName, vaultB.rootPath, vaultA.rootPath]) {
+    assert.equal(serializedAudit.includes(hidden), false, `audit leaked ${hidden}`);
+  }
+});
+
+test("protected vault listing unions grants without broadening subsequent permissions", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootA = await makeTestTempDir(t, "arepo-root-");
+  const rootB = await makeTestTempDir(t, "arepo-root-");
+  const rootC = await makeTestTempDir(t, "arepo-root-");
+  await fs.writeFile(path.join(rootA, "a.md"), "# A\n", "utf8");
+  await fs.writeFile(path.join(rootB, "b.md"), "# B\n", "utf8");
+  await fs.writeFile(path.join(rootC, "c.md"), "# C\n", "utf8");
+  const vaultA = { ...testVault(rootA, "vault-a"), displayName: "Vault A" };
+  const vaultB = { ...testVault(rootB, "vault-b"), displayName: "Vault B" };
+  const vaultC = { ...testVault(rootC, "vault-c"), displayName: "Vault C" };
+  await writeConfig(cwd, appDataDir, {
+    auth: { mode: "protected" },
+    vaults: [vaultA, vaultB, vaultC],
+  });
+  await writeProtectedAuthStores(appDataDir, {
+    vaultGrants: [
+      { vaultId: vaultA.id, permissions: ["readIndex"] },
+      { vaultId: vaultC.id, permissions: ["readContent"] },
+    ],
+  });
+  const headers = { authorization: `Bearer ${protectedBearerToken}` };
+
+  const listing = await routeRequest(request("GET", "/api/vaults", undefined, headers), cwd);
+  assert.equal(listing.status, 200);
+  assert.deepEqual(
+    (listing.body as { vaults: { id: string }[] }).vaults.map((vault) => vault.id),
+    [vaultA.id, vaultC.id],
+  );
+  assert.equal(JSON.stringify(listing.body).includes(vaultB.id), false);
+
+  assert.equal(
+    (await routeRequest(request("GET", `/api/vaults/${vaultA.id}/index`, undefined, headers), cwd))
+      .status,
+    200,
+  );
+  assert.equal(
+    (
+      await routeRequest(
+        request("GET", `/api/vaults/${vaultA.id}/file?path=a.md`, undefined, headers),
+        cwd,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await routeRequest(
+        request("GET", `/api/vaults/${vaultC.id}/file?path=c.md`, undefined, headers),
+        cwd,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await routeRequest(request("GET", `/api/vaults/${vaultC.id}/index`, undefined, headers), cwd))
+      .status,
+    403,
+  );
+  const deniedMutation = await routeRequest(
+    request(
+      "PUT",
+      `/api/vaults/${vaultC.id}/file?path=c.md`,
+      { content: "# Changed\n" },
+      { ...headers, "x-arepo-confirmation": "confirm" },
+    ),
+    cwd,
+  );
+  assert.equal(deniedMutation.status, 403);
+  assert.equal(await fs.readFile(path.join(rootC, "c.md"), "utf8"), "# C\n");
+});
+
+test("protected vault listing returns an empty collection for a valid zero-grant credential", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-hidden-root-");
+  const hiddenVault = {
+    ...testVault(rootPath, "vault-super-secret"),
+    displayName: "SECRET HIDDEN VAULT",
+  };
+  await writeConfig(cwd, appDataDir, {
+    auth: { mode: "protected" },
+    vaults: [hiddenVault],
+  });
+  await writeProtectedAuthStores(appDataDir, {});
+
+  const response = await routeRequest(
+    request("GET", "/api/vaults", undefined, {
+      authorization: `Bearer ${protectedBearerToken}`,
+    }),
+    cwd,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual((response.body as { vaults: unknown[] }).vaults, []);
+  const serialized = JSON.stringify(response.body);
+  for (const hidden of [hiddenVault.id, hiddenVault.displayName, hiddenVault.rootPath]) {
+    assert.equal(serialized.includes(hidden), false);
+  }
+  assert.equal(serialized.includes("vaultCount"), false);
+  assert.equal(serialized.includes("hiddenCount"), false);
+});
+
+test("manageVaults receives the full registration view without implied node capabilities", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootA = await makeTestTempDir(t, "arepo-vault-");
+  const missingRoot = path.join(cwd, "missing-management-vault");
+  const vaultA = { ...testVault(rootA, "vault-a"), displayName: "Managed A" };
+  const vaultB = {
+    ...testVault(missingRoot, "vault-b"),
+    displayName: "Managed B",
+    vaultIndexScope: { markdown: { minDepth: 1, maxDepth: 3 } },
+  };
+  await writeConfig(cwd, appDataDir, {
+    auth: { mode: "protected" },
+    vaults: [vaultA, vaultB],
+  });
+  await writeProtectedAuthStores(appDataDir, {
+    nodePermissions: ["manageVaults"],
+    vaultGrants: [{ vaultId: vaultA.id, permissions: ["readIndex", "readContent"] }],
+  });
+  const headers = { authorization: `Bearer ${protectedBearerToken}` };
+
+  const response = await routeRequest(request("GET", "/api/vaults", undefined, headers), cwd);
+  assert.equal(response.status, 200);
+  const body = response.body as { vaultView: string; vaults: VaultInfo[] };
+  assert.equal(body.vaultView, "management");
+  assert.deepEqual(
+    body.vaults.map((vault) => vault.id),
+    [vaultA.id, vaultB.id],
+  );
+  assert.equal(body.vaults[0]?.rootPath, rootA);
+  assert.deepEqual(body.vaults[0]?.permissions, vaultA.permissions);
+  assert.deepEqual(body.vaults[1]?.vaultIndexScope, vaultB.vaultIndexScope);
+  assert.deepEqual(body.vaults[1]?.availability, {
+    status: "unavailable",
+    reason: "root-not-found",
+  });
+
+  const nodeStatus = await routeRequest(
+    request("GET", "/api/node/status", undefined, headers),
+    cwd,
+  );
+  assert.equal(nodeStatus.status, 403);
+
+  const scopeUpdate = await routeRequest(
+    request(
+      "PATCH",
+      `/api/vaults/${vaultA.id}/index-scope`,
+      { vaultIndexScope: { markdown: { minDepth: 0, maxDepth: 2 } } },
+      headers,
+    ),
+    cwd,
+  );
+  assert.equal(scopeUpdate.status, 200);
+
+  const addedRoot = await makeTestTempDir(t, "arepo-vault-");
+  const confirmedHeaders = { ...headers, "x-arepo-confirmation": "confirm" };
+  const added = await routeRequest(
+    request("POST", "/api/vaults", { rootPath: addedRoot, displayName: "Added" }, confirmedHeaders),
+    cwd,
+  );
+  assert.equal(added.status, 201);
+  const addedVault = (added.body as { data: { vault: VaultInfo } }).data.vault;
+
+  const removed = await routeRequest(
+    request(
+      "DELETE",
+      `/api/vaults/${addedVault.id}`,
+      { generatedDataAction: "keep" },
+      confirmedHeaders,
+    ),
+    cwd,
+  );
+  assert.equal(removed.status, 200);
 });
 
 test("protected vault rebind requires authentication, manageVaults, and confirmation", async (t) => {

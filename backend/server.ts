@@ -49,6 +49,7 @@ import {
 } from "./vaultFs.js";
 import { requireAvailableVault } from "./vaultAvailability.js";
 import { rebindVaultRoot } from "./vaultRelocation.js";
+import { projectVaultList } from "./vaultListVisibility.js";
 
 export type RequestLike = Pick<http.IncomingMessage, "method" | "url" | "headers"> &
   AsyncIterable<Buffer> & {
@@ -90,13 +91,13 @@ export async function routeRequest(
       return json(501, inactiveBrowserSessionAuthBody(), cors.headers);
     }
 
-    const protectedModeResponse = await enforceProtectedMode({
+    const protectedMode = await enforceProtectedMode({
       request,
       cwd,
       url,
       corsHeaders: cors.headers,
     });
-    if (protectedModeResponse) return protectedModeResponse;
+    if (protectedMode.response) return protectedMode.response;
 
     await runProtectedRequestDryRun({ request, cwd, url });
 
@@ -177,7 +178,7 @@ export async function routeRequest(
 
     if (method === "GET" && url.pathname === "/api/vaults") {
       const node = await getLocalNodeInfo(cwd);
-      return json(200, node, cors.headers);
+      return json(200, projectVaultList(node, protectedMode.vaultListAccess), cors.headers);
     }
 
     if (method === "POST" && url.pathname === "/api/vaults") {
