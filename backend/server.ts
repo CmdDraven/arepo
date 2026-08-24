@@ -12,7 +12,7 @@ import {
 import { buildIndexFilterResponse, parseIndexFilterKind } from "./indexFilters.js";
 import { buildVaultInspectResponse } from "./indexInspect.js";
 import { buildIndexSearchResponse } from "./indexSearch.js";
-import { getMachineIndex, rebuildMachineIndex } from "./indexCache.js";
+import { rebuildMachineIndex } from "./indexCache.js";
 import {
   getLocalNodeHealth,
   getLocalNodeInfo,
@@ -32,6 +32,7 @@ import {
 } from "./protectedRequestDryRun.js";
 import { removeVault } from "./vaultLifecycle.js";
 import {
+  beginVaultIndexBuild,
   getVaultRuntimeStatus,
   recordVaultIndexed,
   recordVaultMutation,
@@ -52,6 +53,7 @@ import { rebindVaultRoot } from "./vaultRelocation.js";
 import { projectVaultList } from "./vaultListVisibility.js";
 import { apiErrorResponse, PublicApiError } from "./publicApiError.js";
 import { browseServerDirectories } from "./directoryBrowser.js";
+import type { VaultIndexResponse, VaultInfo } from "./types.js";
 
 export type RequestLike = Pick<http.IncomingMessage, "method" | "url" | "headers"> &
   AsyncIterable<Buffer> & {
@@ -193,8 +195,7 @@ export async function routeRequest(
     if (method === "POST" && url.pathname === "/api/vaults") {
       const body = await readJson(request);
       const vault = await addVault(asRecord(body), cwd);
-      await rebuildMachineIndex(vault, cwd);
-      await recordVaultIndexed(vault, cwd);
+      await rebuildTrackedMachineIndex(vault, cwd);
       return json(201, { ok: true, data: { vault } }, cors.headers);
     }
 
@@ -290,22 +291,19 @@ export async function routeRequest(
       }
 
       if (method === "POST" && action === "reindex") {
-        const data = await rebuildMachineIndex(vault, cwd);
-        await recordVaultIndexed(vault, cwd);
+        const data = await rebuildTrackedMachineIndex(vault, cwd);
         return json(200, { ok: true, data }, cors.headers);
       }
 
       if (method === "PATCH" && action === "index-scope") {
         const body = asRecord(await readJson(request));
         const updatedVault = await updateVaultIndexScope(vaultId, body.vaultIndexScope, cwd);
-        const data = await rebuildMachineIndex(updatedVault, cwd);
-        await recordVaultIndexed(updatedVault, cwd);
+        const data = await rebuildTrackedMachineIndex(updatedVault, cwd);
         return json(200, { ok: true, data: { vault: updatedVault, index: data } }, cors.headers);
       }
 
       if (method === "GET" && action === "index" && segments[4] === "filters") {
-        const data = await getMachineIndex(vault, cwd);
-        await recordVaultIndexed(vault, cwd);
+        const data = await rebuildTrackedMachineIndex(vault, cwd);
         return json(
           200,
           buildIndexFilterResponse(data, parseIndexFilterKind(url.searchParams.get("filter"))),
@@ -314,14 +312,12 @@ export async function routeRequest(
       }
 
       if (method === "GET" && action === "index" && segments[4] === "search") {
-        const data = await getMachineIndex(vault, cwd);
-        await recordVaultIndexed(vault, cwd);
+        const data = await rebuildTrackedMachineIndex(vault, cwd);
         return json(200, buildIndexSearchResponse(data, url.searchParams.get("q")), cors.headers);
       }
 
       if (method === "GET" && action === "index" && segments[4] === "inspect") {
-        const data = await getMachineIndex(vault, cwd);
-        await recordVaultIndexed(vault, cwd);
+        const data = await rebuildTrackedMachineIndex(vault, cwd);
         return json(
           200,
           buildVaultInspectResponse(data, url.searchParams.get("path")),
@@ -330,8 +326,7 @@ export async function routeRequest(
       }
 
       if (method === "GET" && action === "index") {
-        const data = await getMachineIndex(vault, cwd);
-        await recordVaultIndexed(vault, cwd);
+        const data = await rebuildTrackedMachineIndex(vault, cwd);
         return json(200, data, cors.headers);
       }
     }
@@ -372,6 +367,16 @@ async function readJson(request: AsyncIterable<Buffer>): Promise<unknown> {
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
+}
+
+async function rebuildTrackedMachineIndex(
+  vault: VaultInfo,
+  cwd: string,
+): Promise<VaultIndexResponse> {
+  const observation = await beginVaultIndexBuild(vault, cwd);
+  const data = await rebuildMachineIndex(vault, cwd);
+  await recordVaultIndexed(vault, observation, cwd);
+  return data;
 }
 
 function json(

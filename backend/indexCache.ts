@@ -7,6 +7,7 @@ import type { VaultIndexResponse, VaultInfo } from "./types.js";
 
 const MACHINE_INDEX_VERSION = 2;
 const OWNED_MACHINE_INDEX_VERSIONS = new Set([1, MACHINE_INDEX_VERSION]);
+const indexRebuildLocks = new Map<string, Promise<void>>();
 const indexWriteLocks = new Map<string, Promise<void>>();
 
 export type StoredMachineIndex = {
@@ -37,9 +38,12 @@ export async function rebuildMachineIndex(
   vault: VaultInfo,
   cwd = process.cwd(),
 ): Promise<VaultIndexResponse> {
-  const data = await buildVaultIndex(vault);
-  await writeMachineIndex(vault, data, cwd);
-  return data;
+  const file = await machineIndexPath(vault, cwd);
+  return withIndexLock(indexRebuildLocks, file, async () => {
+    const data = await buildVaultIndex(vault);
+    await writeMachineIndex(vault, data, cwd);
+    return data;
+  });
 }
 
 export async function writeMachineIndex(
@@ -48,7 +52,7 @@ export async function writeMachineIndex(
   cwd = process.cwd(),
 ): Promise<string> {
   const file = await machineIndexPath(vault, cwd);
-  await withIndexWriteLock(file, async () => {
+  await withIndexLock(indexWriteLocks, file, async () => {
     const stored: StoredMachineIndex = {
       kind: "arepo.machineIndex",
       version: MACHINE_INDEX_VERSION,
@@ -171,22 +175,26 @@ async function writeTempFileForRename(file: string, content: string): Promise<vo
   }
 }
 
-async function withIndexWriteLock<T>(key: string, work: () => Promise<T>): Promise<T> {
-  const previous = indexWriteLocks.get(key) ?? Promise.resolve();
+async function withIndexLock<T>(
+  locks: Map<string, Promise<void>>,
+  key: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const previous = locks.get(key) ?? Promise.resolve();
   let releaseCurrent!: () => void;
   const current = new Promise<void>((resolve) => {
     releaseCurrent = resolve;
   });
   const queued = previous.catch(() => undefined).then(() => current);
-  indexWriteLocks.set(key, queued);
+  locks.set(key, queued);
   await previous.catch(() => undefined);
 
   try {
     return await work();
   } finally {
     releaseCurrent();
-    if (indexWriteLocks.get(key) === queued) {
-      indexWriteLocks.delete(key);
+    if (locks.get(key) === queued) {
+      locks.delete(key);
     }
   }
 }

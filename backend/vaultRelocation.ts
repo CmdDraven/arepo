@@ -1,7 +1,12 @@
 import { loadConfig, saveConfig } from "./config.js";
 import { rebuildMachineIndex } from "./indexCache.js";
 import { validateVaultRoot, withVaultAvailability } from "./vaultAvailability.js";
-import { ensureVaultWatcher, recordVaultIndexed, stopVaultWatcherAndWait } from "./vaultWatch.js";
+import {
+  beginVaultIndexBuild,
+  ensureVaultWatcher,
+  recordVaultIndexed,
+  stopVaultWatcherAndWait,
+} from "./vaultWatch.js";
 import type { VaultInfo } from "./types.js";
 import { PublicApiError } from "./publicApiError.js";
 
@@ -36,8 +41,9 @@ export async function rebindVaultRoot(
 
   let indexRebuilt = false;
   try {
+    const observation = await beginVaultIndexBuild(reboundVault, cwd);
     await rebuildMachineIndex(reboundVault, cwd);
-    await recordVaultIndexed(reboundVault, cwd);
+    await recordVaultIndexed(reboundVault, observation, cwd);
     indexRebuilt = true;
   } catch {
     await ensureVaultWatcher(reboundVault, cwd).catch(() => undefined);

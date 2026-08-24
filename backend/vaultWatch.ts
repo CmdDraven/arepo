@@ -6,10 +6,10 @@ import { rebuildMachineIndex } from "./indexCache.js";
 import { listFolders, listSupportedTextFiles, readVaultFile, vaultFileKind } from "./vaultFs.js";
 import type { IndexFreshness, VaultInfo, VaultRuntimeStatus, WatchedFileStatus } from "./types.js";
 import { assessVaultAvailability } from "./vaultAvailability.js";
+import { PublicApiError } from "./publicApiError.js";
 
 type SnapshotEntry = {
-  mtimeMs: number;
-  size: number;
+  hash: string;
 };
 
 type VaultWatchPublicError =
@@ -34,11 +34,48 @@ type VaultWatchState = {
   scanTimer?: NodeJS.Timeout;
   rebuildTimer?: NodeJS.Timeout;
   rebuilding?: Promise<void>;
+  sourceGeneration: number;
+  rebuildQueue: NewestSourceRebuildQueue;
+  reconciliation?: Promise<void>;
+};
+
+export type VaultIndexBuildObservation = {
+  vaultId: string;
+  root: string;
+  sourceGeneration: number;
 };
 
 const states = new Map<string, VaultWatchState>();
 const SCAN_DEBOUNCE_MS = 200;
 const REBUILD_DEBOUNCE_MS = 800;
+
+export class NewestSourceRebuildQueue {
+  private requestedGeneration = 0;
+  private completedGeneration = 0;
+  private running: Promise<void> | undefined;
+
+  constructor(private readonly rebuild: (generation: number) => Promise<void>) {}
+
+  request(generation: number): Promise<void> {
+    this.requestedGeneration = Math.max(this.requestedGeneration, generation);
+    if (this.running) return this.running;
+    if (this.completedGeneration >= this.requestedGeneration) return Promise.resolve();
+
+    const tracked = this.drain().finally(() => {
+      if (this.running === tracked) this.running = undefined;
+    });
+    this.running = tracked;
+    return tracked;
+  }
+
+  private async drain(): Promise<void> {
+    while (this.completedGeneration < this.requestedGeneration) {
+      const generation = this.requestedGeneration;
+      await this.rebuild(generation);
+      this.completedGeneration = generation;
+    }
+  }
+}
 
 export async function ensureVaultWatcher(
   vault: VaultInfo,
@@ -64,6 +101,10 @@ export async function ensureVaultWatcher(
     addedPaths: new Set(),
     deletedPaths: new Set(),
     lastIndexedAt: Date.now(),
+    sourceGeneration: 0,
+    rebuildQueue: new NewestSourceRebuildQueue((generation) =>
+      rebuildObservedGeneration(state, generation),
+    ),
   };
   states.set(key, state);
   await refreshDirectoryWatchers(state);
@@ -76,25 +117,60 @@ export async function getVaultRuntimeStatus(
   filePath?: string | null,
 ): Promise<VaultRuntimeStatus> {
   const state = await ensureVaultWatcher(vault, cwd);
-  await rescanVault(state, { scheduleRebuild: true });
+  try {
+    await rescanVault(state, { scheduleRebuild: true });
+  } catch {
+    // rescanVault records the bounded watcher error while holding the reconciliation lock.
+  }
   return toStatus(state, filePath ?? undefined);
 }
 
 export async function recordVaultMutation(vault: VaultInfo, cwd = process.cwd()): Promise<void> {
   const state = await ensureVaultWatcher(vault, cwd);
-  state.snapshot = await snapshotVault(vault);
-  clearExternalChanges(state);
-  markStale(state);
-  await refreshDirectoryWatchers(state);
-  scheduleRebuild(state, 0);
+  await withReconciliationLock(state, async () => {
+    state.snapshot = await snapshotVault(vault);
+    clearExternalChanges(state);
+    state.sourceGeneration += 1;
+    markStale(state);
+    await refreshDirectoryWatchers(state);
+    scheduleRebuild(state, 0);
+  });
 }
 
-export async function recordVaultIndexed(vault: VaultInfo, cwd = process.cwd()): Promise<void> {
+export async function beginVaultIndexBuild(
+  vault: VaultInfo,
+  cwd = process.cwd(),
+): Promise<VaultIndexBuildObservation> {
   const state = await ensureVaultWatcher(vault, cwd);
-  state.snapshot = await snapshotVault(vault);
-  state.indexStatus = "fresh";
-  state.lastIndexedAt = Date.now();
-  state.error = undefined;
+  return withReconciliationLock(state, () =>
+    Promise.resolve({
+      vaultId: state.vault.id,
+      root: state.root,
+      sourceGeneration: state.sourceGeneration,
+    }),
+  );
+}
+
+export async function recordVaultIndexed(
+  vault: VaultInfo,
+  observation: VaultIndexBuildObservation,
+  cwd = process.cwd(),
+): Promise<void> {
+  const state = await ensureVaultWatcher(vault, cwd);
+  await withReconciliationLock(state, async () => {
+    await rescanVaultLocked(state, { scheduleRebuild: true });
+    if (
+      observation.vaultId !== state.vault.id ||
+      observation.root !== state.root ||
+      observation.sourceGeneration !== state.sourceGeneration
+    ) {
+      markStale(state);
+      return;
+    }
+    state.indexStatus = "fresh";
+    state.lastIndexedAt = Date.now();
+    state.error = undefined;
+  });
 }
 
 export async function startConfiguredVaultWatchers(
@@ -182,10 +258,7 @@ async function refreshDirectoryWatchers(state: VaultWatchState): Promise<void> {
 function scheduleScan(state: VaultWatchState): void {
   if (state.scanTimer) clearTimeout(state.scanTimer);
   state.scanTimer = setTimeout(() => {
-    void rescanVault(state, { scheduleRebuild: true }).catch(() => {
-      state.indexStatus = "error";
-      state.error = "Vault rescan failed.";
-    });
+    void rescanVault(state, { scheduleRebuild: true }).catch(() => undefined);
   }, SCAN_DEBOUNCE_MS);
   state.scanTimer.unref();
 }
@@ -194,9 +267,30 @@ async function rescanVault(
   state: VaultWatchState,
   options: { scheduleRebuild: boolean },
 ): Promise<void> {
+  return withReconciliationLock(state, () => rescanVaultLocked(state, options));
+}
+
+async function rescanVaultLocked(
+  state: VaultWatchState,
+  options: { scheduleRebuild: boolean },
+): Promise<void> {
+  try {
+    await commitVaultSnapshot(state, options);
+  } catch (error) {
+    state.indexStatus = "error";
+    state.error = "Vault rescan failed.";
+    throw error;
+  }
+}
+
+async function commitVaultSnapshot(
+  state: VaultWatchState,
+  options: { scheduleRebuild: boolean },
+): Promise<void> {
   const before = state.snapshot;
   const after = await snapshotVault(state.vault);
   const diff = diffSnapshots(before, after);
+  state.snapshot = after;
   if (diff.added.length || diff.changed.length || diff.deleted.length) {
     state.lastEventAt = Date.now();
     for (const item of diff.added) {
@@ -210,39 +304,80 @@ async function rescanVault(
       state.changedPaths.add(item);
       state.addedPaths.delete(item);
     }
-    state.snapshot = after;
     await refreshDirectoryWatchers(state);
     const markdownChanged = [...diff.added, ...diff.changed, ...diff.deleted].some((filePath) => {
       const kind = vaultFileKind(filePath);
       return kind ? sourcePolicy(kind).contributesToMarkdownIndex : false;
     });
     if (markdownChanged) {
+      state.sourceGeneration += 1;
       markStale(state);
       if (options.scheduleRebuild) scheduleRebuild(state);
     }
   }
 }
 
+async function withReconciliationLock<T>(
+  state: VaultWatchState,
+  work: () => Promise<T>,
+): Promise<T> {
+  const previous = state.reconciliation ?? Promise.resolve();
+  let releaseCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const queued = previous.catch(() => undefined).then(() => current);
+  state.reconciliation = queued;
+  await previous.catch(() => undefined);
+
+  try {
+    return await work();
+  } finally {
+    releaseCurrent();
+    if (state.reconciliation === queued) state.reconciliation = undefined;
+  }
+}
+
 function scheduleRebuild(state: VaultWatchState, delay = REBUILD_DEBOUNCE_MS): void {
   if (state.rebuildTimer) clearTimeout(state.rebuildTimer);
   state.rebuildTimer = setTimeout(() => {
-    state.indexStatus = "rebuilding";
-    state.rebuilding = rebuildMachineIndex(state.vault, state.cwd)
-      .then(async () => {
-        state.snapshot = await snapshotVault(state.vault);
-        state.indexStatus = "fresh";
-        state.lastIndexedAt = Date.now();
-        state.error = undefined;
-      })
-      .catch(() => {
-        state.indexStatus = "error";
-        state.error = "Machine index rebuild failed.";
-      })
-      .finally(() => {
-        state.rebuilding = undefined;
-      });
+    state.rebuildTimer = undefined;
+    const rebuilding = state.rebuildQueue.request(state.sourceGeneration);
+    state.rebuilding = rebuilding;
+    void rebuilding.then(
+      () => {
+        if (state.rebuilding === rebuilding) state.rebuilding = undefined;
+      },
+      () => {
+        if (state.rebuilding === rebuilding) state.rebuilding = undefined;
+      },
+    );
   }, delay);
   state.rebuildTimer.unref();
+}
+
+async function rebuildObservedGeneration(
+  state: VaultWatchState,
+  generation: number,
+): Promise<void> {
+  state.indexStatus = "rebuilding";
+  state.error = undefined;
+  try {
+    await rebuildMachineIndex(state.vault, state.cwd);
+    if (generation === state.sourceGeneration) {
+      state.indexStatus = "fresh";
+      state.lastIndexedAt = Date.now();
+    } else {
+      state.indexStatus = "stale";
+    }
+  } catch {
+    if (generation === state.sourceGeneration) {
+      state.indexStatus = "error";
+      state.error = "Machine index rebuild failed.";
+    } else {
+      state.indexStatus = "stale";
+    }
+  }
 }
 
 async function toStatus(state: VaultWatchState, filePath?: string): Promise<VaultRuntimeStatus> {
@@ -259,7 +394,15 @@ async function toStatus(state: VaultWatchState, filePath?: string): Promise<Vaul
     error: state.error,
   };
   if (filePath) {
-    status.file = await fileStatus(state, filePath);
+    try {
+      status.file = await fileStatus(state, filePath);
+    } catch (error) {
+      if (error instanceof PublicApiError) throw error;
+      state.indexStatus = "error";
+      state.error = "Vault rescan failed.";
+      status.indexStatus = "error";
+      status.error = "Vault rescan failed.";
+    }
   }
   return status;
 }
@@ -289,7 +432,8 @@ async function fileStatus(state: VaultWatchState, filePath: string): Promise<Wat
 
 async function snapshotVault(vault: VaultInfo): Promise<Map<string, SnapshotEntry>> {
   const files = await listSupportedTextFiles(vault);
-  return new Map(files.map((file) => [file.path, { mtimeMs: file.mtimeMs, size: file.size }]));
+  const contents = await Promise.all(files.map((file) => readVaultFile(vault, file.path)));
+  return new Map(contents.map((file) => [file.path, { hash: file.hash }]));
 }
 
 function diffSnapshots(
@@ -302,7 +446,7 @@ function diffSnapshots(
   for (const [filePath, entry] of after) {
     const previous = before.get(filePath);
     if (!previous) added.push(filePath);
-    else if (previous.mtimeMs !== entry.mtimeMs || previous.size !== entry.size) {
+    else if (previous.hash !== entry.hash) {
       changed.push(filePath);
     }
   }
