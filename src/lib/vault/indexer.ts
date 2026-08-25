@@ -35,6 +35,8 @@ export type NoteIndex = {
   tags: string[];
 };
 
+export type MarkdownSourceDerivation = NoteIndex;
+
 export type VaultIndex = {
   notes: Record<string, NoteIndex>; // by path
   bySlug: Record<string, string>; // slug -> path
@@ -157,7 +159,7 @@ export function parseWikiLink(raw: string): WikiLink {
   return { target, anchor, alias, raw };
 }
 
-export function indexNote(path: string, content: string): NoteIndex {
+export function deriveMarkdownSource(path: string, content: string): MarkdownSourceDerivation {
   const { frontmatter, body } = parseFrontmatter(content);
   const indexableBody = stripCodeForIndexing(body);
   const headings = extractHeadings(indexableBody);
@@ -178,6 +180,8 @@ export function indexNote(path: string, content: string): NoteIndex {
     tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : [],
   };
 }
+
+export const indexNote = deriveMarkdownSource;
 
 export function stripCodeForIndexing(body: string): string {
   return body.replace(FENCED_CODE_RE, "\n").replace(INLINE_CODE_RE, "");
@@ -207,6 +211,18 @@ export function buildIndex(
   files: Record<string, string>,
   options: { excludedPaths?: string[] } = {},
 ): VaultIndex {
+  const derivations: Record<string, MarkdownSourceDerivation> = {};
+  for (const [path, content] of Object.entries(files)) {
+    if (!path.toLowerCase().endsWith(".md")) continue;
+    derivations[path] = deriveMarkdownSource(path, content);
+  }
+  return assembleIndex(derivations, options);
+}
+
+export function assembleIndex(
+  derivations: Record<string, MarkdownSourceDerivation>,
+  options: { excludedPaths?: string[] } = {},
+): VaultIndex {
   const notes: Record<string, NoteIndex> = {};
   const bySlug: Record<string, string> = {};
   const slugPaths: Record<string, string[]> = {};
@@ -219,9 +235,8 @@ export function buildIndex(
   for (const path of excludedPaths) {
     (excludedSlugPaths[pathStem(path)] ||= []).push(path);
   }
-  for (const [path, content] of Object.entries(files)) {
-    if (!path.toLowerCase().endsWith(".md")) continue;
-    const note = indexNote(path, content);
+  for (const [path, note] of Object.entries(derivations)) {
+    if (!path.toLowerCase().endsWith(".md") || note.path !== path) continue;
     notes[path] = note;
     (slugPaths[note.slug] ||= []).push(path);
     const id = note.frontmatter.id;

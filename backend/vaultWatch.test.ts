@@ -5,7 +5,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { makeTestTempDir } from "./testTemp.js";
-import { machineIndexPath, rebuildMachineIndex } from "./indexCache.js";
+import { getMachineIndex, machineIndexPath, rebuildMachineIndex } from "./indexCache.js";
 import { hashContent, readVaultFile } from "./vaultFs.js";
 import {
   beginVaultIndexBuild,
@@ -104,6 +104,11 @@ class ControlledFsWatcher extends EventEmitter {
     this.emit("error", error);
   }
 
+  signalChange(): void {
+    if (this.closed) return;
+    this.emit("change", "change", null);
+  }
+
   unexpectedClose(): void {
     if (this.closed) return;
     this.closed = true;
@@ -128,9 +133,16 @@ class ControlledFsWatcher extends EventEmitter {
 class ControlledWatchRegistry {
   readonly watchers = new Map<string, ControlledFsWatcher[]>();
 
-  watch = ((file: fsSync.PathLike) => {
+  watch = ((
+    file: fsSync.PathLike,
+    options?:
+      fsSync.WatchOptions | BufferEncoding | ((event: string, filename: string | null) => void),
+    listener?: (event: string, filename: string | null) => void,
+  ) => {
     const absolutePath = path.resolve(file.toString());
     const watcher = new ControlledFsWatcher();
+    const callback = typeof options === "function" ? options : listener;
+    if (callback) watcher.on("change", callback);
     const existing = this.watchers.get(absolutePath) ?? [];
     existing.push(watcher);
     this.watchers.set(absolutePath, existing);
@@ -259,6 +271,73 @@ test("watcher fingerprints ignore metadata-only changes with identical content",
   assert.equal(status.changedExternally, false);
   assert.equal(status.indexStatus, "fresh");
   assert.deepEqual(status.changedPaths, []);
+});
+
+test("pending watcher events cannot bypass exact body-hash cache validation", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-watch-status-");
+  const rootPath = await makeTestTempDir(t, "arepo-watch-root-");
+  const notePath = path.join(rootPath, "note.md");
+  const before = "# Alpha\n";
+  const after = "# Bravo\n";
+  await fs.writeFile(notePath, before, "utf8");
+  const initialStat = await fs.stat(notePath);
+  const registry = installControlledWatch(t);
+  const vault = testVault(rootPath, "pending-cache-validation-vault");
+  t.after(() => stopVaultWatcher(cwd, vault.id));
+  await ensureVaultWatcher(vault, cwd);
+  await getMachineIndex(vault, cwd);
+
+  await fs.writeFile(notePath, after, "utf8");
+  await fs.utimes(notePath, initialStat.atime, initialStat.mtime);
+  registry.activeWatcher(rootPath).signalChange();
+  let bodyReads = 0;
+  let sourceDerivations = 0;
+  const result = await getMachineIndex(vault, cwd, {
+    instrumentation: {
+      onMarkdownBodyRead: () => {
+        bodyReads += 1;
+      },
+      onSourceDerived: () => {
+        sourceDerivations += 1;
+      },
+    },
+  });
+
+  assert.equal(result.index.notes["note.md"]?.title, "Bravo");
+  assert.equal(bodyReads, 1);
+  assert.equal(sourceDerivations, 1);
+});
+
+test("watcher snapshot and watcher failure both retain canonical-read fallback", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-watch-status-");
+  const rootPath = await makeTestTempDir(t, "arepo-watch-root-");
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
+  const registry = installControlledWatch(t);
+  const vault = testVault(rootPath, "watcher-cache-fallback-vault");
+  t.after(() => stopVaultWatcher(cwd, vault.id));
+  await ensureVaultWatcher(vault, cwd);
+  await getMachineIndex(vault, cwd);
+
+  let trustedLookingSnapshotReads = 0;
+  await getMachineIndex(vault, cwd, {
+    instrumentation: {
+      onMarkdownBodyRead: () => {
+        trustedLookingSnapshotReads += 1;
+      },
+    },
+  });
+  assert.equal(trustedLookingSnapshotReads, 1);
+
+  registry.activeWatcher(rootPath).fail(new Error("watcher failed"));
+  let watcherErrorFallbackReads = 0;
+  await getMachineIndex(vault, cwd, {
+    instrumentation: {
+      onMarkdownBodyRead: () => {
+        watcherErrorFallbackReads += 1;
+      },
+    },
+  });
+  assert.equal(watcherErrorFallbackReads, 1);
 });
 
 test("watcher preserves create, rename, and delete observation", async (t) => {

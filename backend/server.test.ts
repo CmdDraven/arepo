@@ -2781,6 +2781,32 @@ test("index query routes reuse a valid cache while explicit reindex remains forc
   assert.equal(publicationAttempts, 1);
 });
 
+test("explicit reindex repairs valid-looking generated derivatives from canonical Markdown", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  await writeConfig(cwd, appDataDir);
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Canonical Title\n", "utf8");
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  const cacheFile = await machineIndexPath(vault, cwd);
+  const stored = JSON.parse(await fs.readFile(cacheFile, "utf8")) as {
+    sourceDerivations: { data: { title: string } }[];
+    data: { index: { notes: Record<string, { title: string }> } };
+  };
+  stored.sourceDerivations[0]!.data.title = "Poisoned Generated Title";
+  stored.data.index.notes["note.md"]!.title = "Poisoned Generated Title";
+  await fs.writeFile(cacheFile, JSON.stringify(stored), "utf8");
+
+  const response = await routeRequest(request("POST", `/api/vaults/${vault.id}/reindex`), cwd);
+  assert.equal(response.status, 200);
+  const data = (response.body as { data: VaultIndexResponse }).data;
+  assert.equal(data.index.notes["note.md"]?.title, "Canonical Title");
+  const repaired = JSON.parse(await fs.readFile(cacheFile, "utf8")) as typeof stored;
+  assert.equal(repaired.sourceDerivations[0]?.data.title, "Canonical Title");
+  assert.equal(repaired.data.index.notes["note.md"]?.title, "Canonical Title");
+});
+
 test("generated-cache read failures remain bounded global index failures", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const appDataDir = await makeTestTempDir(t, "arepo-data-");

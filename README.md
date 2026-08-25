@@ -350,10 +350,14 @@ configured app data directory:
 These files are disposable caches. They may be deleted and rebuilt from the
 Markdown vault. Markdown files remain the source of truth. AREPO must not
 depend on a user-created `index.md` file to make graph, backlinks, validation,
-or search work. The cache format is versioned; incompatible snapshots are
-replaced when the current structural index is rebuilt. Whole-index validation
-still reads and hashes every in-scope Markdown body; a cache hit skips parsing,
-index construction, and cache publication, not source-body I/O.
+or search work. The version 4 cache stores disposable per-source Markdown
+structural derivations without full source bodies. Matching content hashes let
+unchanged sources skip parsing while global link, backlink, duplicate, orphan,
+and validation state is reassembled deterministically when inputs change.
+Whole-index validation still reads and hashes every in-scope Markdown body
+because the current watcher cannot prove exact-on-access content identity; AREPO
+falls back to canonical source reads rather than trusting size, mtime, or a
+possibly stale watcher snapshot.
 
 The frontend still owns preview rendering and graph layout, but note content
 and the index now come from the local backend.

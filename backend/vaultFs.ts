@@ -71,6 +71,10 @@ export type CapturedStructuralIndexInputs = {
   excludedPaths: string[];
 };
 
+export type StructuralIndexCaptureOptions = {
+  onMarkdownBodyRead?: (path: string) => void;
+};
+
 export async function listMarkdownFiles(vault: VaultInfo): Promise<VaultFile[]> {
   return (await listSupportedTextFiles(vault)).filter(
     (file) => sourcePolicy(file.kind).contributesToMarkdownIndex,
@@ -257,6 +261,7 @@ export async function buildVaultIndex(vault: VaultInfo): Promise<VaultIndexRespo
 
 export async function captureStructuralIndexInputs(
   vault: VaultInfo,
+  options: StructuralIndexCaptureOptions = {},
 ): Promise<CapturedStructuralIndexInputs> {
   requirePermission(vault.permissions.readIndex, "Vault index is not readable");
   const configuredScope = vault.vaultIndexScope ?? defaultVaultIndexScope();
@@ -281,6 +286,7 @@ export async function captureStructuralIndexInputs(
   const reads = await Promise.all(
     files.map(async (file) => {
       try {
+        options.onMarkdownBodyRead?.(file.path);
         return {
           path: file.path,
           content: await fs.readFile(

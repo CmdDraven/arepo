@@ -1,23 +1,37 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import {
+  assembleIndex,
+  deriveMarkdownSource,
+  validate,
+  type MarkdownSourceDerivation,
+} from "../src/lib/vault/indexer.js";
 import { getAppDataDir } from "./config.js";
 import {
-  buildVaultIndexFromInputs,
   captureStructuralIndexInputs,
+  type CapturedStructuralIndexInputs,
   type StructuralIndexInputManifest,
 } from "./vaultFs.js";
 import type { VaultIndexResponse, VaultInfo } from "./types.js";
 
-export const MACHINE_INDEX_VERSION = 3;
+export const MACHINE_INDEX_VERSION = 4;
 export const STRUCTURAL_INDEX_DERIVATION_VERSION = 1;
-const OWNED_MACHINE_INDEX_VERSIONS = new Set([1, 2, MACHINE_INDEX_VERSION]);
+export const MARKDOWN_SOURCE_DERIVATION_VERSION = 1;
+const OWNED_MACHINE_INDEX_VERSIONS = new Set([1, 2, 3, MACHINE_INDEX_VERSION]);
 const indexOperationLocks = new Map<string, Promise<void>>();
+
+export type StoredMarkdownSourceDerivation = {
+  path: string;
+  contentHash: string;
+  derivationVersion: number;
+  data: MarkdownSourceDerivation;
+};
 
 export type StoredMachineIndex = {
   kind: "arepo.machineIndex";
-  version: 3;
-  derivationVersion: 1;
+  version: 4;
+  derivationVersion: number;
   generatedAt: string;
   vault: {
     id: string;
@@ -25,12 +39,24 @@ export type StoredMachineIndex = {
     rootPathHash: string;
   };
   manifest: StructuralIndexInputManifest;
+  sourceDerivations: StoredMarkdownSourceDerivation[];
   data: VaultIndexResponse;
 };
 
 export type MachineIndexResult = {
   data: VaultIndexResponse;
   cacheStatus: "hit" | "rebuilt";
+};
+
+export type MachineIndexInstrumentation = {
+  onMarkdownBodyRead?: (path: string) => void;
+  onSourceDerived?: (path: string) => void;
+  onGlobalAssembly?: () => void;
+  onPublication?: () => void;
+};
+
+export type MachineIndexOperationOptions = {
+  instrumentation?: MachineIndexInstrumentation;
 };
 
 export type GeneratedDataRemoval = {
@@ -41,53 +67,137 @@ export type GeneratedDataRemoval = {
 export async function getMachineIndex(
   vault: VaultInfo,
   cwd = process.cwd(),
+  options: MachineIndexOperationOptions = {},
 ): Promise<VaultIndexResponse> {
-  return (await getMachineIndexResult(vault, cwd)).data;
+  return (await getMachineIndexResult(vault, cwd, options)).data;
 }
 
 export async function getMachineIndexResult(
   vault: VaultInfo,
   cwd = process.cwd(),
+  options: MachineIndexOperationOptions = {},
 ): Promise<MachineIndexResult> {
-  const file = await machineIndexPath(vault, cwd);
-  return withIndexLock(indexOperationLocks, file, async () => {
-    const inputs = await captureStructuralIndexInputs(vault);
-    const stored = await readStoredMachineIndex(file);
-    const expectedRootHash = await vaultRootHash(vault);
-    if (
-      stored &&
-      stored.derivationVersion === STRUCTURAL_INDEX_DERIVATION_VERSION &&
-      stored.vault.id === vault.id &&
-      stored.vault.rootPathHash === expectedRootHash &&
-      manifestsEqual(stored.manifest, inputs.manifest)
-    ) {
-      return { data: stored.data, cacheStatus: "hit" };
-    }
+  return runMachineIndexOperation(vault, cwd, "get", options);
+}
 
-    const data = toPersistedVaultIndexResponse(buildVaultIndexFromInputs(inputs));
-    await writeMachineIndexUnlocked(file, vault, inputs.manifest, data, expectedRootHash);
-    return { data, cacheStatus: "rebuilt" };
-  });
+export async function refreshMachineIndex(
+  vault: VaultInfo,
+  cwd = process.cwd(),
+  options: MachineIndexOperationOptions = {},
+): Promise<VaultIndexResponse> {
+  return (await runMachineIndexOperation(vault, cwd, "refresh", options)).data;
 }
 
 export async function rebuildMachineIndex(
   vault: VaultInfo,
   cwd = process.cwd(),
+  options: MachineIndexOperationOptions = {},
 ): Promise<VaultIndexResponse> {
+  return (await runMachineIndexOperation(vault, cwd, "force", options)).data;
+}
+
+async function runMachineIndexOperation(
+  vault: VaultInfo,
+  cwd: string,
+  mode: "get" | "refresh" | "force",
+  options: MachineIndexOperationOptions,
+): Promise<MachineIndexResult> {
   const file = await machineIndexPath(vault, cwd);
   return withIndexLock(indexOperationLocks, file, async () => {
-    const inputs = await captureStructuralIndexInputs(vault);
-    const data = toPersistedVaultIndexResponse(buildVaultIndexFromInputs(inputs));
-    await writeMachineIndexUnlocked(file, vault, inputs.manifest, data);
-    return data;
+    const instrumentation = options.instrumentation;
+    const inputs = await captureStructuralIndexInputs(vault, {
+      onMarkdownBodyRead: instrumentation?.onMarkdownBodyRead,
+    });
+    const stored = mode === "force" ? undefined : await readStoredMachineIndex(file);
+    const expectedRootHash = await vaultRootHash(vault);
+    const reusableStored =
+      stored && stored.vault.id === vault.id && stored.vault.rootPathHash === expectedRootHash
+        ? stored
+        : undefined;
+
+    if (
+      mode === "get" &&
+      reusableStored &&
+      reusableStored.derivationVersion === STRUCTURAL_INDEX_DERIVATION_VERSION &&
+      manifestsEqual(reusableStored.manifest, inputs.manifest) &&
+      sourceDerivationsMatchManifest(reusableStored.sourceDerivations, inputs.manifest)
+    ) {
+      return { data: reusableStored.data, cacheStatus: "hit" };
+    }
+
+    const { data, sourceDerivations } = buildFromCapturedInputs(
+      inputs,
+      mode === "force" ? [] : (reusableStored?.sourceDerivations ?? []),
+      instrumentation,
+    );
+    await writeMachineIndexUnlocked(
+      file,
+      vault,
+      inputs.manifest,
+      sourceDerivations,
+      data,
+      instrumentation,
+      expectedRootHash,
+    );
+    return { data, cacheStatus: "rebuilt" };
   });
+}
+
+function buildFromCapturedInputs(
+  inputs: CapturedStructuralIndexInputs,
+  cachedSourceDerivations: StoredMarkdownSourceDerivation[],
+  instrumentation?: MachineIndexInstrumentation,
+): {
+  data: VaultIndexResponse;
+  sourceDerivations: StoredMarkdownSourceDerivation[];
+} {
+  const cachedByPath = new Map(cachedSourceDerivations.map((entry) => [entry.path, entry]));
+  const active: Record<string, MarkdownSourceDerivation> = {};
+  const sourceDerivations: StoredMarkdownSourceDerivation[] = [];
+  for (const source of inputs.manifest.sources) {
+    if (source.state !== "readable") continue;
+    const cached = cachedByPath.get(source.path);
+    let derivative: MarkdownSourceDerivation;
+    if (
+      cached &&
+      cached.contentHash === source.contentHash &&
+      cached.derivationVersion === MARKDOWN_SOURCE_DERIVATION_VERSION &&
+      cached.data.path === source.path
+    ) {
+      derivative = cached.data;
+    } else {
+      const body = inputs.readableFiles[source.path];
+      if (body === undefined) {
+        throw new Error("Readable structural source is missing its captured body.");
+      }
+      instrumentation?.onSourceDerived?.(source.path);
+      derivative = toPersistedMarkdownSourceDerivation(deriveMarkdownSource(source.path, body));
+    }
+    active[source.path] = derivative;
+    sourceDerivations.push({
+      path: source.path,
+      contentHash: source.contentHash,
+      derivationVersion: MARKDOWN_SOURCE_DERIVATION_VERSION,
+      data: derivative,
+    });
+  }
+
+  instrumentation?.onGlobalAssembly?.();
+  const index = assembleIndex(active, { excludedPaths: inputs.excludedPaths });
+  const data = toPersistedVaultIndexResponse({
+    index,
+    issues: [...inputs.sourceIssues, ...validate(index)],
+  });
+  return { data, sourceDerivations };
 }
 
 async function writeMachineIndexUnlocked(
   file: string,
   vault: VaultInfo,
   manifest: StructuralIndexInputManifest,
+  sourceDerivations: StoredMarkdownSourceDerivation[],
   data: VaultIndexResponse,
+  instrumentation?: MachineIndexInstrumentation,
   rootPathHash?: string,
 ): Promise<void> {
   const stored: StoredMachineIndex = {
@@ -101,6 +211,7 @@ async function writeMachineIndexUnlocked(
       rootPathHash: rootPathHash ?? (await vaultRootHash(vault)),
     },
     manifest,
+    sourceDerivations,
     data,
   };
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -108,6 +219,7 @@ async function writeMachineIndexUnlocked(
   try {
     await writeTempFileForRename(tmp, `${JSON.stringify(stored, null, 2)}\n`);
     await fs.rename(tmp, file);
+    instrumentation?.onPublication?.();
   } catch (error) {
     await fs.unlink(tmp).catch((unlinkError: NodeJS.ErrnoException) => {
       if (unlinkError.code !== "ENOENT") throw unlinkError;
@@ -139,6 +251,34 @@ function manifestsEqual(
   return JSON.stringify(stored) === JSON.stringify(current);
 }
 
+function sourceDerivationsMatchManifest(
+  sourceDerivations: StoredMarkdownSourceDerivation[],
+  manifest: StructuralIndexInputManifest,
+): boolean {
+  const readable = manifest.sources.filter(
+    (source): source is Extract<typeof source, { state: "readable" }> =>
+      source.state === "readable",
+  );
+  return (
+    readable.length === sourceDerivations.length &&
+    readable.every((source, index) => {
+      const derivative = sourceDerivations[index];
+      return (
+        derivative?.path === source.path &&
+        derivative.contentHash === source.contentHash &&
+        derivative.derivationVersion === MARKDOWN_SOURCE_DERIVATION_VERSION &&
+        derivative.data.path === source.path
+      );
+    })
+  );
+}
+
+function toPersistedMarkdownSourceDerivation(
+  data: MarkdownSourceDerivation,
+): MarkdownSourceDerivation {
+  return JSON.parse(JSON.stringify(data)) as MarkdownSourceDerivation;
+}
+
 function toPersistedVaultIndexResponse(data: VaultIndexResponse): VaultIndexResponse {
   return JSON.parse(JSON.stringify(data)) as VaultIndexResponse;
 }
@@ -148,15 +288,38 @@ function isStoredMachineIndex(value: unknown): value is StoredMachineIndex {
   return (
     value.kind === "arepo.machineIndex" &&
     value.version === MACHINE_INDEX_VERSION &&
-    typeof value.derivationVersion === "number" &&
+    Number.isInteger(value.derivationVersion) &&
     typeof value.generatedAt === "string" &&
     isRecord(value.vault) &&
     typeof value.vault.id === "string" &&
     typeof value.vault.displayName === "string" &&
     typeof value.vault.rootPathHash === "string" &&
     isStructuralIndexManifest(value.manifest) &&
+    isStoredSourceDerivations(value.sourceDerivations) &&
     isVaultIndexResponse(value.data)
   );
+}
+
+function isStoredSourceDerivations(value: unknown): value is StoredMarkdownSourceDerivation[] {
+  if (!Array.isArray(value)) return false;
+  let previousPath: string | undefined;
+  for (const entry of value) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.path !== "string" ||
+      path.isAbsolute(entry.path) ||
+      entry.path.includes("\\") ||
+      !/^[a-f0-9]{64}$/.test(String(entry.contentHash)) ||
+      !Number.isInteger(entry.derivationVersion) ||
+      !isMarkdownSourceDerivation(entry.data) ||
+      entry.data.path !== entry.path
+    ) {
+      return false;
+    }
+    if (previousPath !== undefined && previousPath.localeCompare(entry.path) >= 0) return false;
+    previousPath = entry.path;
+  }
+  return true;
 }
 
 function isStructuralIndexManifest(value: unknown): value is StructuralIndexInputManifest {
@@ -209,21 +372,7 @@ function isVaultIndexResponse(value: unknown): value is VaultIndexResponse {
   ) {
     return false;
   }
-  for (const note of Object.values(index.notes as Record<string, unknown>)) {
-    if (!isRecord(note) || !isRecord(note.frontmatter)) return false;
-    if (
-      typeof note.path !== "string" ||
-      typeof note.slug !== "string" ||
-      typeof note.title !== "string" ||
-      !isHeadingArray(note.headings) ||
-      !isStringArray(note.anchors) ||
-      !Array.isArray(note.wikilinks) ||
-      !note.wikilinks.every(isWikiLink) ||
-      !isStringArray(note.tags)
-    ) {
-      return false;
-    }
-  }
+  if (!Object.values(index.notes).every(isMarkdownSourceDerivation)) return false;
   for (const links of Object.values(index.outgoingLinks)) {
     if (!Array.isArray(links) || !links.every(isOutgoingLink)) return false;
   }
@@ -238,6 +387,21 @@ function isVaultIndexResponse(value: unknown): value is VaultIndexResponse {
       typeof issue.path === "string" &&
       typeof issue.message === "string" &&
       (issue.severity === "warning" || issue.severity === "error"),
+  );
+}
+
+function isMarkdownSourceDerivation(value: unknown): value is MarkdownSourceDerivation {
+  return (
+    isRecord(value) &&
+    isRecord(value.frontmatter) &&
+    typeof value.path === "string" &&
+    typeof value.slug === "string" &&
+    typeof value.title === "string" &&
+    isHeadingArray(value.headings) &&
+    isStringArray(value.anchors) &&
+    Array.isArray(value.wikilinks) &&
+    value.wikilinks.every(isWikiLink) &&
+    isStringArray(value.tags)
   );
 }
 

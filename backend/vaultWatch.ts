@@ -2,7 +2,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { sourcePolicy } from "../src/lib/vault/sourcePolicy.js";
-import { rebuildMachineIndex } from "./indexCache.js";
+import { refreshMachineIndex } from "./indexCache.js";
 import {
   discoverVaultSources,
   isExpectedVaultObservationFailure,
@@ -547,7 +547,7 @@ async function rebuildObservedGeneration(
   state.indexStatus = "rebuilding";
   if (!isWatcherError(state.error)) state.error = undefined;
   try {
-    await rebuildMachineIndex(state.vault, state.cwd);
+    await refreshMachineIndex(state.vault, state.cwd);
     if (generation === state.sourceGeneration) {
       markIndexFresh(state);
       state.lastIndexedAt = Date.now();

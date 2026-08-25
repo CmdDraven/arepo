@@ -4,15 +4,19 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { makeTestTempDir } from "./testTemp.js";
+import { buildVaultIndex } from "./vaultFs.js";
 import {
   getMachineIndex,
   getMachineIndexResult,
+  MARKDOWN_SOURCE_DERIVATION_VERSION,
   machineIndexPath,
   MACHINE_INDEX_VERSION,
   rebuildMachineIndex,
+  refreshMachineIndex,
   removeMachineIndexIfOwned,
   STRUCTURAL_INDEX_DERIVATION_VERSION,
   vaultRootHash,
+  type MachineIndexOperationOptions,
 } from "./indexCache.js";
 import { buildIndexFilterResponse } from "./indexFilters.js";
 import { buildVaultInspectResponse } from "./indexInspect.js";
@@ -50,6 +54,41 @@ async function writeFile(root: string, rel: string, content: string): Promise<vo
   const file = path.join(root, rel);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, content, "utf8");
+}
+
+type WorkCounts = {
+  bodyReads: number;
+  sourceDerivations: number;
+  globalAssemblies: number;
+  publications: number;
+};
+
+function measureWork(): { counts: WorkCounts; options: MachineIndexOperationOptions } {
+  const counts: WorkCounts = {
+    bodyReads: 0,
+    sourceDerivations: 0,
+    globalAssemblies: 0,
+    publications: 0,
+  };
+  return {
+    counts,
+    options: {
+      instrumentation: {
+        onMarkdownBodyRead: () => {
+          counts.bodyReads += 1;
+        },
+        onSourceDerived: () => {
+          counts.sourceDerivations += 1;
+        },
+        onGlobalAssembly: () => {
+          counts.globalAssemblies += 1;
+        },
+        onPublication: () => {
+          counts.publications += 1;
+        },
+      },
+    },
+  };
 }
 
 test("concurrent machine index rebuilds do not leave a broken cache file", async (t) => {
@@ -112,7 +151,7 @@ test("partial structural indexes are published through the existing machine-inde
     ],
   );
   assert.equal(stored.kind, "arepo.machineIndex");
-  assert.equal(stored.version, 3);
+  assert.equal(stored.version, 4);
   assert.deepEqual(stored.data, JSON.parse(JSON.stringify(data)));
 });
 
@@ -152,7 +191,7 @@ test("get cache misses do not hide publication failures", async (t) => {
   await assert.rejects(() => getMachineIndex(vault, cwd));
 });
 
-test("get creates a v3 cache with deterministic private validity metadata", async (t) => {
+test("get creates a v4 cache with deterministic private validity metadata", async (t) => {
   const { cwd, vault } = await makeVault(t);
 
   const first = await getMachineIndexResult(vault, cwd);
@@ -165,12 +204,28 @@ test("get creates a v3 cache with deterministic private validity metadata", asyn
       scope: unknown;
       sources: { path: string; state: string; contentHash?: string }[];
     };
+    sourceDerivations: {
+      path: string;
+      contentHash: string;
+      derivationVersion: number;
+      data: Record<string, unknown>;
+    }[];
     data: { index: { notes: Record<string, Record<string, unknown>> } };
   };
 
   assert.equal(first.cacheStatus, "rebuilt");
   assert.equal(stored.version, MACHINE_INDEX_VERSION);
   assert.equal(stored.derivationVersion, STRUCTURAL_INDEX_DERIVATION_VERSION);
+  assert.deepEqual(
+    stored.sourceDerivations.map(({ path, derivationVersion }) => ({
+      path,
+      derivationVersion,
+    })),
+    [
+      { path: "note.md", derivationVersion: MARKDOWN_SOURCE_DERIVATION_VERSION },
+      { path: "other.md", derivationVersion: MARKDOWN_SOURCE_DERIVATION_VERSION },
+    ],
+  );
   assert.deepEqual(
     stored.manifest.sources.map(({ path, state }) => ({ path, state })),
     [
@@ -199,6 +254,77 @@ test("get creates a v3 cache with deterministic private validity metadata", asyn
     Object.values(stored.data.index.notes).some((note) => Object.hasOwn(note, "body")),
     false,
   );
+  assert.equal(
+    stored.sourceDerivations.some((derivative) => Object.hasOwn(derivative.data, "body")),
+    false,
+  );
+});
+
+test("v4 work counters prove cold, warm, changed, fallback, and force behavior", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+
+  const cold = measureWork();
+  await getMachineIndex(vault, cwd, cold.options);
+  assert.deepEqual(cold.counts, {
+    bodyReads: 2,
+    sourceDerivations: 2,
+    globalAssemblies: 1,
+    publications: 1,
+  });
+
+  const warm = measureWork();
+  await getMachineIndex(vault, cwd, warm.options);
+  assert.deepEqual(warm.counts, {
+    bodyReads: 2,
+    sourceDerivations: 0,
+    globalAssemblies: 0,
+    publications: 0,
+  });
+
+  await fs.writeFile(path.join(vault.rootPath, "note.md"), "# Changed\n\n[[other]]\n", "utf8");
+  const changed = measureWork();
+  const changedData = await getMachineIndex(vault, cwd, changed.options);
+  assert.equal(changedData.index.notes["note.md"]?.title, "Changed");
+  assert.deepEqual(changed.counts, {
+    bodyReads: 2,
+    sourceDerivations: 1,
+    globalAssemblies: 1,
+    publications: 1,
+  });
+
+  const noObservationFallback = measureWork();
+  await getMachineIndex(vault, cwd, noObservationFallback.options);
+  assert.deepEqual(noObservationFallback.counts, {
+    bodyReads: 2,
+    sourceDerivations: 0,
+    globalAssemblies: 0,
+    publications: 0,
+  });
+
+  const forced = measureWork();
+  await rebuildMachineIndex(vault, cwd, forced.options);
+  assert.deepEqual(forced.counts, {
+    bodyReads: 2,
+    sourceDerivations: 2,
+    globalAssemblies: 1,
+    publications: 1,
+  });
+});
+
+test("refresh reassembles globally while reusing unchanged source derivations", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  await getMachineIndex(vault, cwd);
+
+  const measured = measureWork();
+  const refreshed = await refreshMachineIndex(vault, cwd, measured.options);
+
+  assert.equal(refreshed.index.notes["note.md"]?.title, "Note");
+  assert.deepEqual(measured.counts, {
+    bodyReads: 2,
+    sourceDerivations: 0,
+    globalAssemblies: 1,
+    publications: 1,
+  });
 });
 
 test("unchanged, metadata-only, and non-structural changes reuse without publication", async (t) => {
@@ -229,10 +355,17 @@ test("unchanged, metadata-only, and non-structural changes reuse without publica
     return originalRename(from, to);
   }) as typeof fs.rename;
 
-  const second = await getMachineIndexResult(vault, cwd);
+  const measured = measureWork();
+  const second = await getMachineIndexResult(vault, cwd, measured.options);
   assert.equal(second.cacheStatus, "hit");
   assert.deepEqual(second.data, first);
   assert.equal(publicationAttempts, 0);
+  assert.deepEqual(measured.counts, {
+    bodyReads: 2,
+    sourceDerivations: 0,
+    globalAssemblies: 0,
+    publications: 0,
+  });
 });
 
 test("content hashes invalidate same-size restored-mtime changes", async (t) => {
@@ -244,10 +377,17 @@ test("content hashes invalidate same-size restored-mtime changes", async (t) => 
 
   await fs.writeFile(notePath, "# Bravo\n", "utf8");
   await fs.utimes(notePath, beforeStat.atime, beforeStat.mtime);
-  const next = await getMachineIndexResult(vault, cwd);
+  const measured = measureWork();
+  const next = await getMachineIndexResult(vault, cwd, measured.options);
 
   assert.equal(next.cacheStatus, "rebuilt");
   assert.equal(next.data.index.notes["note.md"]?.title, "Bravo");
+  assert.deepEqual(measured.counts, {
+    bodyReads: 2,
+    sourceDerivations: 1,
+    globalAssemblies: 1,
+    publications: 1,
+  });
 });
 
 test("Markdown add, delete, and rename each invalidate the source inventory", async (t) => {
@@ -255,20 +395,61 @@ test("Markdown add, delete, and rename each invalidate the source inventory", as
   await getMachineIndex(vault, cwd);
 
   await writeFile(vault.rootPath, "added.md", "# Added\n");
-  const added = await getMachineIndexResult(vault, cwd);
+  const addWork = measureWork();
+  const added = await getMachineIndexResult(vault, cwd, addWork.options);
   assert.equal(added.cacheStatus, "rebuilt");
   assert.ok(added.data.index.notes["added.md"]);
+  assert.deepEqual(addWork.counts, {
+    bodyReads: 3,
+    sourceDerivations: 1,
+    globalAssemblies: 1,
+    publications: 1,
+  });
 
   await fs.unlink(path.join(vault.rootPath, "other.md"));
-  const deleted = await getMachineIndexResult(vault, cwd);
+  const deleteWork = measureWork();
+  const deleted = await getMachineIndexResult(vault, cwd, deleteWork.options);
   assert.equal(deleted.cacheStatus, "rebuilt");
   assert.equal(deleted.data.index.notes["other.md"], undefined);
+  assert.deepEqual(deleteWork.counts, {
+    bodyReads: 2,
+    sourceDerivations: 0,
+    globalAssemblies: 1,
+    publications: 1,
+  });
 
   await fs.rename(path.join(vault.rootPath, "added.md"), path.join(vault.rootPath, "renamed.md"));
-  const renamed = await getMachineIndexResult(vault, cwd);
+  const renameWork = measureWork();
+  const renamed = await getMachineIndexResult(vault, cwd, renameWork.options);
   assert.equal(renamed.cacheStatus, "rebuilt");
   assert.equal(renamed.data.index.notes["added.md"], undefined);
   assert.ok(renamed.data.index.notes["renamed.md"]);
+  assert.deepEqual(renameWork.counts, {
+    bodyReads: 2,
+    sourceDerivations: 1,
+    globalAssemblies: 1,
+    publications: 1,
+  });
+});
+
+test("multiple changed sources rederive only those sources", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  await writeFile(vault.rootPath, "third.md", "# Third\n");
+  await getMachineIndex(vault, cwd);
+  await writeFile(vault.rootPath, "note.md", "# Note Changed\n");
+  await writeFile(vault.rootPath, "other.md", "# Other Changed\n");
+
+  const measured = measureWork();
+  const result = await getMachineIndex(vault, cwd, measured.options);
+
+  assert.equal(result.index.notes["note.md"]?.title, "Note Changed");
+  assert.equal(result.index.notes["other.md"]?.title, "Other Changed");
+  assert.deepEqual(measured.counts, {
+    bodyReads: 3,
+    sourceDerivations: 2,
+    globalAssemblies: 1,
+    publications: 1,
+  });
 });
 
 test("scope and excluded membership invalidate while excluded bodies do not", async (t) => {
@@ -283,21 +464,55 @@ test("scope and excluded membership invalidate while excluded bodies do not", as
   assert.equal(initial.data.index.brokenLinks[0]?.status, "excluded-by-index-scope");
 
   await writeFile(vault.rootPath, "nested/Hidden.md", "# Totally Different Hidden Body\n");
-  assert.equal((await getMachineIndexResult(rootOnly, cwd)).cacheStatus, "hit");
+  const excludedBodyWork = measureWork();
+  assert.equal(
+    (await getMachineIndexResult(rootOnly, cwd, excludedBodyWork.options)).cacheStatus,
+    "hit",
+  );
+  assert.deepEqual(excludedBodyWork.counts, {
+    bodyReads: 2,
+    sourceDerivations: 0,
+    globalAssemblies: 0,
+    publications: 0,
+  });
 
   await writeFile(vault.rootPath, "nested/Second.md", "# Second\n");
-  const membership = await getMachineIndexResult(rootOnly, cwd);
+  const membershipWork = measureWork();
+  const membership = await getMachineIndexResult(rootOnly, cwd, membershipWork.options);
   assert.equal(membership.cacheStatus, "rebuilt");
   assert.deepEqual(membership.data.index.excludedPaths, ["nested/Hidden.md", "nested/Second.md"]);
+  assert.deepEqual(membershipWork.counts, {
+    bodyReads: 2,
+    sourceDerivations: 0,
+    globalAssemblies: 1,
+    publications: 1,
+  });
 
   const allDepths: VaultInfo = {
     ...vault,
     vaultIndexScope: { markdown: { minDepth: 0, maxDepth: null } },
   };
-  const changedScope = await getMachineIndexResult(allDepths, cwd);
+  const changedScopeWork = measureWork();
+  const changedScope = await getMachineIndexResult(allDepths, cwd, changedScopeWork.options);
   assert.equal(changedScope.cacheStatus, "rebuilt");
   assert.ok(changedScope.data.index.notes["nested/Hidden.md"]);
   assert.equal(changedScope.data.index.brokenLinks.length, 0);
+  assert.deepEqual(changedScopeWork.counts, {
+    bodyReads: 4,
+    sourceDerivations: 2,
+    globalAssemblies: 1,
+    publications: 1,
+  });
+
+  const removedFromScopeWork = measureWork();
+  const removedFromScope = await getMachineIndexResult(rootOnly, cwd, removedFromScopeWork.options);
+  assert.equal(removedFromScope.data.index.notes["nested/Hidden.md"], undefined);
+  assert.deepEqual(removedFromScopeWork.counts, {
+    bodyReads: 2,
+    sourceDerivations: 0,
+    globalAssemblies: 1,
+    publications: 1,
+  });
 });
 
 test("source readability transitions retry and never reuse stale source semantics", async (t) => {
@@ -326,7 +541,8 @@ test("source readability transitions retry and never reuse stale source semantic
     return originalReadFile(file, ...args);
   }) as typeof fs.readFile;
 
-  const unavailable = await getMachineIndexResult(vault, cwd);
+  const unavailableWork = measureWork();
+  const unavailable = await getMachineIndexResult(vault, cwd, unavailableWork.options);
   assert.equal(unavailable.cacheStatus, "rebuilt");
   assert.equal(unavailable.data.index.notes["failed.md"], undefined);
   assert.ok(
@@ -334,21 +550,41 @@ test("source readability transitions retry and never reuse stale source semantic
       (issue) => issue.kind === "source-unreadable" && issue.path === "failed.md",
     ),
   );
+  assert.deepEqual(unavailableWork.counts, {
+    bodyReads: 3,
+    sourceDerivations: 0,
+    globalAssemblies: 1,
+    publications: 1,
+  });
 
   failedReadAttempts = 0;
-  const stillUnavailable = await getMachineIndexResult(vault, cwd);
+  const stillUnavailableWork = measureWork();
+  const stillUnavailable = await getMachineIndexResult(vault, cwd, stillUnavailableWork.options);
   assert.equal(stillUnavailable.cacheStatus, "hit");
   assert.equal(failedReadAttempts, 1);
   assert.equal(stillUnavailable.data.index.notes["failed.md"], undefined);
+  assert.deepEqual(stillUnavailableWork.counts, {
+    bodyReads: 3,
+    sourceDerivations: 0,
+    globalAssemblies: 0,
+    publications: 0,
+  });
 
   failing = false;
-  const recovered = await getMachineIndexResult(vault, cwd);
+  const recoveredWork = measureWork();
+  const recovered = await getMachineIndexResult(vault, cwd, recoveredWork.options);
   assert.equal(recovered.cacheStatus, "rebuilt");
   assert.equal(recovered.data.index.notes["failed.md"]?.title, "Recoverable");
   assert.equal(
     recovered.data.issues.some((issue) => issue.kind === "source-unreadable"),
     false,
   );
+  assert.deepEqual(recoveredWork.counts, {
+    bodyReads: 3,
+    sourceDerivations: 1,
+    globalAssemblies: 1,
+    publications: 1,
+  });
 });
 
 test("multiple unavailable sources have deterministic bounded manifest and issue order", async (t) => {
@@ -393,6 +629,7 @@ test("legacy, mismatched, and malformed generated caches rebuild safely", async 
   const cases: [string, (stored: Record<string, unknown>) => string][] = [
     ["v1", (stored) => JSON.stringify({ ...stored, version: 1 })],
     ["v2", (stored) => JSON.stringify({ ...stored, version: 2 })],
+    ["v3", (stored) => JSON.stringify({ ...stored, version: 3 })],
     [
       "derivation",
       (stored) =>
@@ -449,8 +686,77 @@ test("legacy, mismatched, and malformed generated caches rebuild safely", async 
   }
 });
 
-test("v1 and v2 owned generated files remain removable", async (t) => {
-  for (const version of [1, 2]) {
+test("source and global derivation versions invalidate only their semantic layer", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  await getMachineIndex(vault, cwd);
+  const cacheFile = await machineIndexPath(vault, cwd);
+  const stored = JSON.parse(await fs.readFile(cacheFile, "utf8")) as {
+    derivationVersion: number;
+    sourceDerivations: { derivationVersion: number }[];
+  };
+
+  stored.sourceDerivations[0]!.derivationVersion = MARKDOWN_SOURCE_DERIVATION_VERSION + 1;
+  await fs.writeFile(cacheFile, JSON.stringify(stored), "utf8");
+  const sourceVersion = measureWork();
+  await getMachineIndex(vault, cwd, sourceVersion.options);
+  assert.deepEqual(sourceVersion.counts, {
+    bodyReads: 2,
+    sourceDerivations: 1,
+    globalAssemblies: 1,
+    publications: 1,
+  });
+
+  const globallyOld = JSON.parse(await fs.readFile(cacheFile, "utf8")) as {
+    derivationVersion: number;
+  };
+  globallyOld.derivationVersion = STRUCTURAL_INDEX_DERIVATION_VERSION + 1;
+  await fs.writeFile(cacheFile, JSON.stringify(globallyOld), "utf8");
+  const globalVersion = measureWork();
+  await getMachineIndex(vault, cwd, globalVersion.options);
+  assert.deepEqual(globalVersion.counts, {
+    bodyReads: 2,
+    sourceDerivations: 0,
+    globalAssemblies: 1,
+    publications: 1,
+  });
+});
+
+test("malformed source derivatives and v3 caches rederive safely", async (t) => {
+  for (const cacheKind of ["malformed derivative", "v3"] as const) {
+    await t.test(cacheKind, async (t) => {
+      const { cwd, vault } = await makeVault(t);
+      await getMachineIndex(vault, cwd);
+      const cacheFile = await machineIndexPath(vault, cwd);
+      const stored = JSON.parse(await fs.readFile(cacheFile, "utf8")) as Record<string, unknown>;
+      if (cacheKind === "v3") {
+        stored.version = 3;
+        delete stored.sourceDerivations;
+      } else {
+        const sourceDerivations = stored.sourceDerivations as {
+          data: { title: unknown };
+        }[];
+        sourceDerivations[0]!.data.title = 42;
+      }
+      await fs.writeFile(cacheFile, JSON.stringify(stored), "utf8");
+
+      const measured = measureWork();
+      await getMachineIndex(vault, cwd, measured.options);
+      assert.deepEqual(measured.counts, {
+        bodyReads: 2,
+        sourceDerivations: 2,
+        globalAssemblies: 1,
+        publications: 1,
+      });
+      assert.equal(
+        (JSON.parse(await fs.readFile(cacheFile, "utf8")) as { version: number }).version,
+        4,
+      );
+    });
+  }
+});
+
+test("v1, v2, and v3 owned generated files remain removable", async (t) => {
+  for (const version of [1, 2, 3]) {
     await t.test(`v${version}`, async (t) => {
       const { cwd, vault } = await makeVault(t);
       const file = await machineIndexPath(vault, cwd);
@@ -511,6 +817,36 @@ test("cache hits enforce readIndex permission and preserve query behavior", asyn
   await assert.rejects(() => getMachineIndex(denied, cwd), /Vault index is not readable/);
 });
 
+test("direct, whole-hit, and partial-reuse public index/query behavior is equivalent", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  const direct = JSON.parse(JSON.stringify(await buildVaultIndex(vault))) as Awaited<
+    ReturnType<typeof buildVaultIndex>
+  >;
+  const initial = await getMachineIndex(vault, cwd);
+  const wholeHit = await getMachineIndex(vault, cwd);
+  assert.deepEqual(initial, direct);
+  assert.deepEqual(wholeHit, direct);
+
+  await writeFile(vault.rootPath, "note.md", "# Updated\n\n[[other]]\n");
+  const directUpdated = JSON.parse(JSON.stringify(await buildVaultIndex(vault))) as typeof direct;
+  const partial = await getMachineIndex(vault, cwd);
+  assert.deepEqual(partial, directUpdated);
+  for (const data of [directUpdated, partial]) {
+    assert.deepEqual(
+      buildIndexSearchResponse(data, "Updated"),
+      buildIndexSearchResponse(directUpdated, "Updated"),
+    );
+    assert.deepEqual(
+      buildIndexFilterResponse(data, "orphan-notes"),
+      buildIndexFilterResponse(directUpdated, "orphan-notes"),
+    );
+    assert.deepEqual(
+      buildVaultInspectResponse(data, "note.md"),
+      buildVaultInspectResponse(directUpdated, "note.md"),
+    );
+  }
+});
+
 test("force rebuild publishes even when the cache is valid", async (t) => {
   const { cwd, vault } = await makeVault(t);
   await getMachineIndex(vault, cwd);
@@ -533,8 +869,10 @@ test("force rebuild publishes even when the cache is valid", async (t) => {
   assert.equal(attempts, 1);
 });
 
-test("concurrent get misses single-flight publication and return coherent data", async (t) => {
+test("concurrent gets after one change single-flight derivation and publication", async (t) => {
   const { cwd, vault } = await makeVault(t);
+  await getMachineIndex(vault, cwd);
+  await fs.writeFile(path.join(vault.rootPath, "note.md"), "# Concurrent\n", "utf8");
   const cacheFile = await machineIndexPath(vault, cwd);
   const originalRename = fs.rename;
   let publications = 0;
@@ -546,16 +884,23 @@ test("concurrent get misses single-flight publication and return coherent data",
     return originalRename(from, to);
   }) as typeof fs.rename;
 
+  const measured = measureWork();
   const results = await Promise.all(
-    Array.from({ length: 20 }, () => getMachineIndexResult(vault, cwd)),
+    Array.from({ length: 20 }, () => getMachineIndexResult(vault, cwd, measured.options)),
   );
   assert.equal(results.filter((result) => result.cacheStatus === "rebuilt").length, 1);
   assert.equal(results.filter((result) => result.cacheStatus === "hit").length, 19);
   assert.equal(publications, 1);
   assert.equal(
-    results.every((result) => result.data.index.notes["note.md"]?.title === "Note"),
+    results.every((result) => result.data.index.notes["note.md"]?.title === "Concurrent"),
     true,
   );
+  assert.deepEqual(measured.counts, {
+    bodyReads: 40,
+    sourceDerivations: 1,
+    globalAssemblies: 1,
+    publications: 1,
+  });
 });
 
 test("concurrent force rebuild and get serialize without stale publication", async (t) => {

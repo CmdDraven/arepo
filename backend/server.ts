@@ -12,7 +12,7 @@ import {
 import { buildIndexFilterResponse, parseIndexFilterKind } from "./indexFilters.js";
 import { buildVaultInspectResponse } from "./indexInspect.js";
 import { buildIndexSearchResponse } from "./indexSearch.js";
-import { getMachineIndexResult, rebuildMachineIndex } from "./indexCache.js";
+import { getMachineIndexResult, rebuildMachineIndex, refreshMachineIndex } from "./indexCache.js";
 import {
   getLocalNodeHealth,
   getLocalNodeInfo,
@@ -298,7 +298,7 @@ export async function routeRequest(
       if (method === "PATCH" && action === "index-scope") {
         const body = asRecord(await readJson(request));
         const updatedVault = await updateVaultIndexScope(vaultId, body.vaultIndexScope, cwd);
-        const data = await rebuildTrackedMachineIndex(updatedVault, cwd);
+        const data = await refreshTrackedMachineIndex(updatedVault, cwd);
         return json(200, { ok: true, data: { vault: updatedVault, index: data } }, cors.headers);
       }
 
@@ -388,6 +388,18 @@ async function getTrackedMachineIndex(vault: VaultInfo, cwd: string): Promise<Va
     await recordVaultIndexedAfterPublication(vault, observation, cwd);
   }
   return result.data;
+}
+
+async function refreshTrackedMachineIndex(
+  vault: VaultInfo,
+  cwd: string,
+): Promise<VaultIndexResponse> {
+  const observation = await beginVaultIndexBuildBestEffort(vault, cwd);
+  const data = await refreshMachineIndex(vault, cwd);
+  if (observation) {
+    await recordVaultIndexedAfterPublication(vault, observation, cwd);
+  }
+  return data;
 }
 
 function json(
