@@ -2725,6 +2725,99 @@ test("index structural filters expose read-only machine-index views", async (t) 
   );
 });
 
+test("index query routes reuse a valid cache while explicit reindex remains forceful", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  await writeConfig(cwd, appDataDir);
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  await fs.writeFile(
+    path.join(rootPath, "note.md"),
+    "---\ntags: [cached]\n---\n# Cached Note\n",
+    "utf8",
+  );
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  const cacheFile = await machineIndexPath(vault, cwd);
+  const originalRename = fs.rename;
+  let publicationAttempts = 0;
+  t.after(() => {
+    fs.rename = originalRename;
+  });
+  fs.rename = (async (from, to) => {
+    if (to === cacheFile) {
+      publicationAttempts += 1;
+      throw new Error("injected publication failure");
+    }
+    return originalRename(from, to);
+  }) as typeof fs.rename;
+
+  const index = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  const search = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/search?q=Cached`),
+    cwd,
+  );
+  const filters = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/filters?filter=tags`),
+    cwd,
+  );
+  const inspect = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/inspect?path=note.md`),
+    cwd,
+  );
+
+  assert.equal(index.status, 200);
+  assert.equal(search.status, 200);
+  assert.equal(filters.status, 200);
+  assert.equal(inspect.status, 200);
+  assert.equal(publicationAttempts, 0);
+
+  const forced = await routeRequest(request("POST", `/api/vaults/${vault.id}/reindex`), cwd);
+  assert.equal(forced.status, 500);
+  assert.deepEqual(forced.body, {
+    ok: false,
+    error: "Internal server error",
+    code: "internal-error",
+  });
+  assert.equal(publicationAttempts, 1);
+});
+
+test("generated-cache read failures remain bounded global index failures", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  await writeConfig(cwd, appDataDir);
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  const cacheFile = await machineIndexPath(vault, cwd);
+  const sensitivePath = "/private/example/generated-index.json";
+  const originalReadFile = fs.readFile;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === cacheFile) {
+      throw Object.assign(new Error(`EACCES: open '${sensitivePath}'`), {
+        code: "EACCES",
+        syscall: "open",
+        path: sensitivePath,
+      });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  const response = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  assert.equal(response.status, 500);
+  assert.deepEqual(response.body, {
+    ok: false,
+    error: "Internal server error",
+    code: "internal-error",
+  });
+  for (const hidden of [sensitivePath, "EACCES", "syscall", "stack"]) {
+    assert.equal(JSON.stringify(response).includes(hidden), false, hidden);
+  }
+});
+
 test("index search endpoint finds structural machine-index fields", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const rootPath = await makeTestTempDir(t, "arepo-root-");

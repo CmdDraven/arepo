@@ -18,6 +18,7 @@ import type {
   VaultFileResponse,
   VaultFileWriteResponse,
   VaultIndexResponse,
+  VaultIndexScope,
   VaultInfo,
 } from "./types.js";
 
@@ -51,6 +52,23 @@ const ISOLATABLE_SOURCE_FILESYSTEM_CODES = new Set([
 export type VaultDiscovery = {
   files: VaultFile[];
   folders: string[];
+};
+
+export type StructuralIndexSourceManifestEntry =
+  | { path: string; state: "excluded" }
+  | { path: string; state: "readable"; contentHash: string }
+  | { path: string; state: "unavailable" };
+
+export type StructuralIndexInputManifest = {
+  scope: VaultIndexScope;
+  sources: StructuralIndexSourceManifestEntry[];
+};
+
+export type CapturedStructuralIndexInputs = {
+  manifest: StructuralIndexInputManifest;
+  readableFiles: Record<string, string>;
+  sourceIssues: ValidationIssue[];
+  excludedPaths: string[];
 };
 
 export async function listMarkdownFiles(vault: VaultInfo): Promise<VaultFile[]> {
@@ -234,16 +252,32 @@ export async function deleteVaultFile(
 }
 
 export async function buildVaultIndex(vault: VaultInfo): Promise<VaultIndexResponse> {
+  return buildVaultIndexFromInputs(await captureStructuralIndexInputs(vault));
+}
+
+export async function captureStructuralIndexInputs(
+  vault: VaultInfo,
+): Promise<CapturedStructuralIndexInputs> {
   requirePermission(vault.permissions.readIndex, "Vault index is not readable");
-  const scope = vault.vaultIndexScope ?? defaultVaultIndexScope();
+  const configuredScope = vault.vaultIndexScope ?? defaultVaultIndexScope();
+  const scope: VaultIndexScope = {
+    markdown: {
+      minDepth: configuredScope.markdown.minDepth,
+      maxDepth: configuredScope.markdown.maxDepth,
+    },
+  };
   const allFiles = await listMarkdownFiles(vault);
   const files = allFiles.filter((file) => markdownPathInScope(file.path, scope));
   const excludedPaths = allFiles
     .filter((file) => !markdownPathInScope(file.path, scope))
     .map((file) => file.path);
   const root = await realVaultRoot(vault);
-  const map: Record<string, string> = {};
+  const readableFiles: Record<string, string> = {};
   const sourceIssues: ValidationIssue[] = [];
+  const sources: StructuralIndexSourceManifestEntry[] = excludedPaths.map((path) => ({
+    path,
+    state: "excluded",
+  }));
   const reads = await Promise.all(
     files.map(async (file) => {
       try {
@@ -262,6 +296,7 @@ export async function buildVaultIndex(vault: VaultInfo): Promise<VaultIndexRespo
   );
   for (const read of reads) {
     if (read.content === undefined) {
+      sources.push({ path: read.path, state: "unavailable" });
       sourceIssues.push({
         kind: "source-unreadable",
         path: read.path,
@@ -269,11 +304,23 @@ export async function buildVaultIndex(vault: VaultInfo): Promise<VaultIndexRespo
         severity: "error",
       });
     } else {
-      map[read.path] = read.content;
+      readableFiles[read.path] = read.content;
+      sources.push({
+        path: read.path,
+        state: "readable",
+        contentHash: hashContent(read.content),
+      });
     }
   }
-  const index = buildIndex(map, { excludedPaths });
-  return { index, issues: [...sourceIssues, ...validate(index)] };
+  sources.sort((a, b) => a.path.localeCompare(b.path));
+  return { manifest: { scope, sources }, readableFiles, sourceIssues, excludedPaths };
+}
+
+export function buildVaultIndexFromInputs(
+  inputs: CapturedStructuralIndexInputs,
+): VaultIndexResponse {
+  const index = buildIndex(inputs.readableFiles, { excludedPaths: inputs.excludedPaths });
+  return { index, issues: [...inputs.sourceIssues, ...validate(index)] };
 }
 
 export async function atomicWriteFile(absolutePath: string, content: string): Promise<void> {

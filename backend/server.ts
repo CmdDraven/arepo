@@ -12,7 +12,7 @@ import {
 import { buildIndexFilterResponse, parseIndexFilterKind } from "./indexFilters.js";
 import { buildVaultInspectResponse } from "./indexInspect.js";
 import { buildIndexSearchResponse } from "./indexSearch.js";
-import { rebuildMachineIndex } from "./indexCache.js";
+import { getMachineIndexResult, rebuildMachineIndex } from "./indexCache.js";
 import {
   getLocalNodeHealth,
   getLocalNodeInfo,
@@ -303,7 +303,7 @@ export async function routeRequest(
       }
 
       if (method === "GET" && action === "index" && segments[4] === "filters") {
-        const data = await rebuildTrackedMachineIndex(vault, cwd);
+        const data = await getTrackedMachineIndex(vault, cwd);
         return json(
           200,
           buildIndexFilterResponse(data, parseIndexFilterKind(url.searchParams.get("filter"))),
@@ -312,12 +312,12 @@ export async function routeRequest(
       }
 
       if (method === "GET" && action === "index" && segments[4] === "search") {
-        const data = await rebuildTrackedMachineIndex(vault, cwd);
+        const data = await getTrackedMachineIndex(vault, cwd);
         return json(200, buildIndexSearchResponse(data, url.searchParams.get("q")), cors.headers);
       }
 
       if (method === "GET" && action === "index" && segments[4] === "inspect") {
-        const data = await rebuildTrackedMachineIndex(vault, cwd);
+        const data = await getTrackedMachineIndex(vault, cwd);
         return json(
           200,
           buildVaultInspectResponse(data, url.searchParams.get("path")),
@@ -326,7 +326,7 @@ export async function routeRequest(
       }
 
       if (method === "GET" && action === "index") {
-        const data = await rebuildTrackedMachineIndex(vault, cwd);
+        const data = await getTrackedMachineIndex(vault, cwd);
         return json(200, data, cors.headers);
       }
     }
@@ -379,6 +379,15 @@ async function rebuildTrackedMachineIndex(
     await recordVaultIndexedAfterPublication(vault, observation, cwd);
   }
   return data;
+}
+
+async function getTrackedMachineIndex(vault: VaultInfo, cwd: string): Promise<VaultIndexResponse> {
+  const observation = await beginVaultIndexBuildBestEffort(vault, cwd);
+  const result = await getMachineIndexResult(vault, cwd);
+  if (observation && result.cacheStatus === "rebuilt") {
+    await recordVaultIndexedAfterPublication(vault, observation, cwd);
+  }
+  return result.data;
 }
 
 function json(

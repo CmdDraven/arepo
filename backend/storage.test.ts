@@ -4,9 +4,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { makeTestTempDir } from "./testTemp.js";
-import { buildVaultIndex } from "./vaultFs.js";
 import { getVaultStorageSummary } from "./storage.js";
-import { writeMachineIndex } from "./indexCache.js";
+import { rebuildMachineIndex } from "./indexCache.js";
 import type { VaultInfo } from "./types.js";
 
 async function makeVault(t: TestContext): Promise<{ cwd: string; vault: VaultInfo }> {
@@ -116,7 +115,7 @@ test("storage summary reports zero for missing index cache", async (t) => {
 test("storage summary includes generated machine index cache bytes", async (t) => {
   const { cwd, vault } = await makeVault(t);
   await writeFile(vault.rootPath, "note.md", "# Note\n");
-  await writeMachineIndex(vault, await buildVaultIndex(vault), cwd);
+  await rebuildMachineIndex(vault, cwd);
 
   const summary = await getVaultStorageSummary(vault, cwd);
 

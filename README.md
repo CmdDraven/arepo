@@ -334,8 +334,11 @@ orphan notes, duplicate ids, and duplicate anchors. It deliberately excludes
 full Markdown bodies. A credential with `readIndex` can retrieve structural
 index data but cannot recover source content through index endpoints.
 
-When a vault is added, AREPO builds the machine index automatically. Manual
-reindexing only forces a rebuild from the current Markdown files.
+When a vault is added, AREPO builds the machine index automatically. Ordinary
+index, search, filter, and inspection reads reuse the persisted index only after
+validating its derivation version, index scope, Markdown inventory, and current
+in-scope content hashes. Manual reindexing always forces a rebuild from the
+current Markdown files.
 
 Generated machine indexes are stored outside user vaults by default, under the
 configured app data directory:
@@ -348,7 +351,9 @@ These files are disposable caches. They may be deleted and rebuilt from the
 Markdown vault. Markdown files remain the source of truth. AREPO must not
 depend on a user-created `index.md` file to make graph, backlinks, validation,
 or search work. The cache format is versioned; incompatible snapshots are
-replaced when the current structural index is rebuilt.
+replaced when the current structural index is rebuilt. Whole-index validation
+still reads and hashes every in-scope Markdown body; a cache hit skips parsing,
+index construction, and cache publication, not source-body I/O.
 
 The frontend still owns preview rendering and graph layout, but note content
 and the index now come from the local backend.
