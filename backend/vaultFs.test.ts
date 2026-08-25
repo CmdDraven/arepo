@@ -16,6 +16,7 @@ import {
 } from "./vaultFs.js";
 import { renderMarkdown } from "../src/lib/vault/render.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
+import { PublicApiError } from "./publicApiError.js";
 import type { VaultInfo } from "./types.js";
 
 async function makeVault(t: TestContext): Promise<VaultInfo> {
@@ -308,6 +309,264 @@ test("backend index reports duplicate ids, duplicate anchors, broken links, and 
   assert.ok(issues.some((issue) => issue.kind === "duplicate-id"));
   assert.ok(issues.some((issue) => issue.kind === "duplicate-anchor"));
   assert.ok(issues.some((issue) => issue.kind === "broken-wikilink"));
+});
+
+test("structural indexing isolates one path-bearing Markdown read failure", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(
+    vault,
+    "good-a.md",
+    "---\nid: shared-id\ntitle: Good A\ntags: [readable]\n---\n# Good A\n\n[[unreadable-or-failing]]\n",
+  );
+  await createVaultFile(
+    vault,
+    "unreadable-or-failing.md",
+    "---\nid: shared-id\ntitle: Hidden\ntags: [must-not-appear]\n---\n# Hidden Heading {#hidden-anchor}\n\n[[good-b]]\n",
+  );
+  await createVaultFile(
+    vault,
+    "good-b.md",
+    "---\nid: good-b\ntitle: Good B\ntags: [readable]\n---\n# Good B\n",
+  );
+  await fs.writeFile(path.join(vault.rootPath, "plain.txt"), "# Not Markdown\n", "utf8");
+  await fs.writeFile(
+    path.join(vault.rootPath, "conversation.arepo-chat.json"),
+    '{"format":"arepo-chat-export","version":1,"messages":[]}',
+    "utf8",
+  );
+  await fs.writeFile(path.join(vault.rootPath, "attachment.bin"), "ignored", "utf8");
+  const failedPath = path.join(vault.rootPath, "unreadable-or-failing.md");
+  const sensitivePath = "/private/example/secret-vault/unreadable-or-failing.md";
+  const rawMessage = `EACCES: permission denied, open '${sensitivePath}'`;
+  const originalReadFile = fs.readFile;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === failedPath) {
+      throw Object.assign(new Error(rawMessage), {
+        code: "EACCES",
+        errno: -13,
+        syscall: "open",
+        path: sensitivePath,
+      });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  const result = await buildVaultIndex(vault);
+
+  assert.deepEqual(Object.keys(result.index.notes), ["good-a.md", "good-b.md"]);
+  assert.deepEqual(result.index.byId, { "shared-id": "good-a.md", "good-b": "good-b.md" });
+  assert.deepEqual(result.index.duplicateIds, {});
+  assert.equal(
+    Object.values(result.index.notes).some(
+      (note) => note.tags.includes("must-not-appear") || note.anchors.includes("hidden-anchor"),
+    ),
+    false,
+  );
+  assert.deepEqual(
+    result.issues.filter((issue) => issue.kind === "source-unreadable"),
+    [
+      {
+        kind: "source-unreadable",
+        path: "unreadable-or-failing.md",
+        message: "Source file could not be read.",
+        severity: "error",
+      },
+    ],
+  );
+  const link = result.index.outgoingLinks["good-a.md"]?.[0];
+  assert.equal(link?.status, "missing");
+  assert.equal(link?.broken, true);
+  assert.equal(result.index.brokenLinks[0]?.target, "unreadable-or-failing");
+  const serialized = JSON.stringify(result);
+  for (const hidden of [
+    sensitivePath,
+    vault.rootPath,
+    rawMessage,
+    "EACCES",
+    "EPERM",
+    "permission denied",
+    "errno",
+    "syscall",
+    "stack",
+  ]) {
+    assert.equal(serialized.includes(hidden), false, hidden);
+  }
+});
+
+test("structural indexing isolates a source that disappears after discovery", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(vault, "good.md", "---\nid: good\ntitle: Good\n---\n# Good\n");
+  await createVaultFile(vault, "gone.md", "---\nid: gone\ntitle: Gone\n---\n# Gone\n");
+  const gonePath = path.join(vault.rootPath, "gone.md");
+  const originalReadFile = fs.readFile;
+  let removed = false;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === gonePath && !removed) {
+      removed = true;
+      await fs.unlink(gonePath);
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  const result = await buildVaultIndex(vault);
+
+  assert.deepEqual(Object.keys(result.index.notes), ["good.md"]);
+  assert.deepEqual(
+    result.issues.filter((issue) => issue.kind === "source-unreadable"),
+    [
+      {
+        kind: "source-unreadable",
+        path: "gone.md",
+        message: "Source file could not be read.",
+        severity: "error",
+      },
+    ],
+  );
+});
+
+test("multiple source read failures produce stable ordered issues", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(vault, "z-failed.md", "# Z\n");
+  await createVaultFile(
+    vault,
+    "readable.md",
+    "---\nid: readable\ntitle: Readable\n---\n# Readable\n",
+  );
+  await createVaultFile(vault, "a-failed.md", "# A\n");
+  const failedPaths = new Set([
+    path.join(vault.rootPath, "a-failed.md"),
+    path.join(vault.rootPath, "z-failed.md"),
+  ]);
+  const originalReadFile = fs.readFile;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (typeof file === "string" && failedPaths.has(file)) {
+      throw Object.assign(new Error("injected failure"), { code: "EIO" });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  const result = await buildVaultIndex(vault);
+
+  assert.deepEqual(Object.keys(result.index.notes), ["readable.md"]);
+  assert.deepEqual(
+    result.issues.filter((issue) => issue.kind === "source-unreadable").map((issue) => issue.path),
+    ["a-failed.md", "z-failed.md"],
+  );
+});
+
+test("a recovered source returns to the next structural index without a stale issue", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(vault, "good.md", "---\nid: good\ntitle: Good\n---\n# Good\n");
+  await createVaultFile(
+    vault,
+    "recovered.md",
+    "---\nid: recovered\ntitle: Recovered\ntags: [restored]\n---\n# Recovered\n\n## Returned {#returned}\n",
+  );
+  const recoveredPath = path.join(vault.rootPath, "recovered.md");
+  const originalReadFile = fs.readFile;
+  let failing = true;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === recoveredPath && failing) {
+      throw Object.assign(new Error("transient read failure"), { code: "EIO" });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  const partial = await buildVaultIndex(vault);
+  assert.equal(partial.index.notes["recovered.md"], undefined);
+  assert.ok(partial.issues.some((issue) => issue.kind === "source-unreadable"));
+
+  failing = false;
+  const recovered = await buildVaultIndex(vault);
+  assert.equal(recovered.index.notes["recovered.md"]?.title, "Recovered");
+  assert.deepEqual(recovered.index.notes["recovered.md"]?.tags, ["restored"]);
+  assert.ok(recovered.index.notes["recovered.md"]?.anchors.includes("returned"));
+  assert.equal(
+    recovered.issues.some((issue) => issue.kind === "source-unreadable"),
+    false,
+  );
+});
+
+test("vault-wide source enumeration failures remain global", async (t) => {
+  const vault = await makeVault(t);
+  await fs.rm(vault.rootPath, { recursive: true });
+
+  await assert.rejects(() => buildVaultIndex(vault));
+});
+
+test("unexpected non-filesystem source failures remain global", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(vault, "note.md", "# Note\n");
+  const notePath = path.join(vault.rootPath, "note.md");
+  const originalReadFile = fs.readFile;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === notePath) throw new Error("unexpected invariant failure");
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  await assert.rejects(() => buildVaultIndex(vault), /unexpected invariant failure/);
+});
+
+test("resource-exhaustion and unknown filesystem codes remain global", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(vault, "note.md", "# Note\n");
+  const notePath = path.join(vault.rootPath, "note.md");
+  const originalReadFile = fs.readFile;
+  let injectedCode = "EMFILE";
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === notePath) {
+      throw Object.assign(new Error(`injected ${injectedCode} failure`), {
+        code: injectedCode,
+      });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  for (const code of ["EBADF", "EMFILE", "ENFILE", "ENOSPC", "UNKNOWN"]) {
+    injectedCode = code;
+    await assert.rejects(
+      () => buildVaultIndex(vault),
+      (error: NodeJS.ErrnoException) => error.code === code,
+    );
+  }
+});
+
+test("unrelated public API errors are not classified as source-unreadable", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(vault, "note.md", "# Note\n");
+  const notePath = path.join(vault.rootPath, "note.md");
+  const originalReadFile = fs.readFile;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === notePath) {
+      throw new PublicApiError(400, "Unrelated public invariant", {
+        code: "invalid-vault-operation",
+      });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  await assert.rejects(() => buildVaultIndex(vault), /Unrelated public invariant/);
 });
 
 test("structural indexes exclude source bodies", async (t) => {

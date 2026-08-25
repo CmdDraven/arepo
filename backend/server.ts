@@ -32,9 +32,9 @@ import {
 } from "./protectedRequestDryRun.js";
 import { removeVault } from "./vaultLifecycle.js";
 import {
-  beginVaultIndexBuild,
+  beginVaultIndexBuildBestEffort,
   getVaultRuntimeStatus,
-  recordVaultIndexed,
+  recordVaultIndexedAfterPublication,
   recordVaultMutation,
   stopAllVaultWatchers,
 } from "./vaultWatch.js";
@@ -373,9 +373,11 @@ async function rebuildTrackedMachineIndex(
   vault: VaultInfo,
   cwd: string,
 ): Promise<VaultIndexResponse> {
-  const observation = await beginVaultIndexBuild(vault, cwd);
+  const observation = await beginVaultIndexBuildBestEffort(vault, cwd);
   const data = await rebuildMachineIndex(vault, cwd);
-  await recordVaultIndexed(vault, observation, cwd);
+  if (observation) {
+    await recordVaultIndexedAfterPublication(vault, observation, cwd);
+  }
   return data;
 }
 

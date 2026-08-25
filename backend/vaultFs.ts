@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { buildIndex, validate } from "../src/lib/vault/indexer.js";
+import { buildIndex, validate, type ValidationIssue } from "../src/lib/vault/indexer.js";
 import { sourceKindForPath, sourcePolicy } from "../src/lib/vault/sourcePolicy.js";
 import { defaultVaultIndexScope, markdownPathInScope } from "./indexScope.js";
 import { PublicApiError } from "./publicApiError.js";
@@ -27,6 +27,26 @@ type WritePrecondition = {
 };
 
 const fileWriteLocks = new Map<string, Promise<void>>();
+
+class VaultObservationUnavailableError extends PublicApiError {}
+class VaultPathUnavailableError extends VaultObservationUnavailableError {}
+
+const ISOLATABLE_SOURCE_FILESYSTEM_CODES = new Set([
+  "EACCES",
+  "EBUSY",
+  "EIO",
+  "EISDIR",
+  "ELOOP",
+  "ENAMETOOLONG",
+  "ENOENT",
+  "ENOTDIR",
+  "ENXIO",
+  "EOVERFLOW",
+  "EPERM",
+  "ESTALE",
+  "ETIMEDOUT",
+  "ERR_FS_FILE_TOO_LARGE",
+]);
 
 export type VaultDiscovery = {
   files: VaultFile[];
@@ -100,7 +120,9 @@ export async function readVaultFile(
   vault: VaultInfo,
   rawPath: unknown,
 ): Promise<VaultFileResponse> {
-  requirePermission(vault.permissions.readContent, "Vault is not readable");
+  if (!vault.permissions.readContent) {
+    throw vaultObservationUnavailableError("Vault is not readable");
+  }
   const vaultPath = normalizeReadableTextFilePath(rawPath);
   const absolutePath = await resolveExistingVaultPath(vault, vaultPath);
   const [content, stat] = await Promise.all([
@@ -219,14 +241,39 @@ export async function buildVaultIndex(vault: VaultInfo): Promise<VaultIndexRespo
   const excludedPaths = allFiles
     .filter((file) => !markdownPathInScope(file.path, scope))
     .map((file) => file.path);
+  const root = await realVaultRoot(vault);
   const map: Record<string, string> = {};
-  await Promise.all(
+  const sourceIssues: ValidationIssue[] = [];
+  const reads = await Promise.all(
     files.map(async (file) => {
-      map[file.path] = await fs.readFile(await resolveExistingVaultPath(vault, file.path), "utf8");
+      try {
+        return {
+          path: file.path,
+          content: await fs.readFile(
+            await resolveExistingVaultPathFromRoot(root, file.path),
+            "utf8",
+          ),
+        };
+      } catch (error) {
+        if (!isIsolatableIndexSourceFailure(error)) throw error;
+        return { path: file.path, content: undefined };
+      }
     }),
   );
+  for (const read of reads) {
+    if (read.content === undefined) {
+      sourceIssues.push({
+        kind: "source-unreadable",
+        path: read.path,
+        message: "Source file could not be read.",
+        severity: "error",
+      });
+    } else {
+      map[read.path] = read.content;
+    }
+  }
   const index = buildIndex(map, { excludedPaths });
-  return { index, issues: validate(index) };
+  return { index, issues: [...sourceIssues, ...validate(index)] };
 }
 
 export async function atomicWriteFile(absolutePath: string, content: string): Promise<void> {
@@ -284,21 +331,44 @@ function requirePermission(allowed: boolean, message: string): void {
 async function realVaultRoot(vault: VaultInfo): Promise<string> {
   const root = await fs.realpath(vault.rootPath);
   const stat = await fs.lstat(root);
-  if (!stat.isDirectory()) throw publicVaultError("Vault root is not a directory");
+  if (!stat.isDirectory()) {
+    throw vaultObservationUnavailableError("Vault root is not a directory");
+  }
   return root;
 }
 
 async function resolveExistingVaultPath(vault: VaultInfo, vaultPath: string): Promise<string> {
   const root = await realVaultRoot(vault);
+  return resolveExistingVaultPathFromRoot(root, vaultPath);
+}
+
+async function resolveExistingVaultPathFromRoot(root: string, vaultPath: string): Promise<string> {
   const absolutePath = resolveInsideVault(root, vaultPath);
   await assertNoSymlinkSegments(root, vaultPath, false);
   const stat = await fs.lstat(absolutePath);
   if (stat.isSymbolicLink()) {
-    throw publicVaultError("Symlinks are not allowed inside vault paths");
+    throw vaultPathUnavailableError("Symlinks are not allowed inside vault paths");
   }
   const real = await fs.realpath(absolutePath);
   ensureInside(root, real);
   return absolutePath;
+}
+
+function isIsolatableIndexSourceFailure(error: unknown): boolean {
+  if (error instanceof VaultPathUnavailableError) return true;
+  return isExpectedSourceFilesystemFailure(error);
+}
+
+export function isExpectedVaultObservationFailure(error: unknown): boolean {
+  return (
+    error instanceof VaultObservationUnavailableError || isExpectedSourceFilesystemFailure(error)
+  );
+}
+
+function isExpectedSourceFilesystemFailure(error: unknown): boolean {
+  const code =
+    typeof error === "object" && error !== null ? (error as NodeJS.ErrnoException).code : undefined;
+  return typeof code === "string" && ISOLATABLE_SOURCE_FILESYSTEM_CODES.has(code);
 }
 
 async function resolveWritableVaultPath(vault: VaultInfo, vaultPath: string): Promise<string> {
@@ -310,7 +380,7 @@ async function resolveWritableVaultPath(vault: VaultInfo, vaultPath: string): Pr
     throw error;
   });
   if (stat?.isSymbolicLink()) {
-    throw publicVaultError("Symlinks are not allowed inside vault paths");
+    throw vaultPathUnavailableError("Symlinks are not allowed inside vault paths");
   }
   if (stat) {
     const real = await fs.realpath(absolutePath);
@@ -342,10 +412,10 @@ async function assertNoSymlinkSegments(
     });
     if (!stat) return;
     if (stat.isSymbolicLink()) {
-      throw publicVaultError("Symlinks are not allowed inside vault paths");
+      throw vaultPathUnavailableError("Symlinks are not allowed inside vault paths");
     }
     if (!stat.isDirectory() && i < maxExistingSegments - 1) {
-      throw publicVaultError("Vault path parent is not a directory");
+      throw vaultPathUnavailableError("Vault path parent is not a directory");
     }
   }
 }
@@ -422,6 +492,16 @@ function requiredVaultFileKind(filePath: string): VaultFileKind {
 
 function publicVaultError(message: string): PublicApiError {
   return new PublicApiError(400, message, { code: "invalid-vault-operation" });
+}
+
+function vaultPathUnavailableError(message: string): VaultPathUnavailableError {
+  return new VaultPathUnavailableError(400, message, { code: "invalid-vault-operation" });
+}
+
+function vaultObservationUnavailableError(message: string): VaultObservationUnavailableError {
+  return new VaultObservationUnavailableError(400, message, {
+    code: "invalid-vault-operation",
+  });
 }
 
 async function syncDirectory(directory: string): Promise<void> {

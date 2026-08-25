@@ -3,7 +3,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { sourcePolicy } from "../src/lib/vault/sourcePolicy.js";
 import { rebuildMachineIndex } from "./indexCache.js";
-import { discoverVaultSources, readVaultFile, vaultFileKind } from "./vaultFs.js";
+import {
+  discoverVaultSources,
+  isExpectedVaultObservationFailure,
+  readVaultFile,
+  vaultFileKind,
+} from "./vaultFs.js";
 import type {
   IndexFreshness,
   VaultFile,
@@ -220,6 +225,18 @@ export async function beginVaultIndexBuild(
   );
 }
 
+export async function beginVaultIndexBuildBestEffort(
+  vault: VaultInfo,
+  cwd = process.cwd(),
+): Promise<VaultIndexBuildObservation | undefined> {
+  try {
+    return await beginVaultIndexBuild(vault, cwd);
+  } catch (error) {
+    if (isExpectedVaultObservationFailure(error)) return undefined;
+    throw error;
+  }
+}
+
 export async function recordVaultIndexed(
   vault: VaultInfo,
   observation: VaultIndexBuildObservation,
@@ -239,6 +256,20 @@ export async function recordVaultIndexed(
     markIndexFresh(state);
     state.lastIndexedAt = Date.now();
   });
+}
+
+export async function recordVaultIndexedAfterPublication(
+  vault: VaultInfo,
+  observation: VaultIndexBuildObservation,
+  cwd = process.cwd(),
+): Promise<void> {
+  try {
+    await recordVaultIndexed(vault, observation, cwd);
+  } catch (error) {
+    if (!isExpectedVaultObservationFailure(error)) {
+      console.error("Unexpected vault watcher bookkeeping failure after index publication.");
+    }
+  }
 }
 
 export async function startConfiguredVaultWatchers(

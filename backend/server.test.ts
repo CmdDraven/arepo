@@ -2871,6 +2871,222 @@ test("index inspect endpoint exposes file-level machine-index details", async (t
   assert.equal((orphanResponse.body as VaultInspectResponse).orphan, true);
 });
 
+test("partial indexes keep index, search, filters, and inspect available for readable sources", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  const readablePath = path.join(rootPath, "readable.md");
+  const failedPath = path.join(rootPath, "failed.md");
+  await fs.writeFile(
+    readablePath,
+    "---\nid: readable\ntitle: Readable Source\ntags: [available]\n---\n# Readable Source\n\n## Searchable Heading\n",
+    "utf8",
+  );
+  await fs.writeFile(
+    failedPath,
+    "---\nid: failed\ntitle: Failed Source\ntags: [hidden]\n---\n# Sensitive Hidden Heading\n",
+    "utf8",
+  );
+  const vault = testVault(rootPath, "partial-index-endpoints");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+
+  const initial = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  assert.equal(initial.status, 200);
+  const originalReadFile = fs.readFile;
+  const sensitivePath = "/private/example/secret-vault/failed.md";
+  const rawMessage = `EACCES: permission denied, open '${sensitivePath}'`;
+  let failing = true;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === failedPath && failing) {
+      throw Object.assign(new Error(rawMessage), {
+        code: "EACCES",
+        errno: -13,
+        syscall: "open",
+        path: sensitivePath,
+      });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  const indexResponse = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  assert.equal(indexResponse.status, 200);
+  const partial = indexResponse.body as VaultIndexResponse;
+  assert.deepEqual(Object.keys(partial.index.notes), ["readable.md"]);
+  assert.deepEqual(
+    partial.issues.filter((issue) => issue.kind === "source-unreadable"),
+    [
+      {
+        kind: "source-unreadable",
+        path: "failed.md",
+        message: "Source file could not be read.",
+        severity: "error",
+      },
+    ],
+  );
+
+  const searchResponse = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/search?q=Searchable%20Heading`),
+    cwd,
+  );
+  assert.equal(searchResponse.status, 200);
+  assert.ok(
+    (searchResponse.body as IndexSearchResponse).results.some(
+      (result) => result.path === "readable.md" && result.matchType === "heading",
+    ),
+  );
+  const skippedSearch = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/search?q=Sensitive%20Hidden%20Heading`),
+    cwd,
+  );
+  assert.equal(skippedSearch.status, 200);
+  assert.equal((skippedSearch.body as IndexSearchResponse).total, 0);
+
+  const filterResponse = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/filters?filter=tags`),
+    cwd,
+  );
+  assert.equal(filterResponse.status, 200);
+  assert.deepEqual(
+    (filterResponse.body as IndexFilterResponse).results.map((result) => result.tag),
+    ["available"],
+  );
+
+  const inspectResponse = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/inspect?path=readable.md`),
+    cwd,
+  );
+  assert.equal(inspectResponse.status, 200);
+  assert.equal((inspectResponse.body as VaultInspectResponse).title, "Readable Source");
+  const skippedInspect = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index/inspect?path=failed.md`),
+    cwd,
+  );
+  assert.equal(skippedInspect.status, 404);
+  assert.deepEqual(skippedInspect.body, {
+    ok: false,
+    error: "Unknown indexed note: failed.md",
+    code: "ENOENT",
+  });
+
+  const watcherStatus = await routeRequest(request("GET", `/api/vaults/${vault.id}/status`), cwd);
+  assert.equal(watcherStatus.status, 200);
+  assert.equal((watcherStatus.body as { error?: string }).error, "Vault rescan failed.");
+
+  const serialized = JSON.stringify({
+    indexResponse,
+    searchResponse,
+    skippedSearch,
+    filterResponse,
+    inspectResponse,
+    skippedInspect,
+    watcherStatus,
+  });
+  for (const hidden of [
+    sensitivePath,
+    rootPath,
+    rawMessage,
+    "EACCES",
+    "EPERM",
+    "permission denied",
+    "errno",
+    "syscall",
+    "stack",
+  ]) {
+    assert.equal(serialized.includes(hidden), false, hidden);
+  }
+
+  failing = false;
+  const recoveredResponse = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/index`),
+    cwd,
+  );
+  assert.equal(recoveredResponse.status, 200);
+  const recovered = recoveredResponse.body as VaultIndexResponse;
+  assert.equal(recovered.index.notes["failed.md"]?.title, "Failed Source");
+  assert.equal(
+    recovered.issues.some((issue) => issue.kind === "source-unreadable"),
+    false,
+  );
+});
+
+test("index requests do not require an initial watcher snapshot of an unreadable source", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  await fs.writeFile(
+    path.join(rootPath, "readable.md"),
+    "---\nid: readable\ntitle: Readable\n---\n# Readable\n",
+    "utf8",
+  );
+  const failedPath = path.join(rootPath, "failed.md");
+  await fs.writeFile(failedPath, "---\nid: failed\ntitle: Failed\n---\n# Failed\n", "utf8");
+  const vault = testVault(rootPath, "initial-partial-index");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  const originalReadFile = fs.readFile;
+  const sensitivePath = "/private/example/initial-watcher-secret.md";
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === failedPath) {
+      throw Object.assign(new Error(`EPERM: operation not permitted, open '${sensitivePath}'`), {
+        code: "EPERM",
+        syscall: "open",
+        path: sensitivePath,
+      });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  const response = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+
+  assert.equal(response.status, 200);
+  const data = response.body as VaultIndexResponse;
+  assert.deepEqual(Object.keys(data.index.notes), ["readable.md"]);
+  assert.ok(
+    data.issues.some((issue) => issue.kind === "source-unreadable" && issue.path === "failed.md"),
+  );
+  const serialized = JSON.stringify(response);
+  for (const hidden of [sensitivePath, rootPath, "EPERM", "operation not permitted", "syscall"]) {
+    assert.equal(serialized.includes(hidden), false, hidden);
+  }
+});
+
+test("unexpected initial watcher observation failures propagate before structural indexing", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  const notePath = path.join(rootPath, "note.md");
+  await fs.writeFile(notePath, "---\nid: note\ntitle: Note\n---\n# Note\n", "utf8");
+  const vault = testVault(rootPath, "unexpected-initial-observation");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  const originalReadFile = fs.readFile;
+  let noteReads = 0;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === notePath) {
+      noteReads += 1;
+      throw new Error("unexpected watcher invariant failure");
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  const response = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+
+  assert.equal(noteReads, 1);
+  assert.deepEqual(response.body, {
+    ok: false,
+    error: "Internal server error",
+    code: "internal-error",
+  });
+  assert.equal(JSON.stringify(response).includes("unexpected watcher invariant failure"), false);
+});
+
 test("user-authored index.md is indexed as a normal note when present", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const appDataDir = await makeTestTempDir(t, "arepo-data-");

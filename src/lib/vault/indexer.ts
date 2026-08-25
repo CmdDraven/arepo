@@ -81,7 +81,8 @@ export type ValidationIssue = {
     | "duplicate-anchor"
     | "ambiguous-link"
     | "missing-title"
-    | "missing-id";
+    | "missing-id"
+    | "source-unreadable";
   path: string;
   message: string;
   severity: "warning" | "error";

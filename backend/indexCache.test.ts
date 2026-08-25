@@ -92,3 +92,62 @@ test("concurrent machine index rebuilds do not leave a broken cache file", async
   assert.equal(Object.keys(stored.data.index.notes).length, 2);
   assert.equal(cacheDirFiles.filter((file) => file.endsWith(".tmp")).length, 0);
 });
+
+test("partial structural indexes are published through the existing machine-index format", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  const failedPath = path.join(vault.rootPath, "failed.md");
+  await fs.writeFile(failedPath, "---\nid: failed\ntitle: Failed\n---\n# Failed\n", "utf8");
+  const originalReadFile = fs.readFile;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (file === failedPath) {
+      throw Object.assign(new Error("injected per-source read failure"), { code: "EIO" });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  const data = await rebuildMachineIndex(vault, cwd);
+  const cacheFile = await machineIndexPath(vault, cwd);
+  const stored = JSON.parse(await fs.readFile(cacheFile, "utf8")) as {
+    kind: string;
+    version: number;
+    data: typeof data;
+  };
+
+  assert.equal(data.index.notes["failed.md"], undefined);
+  assert.deepEqual(Object.keys(data.index.notes), ["note.md", "other.md"]);
+  assert.deepEqual(
+    data.issues.filter((issue) => issue.kind === "source-unreadable"),
+    [
+      {
+        kind: "source-unreadable",
+        path: "failed.md",
+        message: "Source file could not be read.",
+        severity: "error",
+      },
+    ],
+  );
+  assert.equal(stored.kind, "arepo.machineIndex");
+  assert.equal(stored.version, 2);
+  assert.deepEqual(stored.data, JSON.parse(JSON.stringify(data)));
+});
+
+test("machine-index publication failures remain global", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  const blockedAppDataPath = path.join(cwd, "app-data-file");
+  await fs.writeFile(blockedAppDataPath, "not a directory", "utf8");
+  await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
+  await fs.writeFile(
+    path.join(cwd, ".arepo", "config.json"),
+    JSON.stringify({
+      node: { nodeId: "local", displayName: "Local Node", mode: "local", apiVersion: 1 },
+      appDataDir: blockedAppDataPath,
+      vaults: [],
+    }),
+    "utf8",
+  );
+
+  await assert.rejects(() => rebuildMachineIndex(vault, cwd));
+});

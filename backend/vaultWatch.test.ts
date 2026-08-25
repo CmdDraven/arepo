@@ -5,7 +5,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { makeTestTempDir } from "./testTemp.js";
-import { rebuildMachineIndex } from "./indexCache.js";
+import { machineIndexPath, rebuildMachineIndex } from "./indexCache.js";
 import { hashContent, readVaultFile } from "./vaultFs.js";
 import {
   beginVaultIndexBuild,
@@ -13,6 +13,7 @@ import {
   getVaultRuntimeStatus,
   NewestSourceRebuildQueue,
   recordVaultIndexed,
+  recordVaultIndexedAfterPublication,
   recordVaultMutation,
   stopAllVaultWatchers,
   stopVaultWatcher,
@@ -700,6 +701,111 @@ test("vault runtime status bounds path-bearing rebuild failures", async (t) => {
   assert.equal(status.error, "Machine index rebuild failed.");
   const serialized = JSON.stringify(status);
   for (const hidden of [blockedAppDataPath, "ENOTDIR", "not a directory", "mkdir", "stack"]) {
+    assert.equal(serialized.includes(hidden), false, hidden);
+  }
+});
+
+test("unexpected post-publication watcher bookkeeping failures are bounded and logged", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-watch-status-");
+  const rootPath = await makeTestTempDir(t, "arepo-watch-root-");
+  const notePath = path.join(rootPath, "note.md");
+  await fs.writeFile(notePath, "# Note\n", "utf8");
+  const vault = testVault(rootPath, "post-publication-bookkeeping-vault");
+  const originalReadFile = fs.readFile;
+  const originalConsoleError = console.error;
+  const logged: unknown[][] = [];
+  t.after(() => {
+    fs.readFile = originalReadFile;
+    console.error = originalConsoleError;
+    stopVaultWatcher(cwd, vault.id);
+  });
+
+  const observation = await beginVaultIndexBuild(vault, cwd);
+  fs.readFile = (async (file, ...args) => {
+    if (file === notePath) throw new Error("unexpected bookkeeping invariant detail");
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+  console.error = (...args: unknown[]) => {
+    logged.push(args);
+  };
+
+  await recordVaultIndexedAfterPublication(vault, observation, cwd);
+
+  assert.deepEqual(logged, [
+    ["Unexpected vault watcher bookkeeping failure after index publication."],
+  ]);
+  const status = await getVaultRuntimeStatus(vault, cwd);
+  assert.equal(status.error, "Vault rescan failed.");
+  const serialized = JSON.stringify({ logged, status });
+  assert.equal(serialized.includes("unexpected bookkeeping invariant detail"), false);
+});
+
+test("watcher-triggered rebuild publishes a partial index for one unreadable source", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-watch-status-");
+  const appDataDir = await makeTestTempDir(t, "arepo-watch-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-watch-root-");
+  const changedPath = path.join(rootPath, "changed.md");
+  const failedPath = path.join(rootPath, "failed.md");
+  await fs.writeFile(changedPath, "# Before\n", "utf8");
+  await fs.writeFile(failedPath, "# Failed\n", "utf8");
+  await fs.mkdir(path.join(cwd, ".arepo"), { recursive: true });
+  await fs.writeFile(
+    path.join(cwd, ".arepo", "config.json"),
+    JSON.stringify({
+      node: { nodeId: "local", displayName: "Local Node", mode: "local", apiVersion: 1 },
+      appDataDir,
+      vaults: [],
+    }),
+    "utf8",
+  );
+  const vault = testVault(rootPath, "watcher-partial-rebuild-vault");
+  const originalReadFile = fs.readFile;
+  const sensitivePath = "/private/example/watcher-partial-secret.md";
+  t.after(() => {
+    fs.readFile = originalReadFile;
+    stopVaultWatcher(cwd, vault.id);
+  });
+
+  await getVaultRuntimeStatus(vault, cwd);
+  await fs.writeFile(changedPath, "# After\n", "utf8");
+  await recordVaultMutation(vault, cwd);
+  fs.readFile = (async (file, ...args) => {
+    if (file === failedPath) {
+      throw Object.assign(new Error(`EACCES: permission denied, open '${sensitivePath}'`), {
+        code: "EACCES",
+        syscall: "open",
+        path: sensitivePath,
+      });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+
+  const cacheFile = await machineIndexPath(vault, cwd);
+  let stored: { data: Awaited<ReturnType<typeof rebuildMachineIndex>> } | undefined;
+  for (let attempt = 0; attempt < 50 && !stored; attempt += 1) {
+    stored = await fs
+      .readFile(cacheFile, "utf8")
+      .then((raw) => JSON.parse(raw) as typeof stored)
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return undefined;
+        throw error;
+      });
+    if (!stored) await nextTurn();
+  }
+
+  assert.ok(stored);
+  assert.equal(stored.data.index.notes["changed.md"]?.title, "After");
+  assert.equal(stored.data.index.notes["failed.md"], undefined);
+  assert.ok(
+    stored.data.issues.some(
+      (issue) => issue.kind === "source-unreadable" && issue.path === "failed.md",
+    ),
+  );
+  const status = await getVaultRuntimeStatus(vault, cwd);
+  assert.equal(status.error, "Vault rescan failed.");
+  assert.notEqual(status.error, "Machine index rebuild failed.");
+  const serialized = JSON.stringify({ stored, status });
+  for (const hidden of [sensitivePath, rootPath, "EACCES", "permission denied", "syscall"]) {
     assert.equal(serialized.includes(hidden), false, hidden);
   }
 });
