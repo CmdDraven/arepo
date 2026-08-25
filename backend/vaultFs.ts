@@ -28,6 +28,11 @@ type WritePrecondition = {
 
 const fileWriteLocks = new Map<string, Promise<void>>();
 
+export type VaultDiscovery = {
+  files: VaultFile[];
+  folders: string[];
+};
+
 export async function listMarkdownFiles(vault: VaultInfo): Promise<VaultFile[]> {
   return (await listSupportedTextFiles(vault)).filter(
     (file) => sourcePolicy(file.kind).contributesToMarkdownIndex,
@@ -62,6 +67,33 @@ export async function listFolders(vault: VaultInfo): Promise<string[]> {
     if (rel !== ".") folders.push(rel);
   });
   return folders.sort((a, b) => a.localeCompare(b));
+}
+
+export async function discoverVaultSources(vault: VaultInfo): Promise<VaultDiscovery> {
+  const root = await realVaultRoot(vault);
+  const files: VaultFile[] = [];
+  const folders: string[] = [];
+  await walk(root, async (absolutePath, dirent) => {
+    if (dirent.isSymbolicLink()) return;
+    if (dirent.isDirectory()) {
+      const rel = toVaultPath(root, absolutePath);
+      if (rel !== ".") folders.push(rel);
+      return;
+    }
+    if (!dirent.isFile()) return;
+    const kind = vaultFileKind(absolutePath);
+    if (!kind) return;
+    const stat = await fs.lstat(absolutePath);
+    files.push({
+      path: toVaultPath(root, absolutePath),
+      kind,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+    });
+  });
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  folders.sort((a, b) => a.localeCompare(b));
+  return { files, folders };
 }
 
 export async function readVaultFile(
