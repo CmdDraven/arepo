@@ -860,7 +860,12 @@ test("watcher-triggered rebuild publishes a partial index for one unreadable sou
   }) as typeof fs.readFile;
 
   const cacheFile = await machineIndexPath(vault, cwd);
-  let stored: { data: Awaited<ReturnType<typeof rebuildMachineIndex>> } | undefined;
+  let stored:
+    | {
+        sourceDerivations: { path: string; data: { title: string } }[];
+        globalData: { issues: { kind: string; path: string }[] };
+      }
+    | undefined;
   for (let attempt = 0; attempt < 50 && !stored; attempt += 1) {
     stored = await fs
       .readFile(cacheFile, "utf8")
@@ -873,10 +878,16 @@ test("watcher-triggered rebuild publishes a partial index for one unreadable sou
   }
 
   assert.ok(stored);
-  assert.equal(stored.data.index.notes["changed.md"]?.title, "After");
-  assert.equal(stored.data.index.notes["failed.md"], undefined);
+  assert.equal(
+    stored.sourceDerivations.find((source) => source.path === "changed.md")?.data.title,
+    "After",
+  );
+  assert.equal(
+    stored.sourceDerivations.some((source) => source.path === "failed.md"),
+    false,
+  );
   assert.ok(
-    stored.data.issues.some(
+    stored.globalData.issues.some(
       (issue) => issue.kind === "source-unreadable" && issue.path === "failed.md",
     ),
   );

@@ -2792,10 +2792,8 @@ test("explicit reindex repairs valid-looking generated derivatives from canonica
   const cacheFile = await machineIndexPath(vault, cwd);
   const stored = JSON.parse(await fs.readFile(cacheFile, "utf8")) as {
     sourceDerivations: { data: { title: string } }[];
-    data: { index: { notes: Record<string, { title: string }> } };
   };
   stored.sourceDerivations[0]!.data.title = "Poisoned Generated Title";
-  stored.data.index.notes["note.md"]!.title = "Poisoned Generated Title";
   await fs.writeFile(cacheFile, JSON.stringify(stored), "utf8");
 
   const response = await routeRequest(request("POST", `/api/vaults/${vault.id}/reindex`), cwd);
@@ -2804,7 +2802,6 @@ test("explicit reindex repairs valid-looking generated derivatives from canonica
   assert.equal(data.index.notes["note.md"]?.title, "Canonical Title");
   const repaired = JSON.parse(await fs.readFile(cacheFile, "utf8")) as typeof stored;
   assert.equal(repaired.sourceDerivations[0]?.data.title, "Canonical Title");
-  assert.equal(repaired.data.index.notes["note.md"]?.title, "Canonical Title");
 });
 
 test("generated-cache read failures remain bounded global index failures", async (t) => {

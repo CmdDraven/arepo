@@ -6,6 +6,8 @@ import {
   deriveMarkdownSource,
   validate,
   type MarkdownSourceDerivation,
+  type ValidationIssue,
+  type VaultIndex,
 } from "../src/lib/vault/indexer.js";
 import { getAppDataDir } from "./config.js";
 import {
@@ -15,10 +17,10 @@ import {
 } from "./vaultFs.js";
 import type { VaultIndexResponse, VaultInfo } from "./types.js";
 
-export const MACHINE_INDEX_VERSION = 4;
+export const MACHINE_INDEX_VERSION = 5;
 export const STRUCTURAL_INDEX_DERIVATION_VERSION = 1;
 export const MARKDOWN_SOURCE_DERIVATION_VERSION = 1;
-const OWNED_MACHINE_INDEX_VERSIONS = new Set([1, 2, 3, MACHINE_INDEX_VERSION]);
+const OWNED_MACHINE_INDEX_VERSIONS = new Set([1, 2, 3, 4, MACHINE_INDEX_VERSION]);
 const indexOperationLocks = new Map<string, Promise<void>>();
 
 export type StoredMarkdownSourceDerivation = {
@@ -30,7 +32,7 @@ export type StoredMarkdownSourceDerivation = {
 
 export type StoredMachineIndex = {
   kind: "arepo.machineIndex";
-  version: 4;
+  version: 5;
   derivationVersion: number;
   generatedAt: string;
   vault: {
@@ -40,7 +42,12 @@ export type StoredMachineIndex = {
   };
   manifest: StructuralIndexInputManifest;
   sourceDerivations: StoredMarkdownSourceDerivation[];
-  data: VaultIndexResponse;
+  globalData: StoredGlobalIndexData;
+};
+
+export type StoredGlobalIndexData = {
+  index: Omit<VaultIndex, "notes">;
+  issues: ValidationIssue[];
 };
 
 export type MachineIndexResult = {
@@ -61,6 +68,7 @@ export type MachineIndexInstrumentation = {
   onSourceDerived?: (path: string, durationMs: number) => void;
   onSourceDerivativeReused?: (path: string) => void;
   onGlobalAssembly?: (durationMs: number) => void;
+  onPublicResponseMaterialization?: (durationMs: number) => void;
   onCacheRead?: (bytes: number, durationMs: number) => void;
   onCacheHit?: () => void;
   onCacheSerialization?: (bytes: number, durationMs: number) => void;
@@ -139,12 +147,12 @@ async function runMachineIndexOperation(
       stored && stored.vault.id === vault.id && stored.vault.rootPathHash === expectedRootHash
         ? stored
         : undefined;
-    const reusableManifest = reusableStored?.manifest;
-    const reusableSourceDerivations = reusableStored?.sourceDerivations ?? [];
+    let reusableManifest = reusableStored?.manifest;
+    let reusableSourceDerivations = reusableStored?.sourceDerivations ?? [];
     const reusableGlobalDerivationVersion = reusableStored?.derivationVersion;
-    let wholeHitData =
+    let reusableGlobalData =
       mode === "get" && reusableGlobalDerivationVersion === STRUCTURAL_INDEX_DERIVATION_VERSION
-        ? reusableStored?.data
+        ? reusableStored?.globalData
         : undefined;
     stored = undefined;
     reusableStored = undefined;
@@ -164,7 +172,7 @@ async function runMachineIndexOperation(
           instrumentation?.onSourceDerivativeReused?.(sourcePath);
           return cached;
         }
-        wholeHitData = undefined;
+        reusableGlobalData = undefined;
         const derivationStartedAt = instrumentation?.onSourceDerived ? performance.now() : 0;
         const derivative = toPersistedMarkdownSourceDerivation(
           deriveMarkdownSource(sourcePath, content),
@@ -185,26 +193,40 @@ async function runMachineIndexOperation(
 
     if (
       mode === "get" &&
-      wholeHitData &&
+      reusableGlobalData &&
       reusableManifest &&
       manifestsEqual(reusableManifest, processed.manifest) &&
       sourceDerivationsMatchManifest(reusableSourceDerivations, processed.manifest)
     ) {
+      const materializationStartedAt = instrumentation?.onPublicResponseMaterialization
+        ? performance.now()
+        : 0;
+      const data = materializeVaultIndexResponse(sourceDerivations, reusableGlobalData);
+      instrumentation?.onPublicResponseMaterialization?.(
+        performance.now() - materializationStartedAt,
+      );
+      instrumentation?.onMemoryCheckpoint?.("after-public-response-materialization");
       instrumentation?.onCacheHit?.();
       instrumentation?.onMemoryCheckpoint?.("operation-complete");
-      return { data: wholeHitData, cacheStatus: "hit" };
+      return { data, cacheStatus: "hit" };
     }
 
     cachedByPath.clear();
-    wholeHitData = undefined;
+    reusableManifest = undefined;
+    reusableSourceDerivations = [];
+    reusableGlobalData = undefined;
     instrumentation?.onMemoryCheckpoint?.("after-obsolete-cache-release");
-    const data = assembleProcessedSources(processed, sourceDerivations, instrumentation);
+    const { data, globalData } = assembleProcessedSources(
+      processed,
+      sourceDerivations,
+      instrumentation,
+    );
     await writeMachineIndexUnlocked(
       file,
       vault,
       processed.manifest,
       sourceDerivations,
-      data,
+      globalData,
       instrumentation,
       expectedRootHash,
     );
@@ -220,7 +242,7 @@ function assembleProcessedSources(
   },
   sourceDerivations: StoredMarkdownSourceDerivation[],
   instrumentation?: MachineIndexInstrumentation,
-): VaultIndexResponse {
+): { data: VaultIndexResponse; globalData: StoredGlobalIndexData } {
   const active: Record<string, MarkdownSourceDerivation> = {};
   for (const source of sourceDerivations) {
     active[source.path] = source.data;
@@ -229,15 +251,17 @@ function assembleProcessedSources(
 
   const assemblyStartedAt = instrumentation?.onGlobalAssembly ? performance.now() : 0;
   const index = assembleIndex(active, { excludedPaths: inputs.excludedPaths });
-  const data = toPersistedVaultIndexResponse({
-    index,
+  const { notes: _notes, ...globalIndex } = index;
+  const globalData = toPersistedGlobalIndexData({
+    index: globalIndex,
     issues: [...inputs.sourceIssues, ...validate(index)],
   });
+  const data = materializeVaultIndexResponse(sourceDerivations, globalData);
   if (instrumentation?.onGlobalAssembly) {
     instrumentation.onGlobalAssembly(performance.now() - assemblyStartedAt);
   }
   instrumentation?.onMemoryCheckpoint?.("after-global-assembly");
-  return data;
+  return { data, globalData };
 }
 
 async function writeMachineIndexUnlocked(
@@ -245,7 +269,7 @@ async function writeMachineIndexUnlocked(
   vault: VaultInfo,
   manifest: StructuralIndexInputManifest,
   sourceDerivations: StoredMarkdownSourceDerivation[],
-  data: VaultIndexResponse,
+  globalData: StoredGlobalIndexData,
   instrumentation?: MachineIndexInstrumentation,
   rootPathHash?: string,
 ): Promise<void> {
@@ -261,7 +285,7 @@ async function writeMachineIndexUnlocked(
     },
     manifest,
     sourceDerivations,
-    data,
+    globalData,
   };
   await fs.mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
@@ -300,9 +324,11 @@ async function readStoredMachineIndex(
   instrumentation?: MachineIndexInstrumentation,
 ): Promise<StoredMachineIndex | undefined> {
   const startedAt = instrumentation?.onCacheRead ? performance.now() : 0;
-  let raw: string;
+  let raw: string | undefined;
+  let rawBytes = 0;
   try {
     raw = await fs.readFile(file, "utf8");
+    rawBytes = Buffer.byteLength(raw, "utf8");
     instrumentation?.onMemoryCheckpoint?.("after-cache-read");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -310,12 +336,16 @@ async function readStoredMachineIndex(
   }
   try {
     const parsed: unknown = JSON.parse(raw);
+    instrumentation?.onMemoryCheckpoint?.("after-cache-parse");
     const result = isStoredMachineIndex(parsed) ? parsed : undefined;
-    instrumentation?.onMemoryCheckpoint?.("after-cache-parse-validation");
-    instrumentation?.onCacheRead?.(Buffer.byteLength(raw, "utf8"), performance.now() - startedAt);
+    instrumentation?.onMemoryCheckpoint?.("after-cache-validation");
+    raw = undefined;
+    instrumentation?.onMemoryCheckpoint?.("after-cache-raw-release");
+    instrumentation?.onCacheRead?.(rawBytes, performance.now() - startedAt);
     return result;
   } catch {
-    instrumentation?.onCacheRead?.(Buffer.byteLength(raw, "utf8"), performance.now() - startedAt);
+    raw = undefined;
+    instrumentation?.onCacheRead?.(rawBytes, performance.now() - startedAt);
     return undefined;
   }
 }
@@ -355,8 +385,20 @@ function toPersistedMarkdownSourceDerivation(
   return JSON.parse(JSON.stringify(data)) as MarkdownSourceDerivation;
 }
 
-function toPersistedVaultIndexResponse(data: VaultIndexResponse): VaultIndexResponse {
-  return JSON.parse(JSON.stringify(data)) as VaultIndexResponse;
+function toPersistedGlobalIndexData(data: StoredGlobalIndexData): StoredGlobalIndexData {
+  return JSON.parse(JSON.stringify(data)) as StoredGlobalIndexData;
+}
+
+function materializeVaultIndexResponse(
+  sourceDerivations: StoredMarkdownSourceDerivation[],
+  globalData: StoredGlobalIndexData,
+): VaultIndexResponse {
+  const notes: Record<string, MarkdownSourceDerivation> = {};
+  for (const source of sourceDerivations) notes[source.path] = source.data;
+  return {
+    index: { notes, ...globalData.index },
+    issues: globalData.issues,
+  };
 }
 
 function isStoredMachineIndex(value: unknown): value is StoredMachineIndex {
@@ -372,7 +414,7 @@ function isStoredMachineIndex(value: unknown): value is StoredMachineIndex {
     typeof value.vault.rootPathHash === "string" &&
     isStructuralIndexManifest(value.manifest) &&
     isStoredSourceDerivations(value.sourceDerivations) &&
-    isVaultIndexResponse(value.data)
+    isStoredGlobalIndexData(value.globalData)
   );
 }
 
@@ -425,11 +467,11 @@ function isStructuralIndexManifest(value: unknown): value is StructuralIndexInpu
   return true;
 }
 
-function isVaultIndexResponse(value: unknown): value is VaultIndexResponse {
+function isStoredGlobalIndexData(value: unknown): value is StoredGlobalIndexData {
   if (!isRecord(value) || !isRecord(value.index) || !Array.isArray(value.issues)) return false;
   const index = value.index;
   if (
-    !isRecord(index.notes) ||
+    Object.hasOwn(index, "notes") ||
     !isStringRecord(index.bySlug) ||
     !isStringArrayRecord(index.duplicateSlugs) ||
     !isStringRecord(index.byId) ||
@@ -448,7 +490,6 @@ function isVaultIndexResponse(value: unknown): value is VaultIndexResponse {
   ) {
     return false;
   }
-  if (!Object.values(index.notes).every(isMarkdownSourceDerivation)) return false;
   for (const links of Object.values(index.outgoingLinks)) {
     if (!Array.isArray(links) || !links.every(isOutgoingLink)) return false;
   }

@@ -1,16 +1,19 @@
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import {
   getMachineIndexResult,
   machineIndexPath,
+  MACHINE_INDEX_VERSION,
   rebuildMachineIndex,
   refreshMachineIndex,
 } from "../dist-backend/backend/indexCache.js";
 import { buildIndexFilterResponse } from "../dist-backend/backend/indexFilters.js";
 import { buildVaultInspectResponse } from "../dist-backend/backend/indexInspect.js";
 import { buildIndexSearchResponse } from "../dist-backend/backend/indexSearch.js";
+import { assembleIndex, validate } from "../dist-backend/src/lib/vault/indexer.js";
 
 const PROFILES = {
   small: { files: 100, averageBytes: 12 * 1024, linksPerFile: 4, seed: 1741 },
@@ -88,56 +91,59 @@ try {
   };
 
   await run("cold-build", (options) => getMachineIndexResult(vault, cwd, options));
-  await run(
-    "warm-whole-hit",
-    (options) => getMachineIndexResult(vault, cwd, options),
-    args.warmIterations,
-  );
+  if (!args.representationOnly) {
+    await run(
+      MACHINE_INDEX_VERSION >= 5 ? "warm-validated-overlay-hit" : "warm-whole-hit",
+      (options) => getMachineIndexResult(vault, cwd, options),
+      args.warmIterations,
+    );
 
-  await mutateSources(vaultRoot, corpus.paths, [0], 1);
-  await run("one-file-changed", (options) => getMachineIndexResult(vault, cwd, options));
+    await mutateSources(vaultRoot, corpus.paths, [0], 1);
+    await run("one-file-changed", (options) => getMachineIndexResult(vault, cwd, options));
 
-  await mutateSources(vaultRoot, corpus.paths, selectFraction(profile.files, 0.01), 2);
-  await run("one-percent-changed", (options) => getMachineIndexResult(vault, cwd, options));
+    await mutateSources(vaultRoot, corpus.paths, selectFraction(profile.files, 0.01), 2);
+    await run("one-percent-changed", (options) => getMachineIndexResult(vault, cwd, options));
 
-  await mutateSources(vaultRoot, corpus.paths, [Math.min(11, profile.files - 1)], 5);
-  await run("watcher-triggered-refresh", (options) => refreshMachineIndex(vault, cwd, options));
+    await mutateSources(vaultRoot, corpus.paths, [Math.min(11, profile.files - 1)], 5);
+    await run("watcher-triggered-refresh", (options) => refreshMachineIndex(vault, cwd, options));
 
-  if (profile.name !== "datacentre" || args.includeTenPercent) {
-    await mutateSources(vaultRoot, corpus.paths, selectFraction(profile.files, 0.1), 3);
-    await run("ten-percent-changed", (options) => getMachineIndexResult(vault, cwd, options));
+    if (profile.name !== "datacentre" || args.includeTenPercent) {
+      await mutateSources(vaultRoot, corpus.paths, selectFraction(profile.files, 0.1), 3);
+      await run("ten-percent-changed", (options) => getMachineIndexResult(vault, cwd, options));
+    }
+
+    await run("explicit-force-reindex", (options) => rebuildMachineIndex(vault, cwd, options));
+
+    await run("search-filter-inspect-warm", async (options) => {
+      const result = await getMachineIndexResult(vault, cwd, options);
+      const queryStartedAt = performance.now();
+      buildIndexSearchResponse(result.data, "tag-3");
+      buildIndexFilterResponse(result.data, "broken-links");
+      buildVaultInspectResponse(result.data, corpus.paths[0]);
+      return { queryMs: performance.now() - queryStartedAt };
+    });
+
+    await run("concurrent-warm-gets", (options) =>
+      Promise.all([
+        getMachineIndexResult(vault, cwd, options),
+        getMachineIndexResult(vault, cwd, options),
+      ]),
+    );
+
+    await mutateSources(vaultRoot, corpus.paths, [Math.min(7, profile.files - 1)], 4);
+    await run("concurrent-get-after-change", (options) =>
+      Promise.all([
+        getMachineIndexResult(vault, cwd, options),
+        getMachineIndexResult(vault, cwd, options),
+      ]),
+    );
   }
-
-  await run("explicit-force-reindex", (options) => rebuildMachineIndex(vault, cwd, options));
-
-  await run("search-filter-inspect-warm", async (options) => {
-    const result = await getMachineIndexResult(vault, cwd, options);
-    const queryStartedAt = performance.now();
-    buildIndexSearchResponse(result.data, "tag-3");
-    buildIndexFilterResponse(result.data, "broken-links");
-    buildVaultInspectResponse(result.data, corpus.paths[0]);
-    return { queryMs: performance.now() - queryStartedAt };
-  });
-
-  await run("concurrent-warm-gets", (options) =>
-    Promise.all([
-      getMachineIndexResult(vault, cwd, options),
-      getMachineIndexResult(vault, cwd, options),
-    ]),
-  );
-
-  await mutateSources(vaultRoot, corpus.paths, [Math.min(7, profile.files - 1)], 4);
-  await run("concurrent-get-after-change", (options) =>
-    Promise.all([
-      getMachineIndexResult(vault, cwd, options),
-      getMachineIndexResult(vault, cwd, options),
-    ]),
-  );
 
   const cacheFile = await machineIndexPath(vault, cwd);
   const cacheBytes = (await fs.stat(cacheFile)).size;
+  const representation = await analyzeCacheRepresentation(cacheFile, corpus.paths[0]);
   const result = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     environment: environmentInfo(),
     profile,
     corpus: {
@@ -152,6 +158,7 @@ try {
       bytesPerSource: cacheBytes / profile.files,
       bytesPerCanonicalByte: cacheBytes / corpus.bytes,
     },
+    representation,
     rows,
     notes: [
       "AREPO-cache-cold does not imply OS-page-cache-cold.",
@@ -166,6 +173,7 @@ try {
   console.log(
     `Cache: ${(cacheBytes / 2 ** 20).toFixed(2)} MiB (${(cacheBytes / profile.files).toFixed(0)} bytes/source; ${(cacheBytes / corpus.bytes).toFixed(3)}x corpus bytes)`,
   );
+  printRepresentationAnalysis(representation);
   if (args.json) {
     await fs.writeFile(path.resolve(args.json), `${JSON.stringify(result, null, 2)}\n`, "utf8");
     console.log(`Machine-readable result: ${path.resolve(args.json)}`);
@@ -191,6 +199,10 @@ function parseArgs(argv) {
     }
     if (arg === "--gc-between-scenarios") {
       out.gcBetweenScenarios = true;
+      continue;
+    }
+    if (arg === "--representation-only") {
+      out.representationOnly = true;
       continue;
     }
     const [name, inline] = arg.split("=", 2);
@@ -367,6 +379,7 @@ async function measureOperation(operation) {
     hashMs: 0,
     derivationMs: 0,
     assemblyMs: 0,
+    materializationMs: 0,
     cacheReadMs: 0,
     serializationMs: 0,
     publicationMs: 0,
@@ -422,6 +435,9 @@ async function measureOperation(operation) {
     onGlobalAssembly: (durationMs) => {
       counts.globalAssemblies += 1;
       phases.assemblyMs += durationMs;
+    },
+    onPublicResponseMaterialization: (durationMs) => {
+      phases.materializationMs += durationMs;
     },
     onCacheRead: (bytes, durationMs) => {
       counts.cacheBytesRead += bytes;
@@ -533,6 +549,374 @@ async function mapConcurrent(items, limit, work) {
 
 function memoryMiB(value) {
   return Object.fromEntries(Object.entries(value).map(([key, bytes]) => [key, bytes / 2 ** 20]));
+}
+
+async function analyzeCacheRepresentation(cacheFile, inspectPath) {
+  if (args.gcBetweenScenarios) global.gc();
+  const parseMemory = await measureParsedRepresentation(cacheFile);
+  if (args.gcBetweenScenarios) global.gc();
+
+  let raw = await fs.readFile(cacheFile, "utf8");
+  const stored = JSON.parse(raw);
+  if (
+    ![4, 5].includes(stored.version) ||
+    !Array.isArray(stored.sourceDerivations) ||
+    (stored.version === 4 ? !stored.data : !stored.globalData)
+  ) {
+    return {
+      cacheVersion: stored.version,
+      parseMemory,
+      unavailable: "Detailed representation analysis expects a v4 or v5 cache.",
+    };
+  }
+
+  const sourceData = stored.sourceDerivations.map((entry) => entry.data);
+  const notes =
+    stored.version === 4 ? stored.data.index.notes : materializeNotes(stored.sourceDerivations);
+  const persistedGlobalData =
+    stored.version === 4
+      ? (() => {
+          const { notes: _notes, ...index } = stored.data.index;
+          return { index, issues: stored.data.issues };
+        })()
+      : stored.globalData;
+  const publicData = {
+    index: { notes, ...persistedGlobalData.index },
+    issues: persistedGlobalData.issues,
+  };
+  const globalIndex = persistedGlobalData.index;
+  const topLevelMetadata = {
+    kind: stored.kind,
+    version: stored.version,
+    derivationVersion: stored.derivationVersion,
+    generatedAt: stored.generatedAt,
+    vault: stored.vault,
+  };
+  const exactDuplicateSources = stored.sourceDerivations.filter(
+    (entry) => JSON.stringify(entry.data) === JSON.stringify(notes[entry.path]),
+  ).length;
+  const sections = {
+    totalJsonBytes: Buffer.byteLength(raw, "utf8"),
+    compactTotalBytes: jsonBytes(stored),
+    topLevelMetadataBytes: jsonBytes(topLevelMetadata),
+    manifestBytes: jsonBytes(stored.manifest),
+    sourceDerivationsBytes: jsonBytes(stored.sourceDerivations),
+    sourceDerivativeDataBytes: jsonBytes(sourceData),
+    assembledResponseBytes: jsonBytes(publicData),
+    assembledNotesBytes: jsonBytes(notes),
+    assembledGlobalIndexBytes: jsonBytes(globalIndex),
+    persistedGlobalDataBytes: jsonBytes(persistedGlobalData),
+    issuesBytes: jsonBytes(publicData.issues),
+    headingsBytes: jsonBytes(sourceData.map((entry) => entry.headings)),
+    tagsBytes: jsonBytes(sourceData.map((entry) => entry.tags)),
+    wikilinksBytes: jsonBytes(sourceData.map((entry) => entry.wikilinks)),
+    frontmatterBytes: jsonBytes(sourceData.map((entry) => entry.frontmatter)),
+    outgoingLinksBytes: jsonBytes(publicData.index.outgoingLinks),
+    backlinksBytes: jsonBytes(publicData.index.backlinks),
+    brokenLinksBytes: jsonBytes(publicData.index.brokenLinks),
+  };
+  raw = undefined;
+
+  const candidateB = {
+    ...topLevelMetadata,
+    manifest: stored.manifest,
+    sourceDerivations: stored.sourceDerivations,
+    sourceIssues: publicData.issues.filter((issue) => issue.kind === "source-unreadable"),
+  };
+  const candidateC = {
+    ...topLevelMetadata,
+    manifest: stored.manifest,
+    sourceDerivations: stored.sourceDerivations,
+    globalData: persistedGlobalData,
+  };
+  const candidateA = {
+    ...topLevelMetadata,
+    version: 4,
+    manifest: stored.manifest,
+    sourceDerivations: stored.sourceDerivations,
+    data: publicData,
+  };
+  const candidateSizes = {
+    currentV4CompactBytes: jsonBytes(candidateA),
+    derivativesOnlyCompactBytes: jsonBytes(candidateB),
+    derivativesGlobalOverlayCompactBytes: jsonBytes(candidateC),
+    currentV4PrettyBytes: prettyJsonBytes(candidateA),
+    derivativesOnlyPrettyBytes: prettyJsonBytes(candidateB),
+    derivativesGlobalOverlayPrettyBytes: prettyJsonBytes(candidateC),
+  };
+  const candidateParseMemory = {
+    currentV4: await measureSerializedParse(candidateA),
+    derivativesGlobalOverlay: await measureSerializedParse({ ...candidateC, version: 5 }),
+  };
+
+  const sourceObjectSet = collectObjectReferences(sourceData);
+  const persistedObjectSet = collectObjectReferences([sourceData, persistedGlobalData]);
+  const publicObjectSet = collectObjectReferences(publicData);
+  const reconstruction = {
+    currentResponse: await measureReconstruction(() => publicData, publicObjectSet),
+    derivativesOnly: await measureReconstruction(
+      () => reconstructFromDerivatives(stored, candidateB.sourceIssues),
+      sourceObjectSet,
+    ),
+    derivativesGlobalOverlay: await measureReconstruction(() => {
+      const materializedNotes = materializeNotes(stored.sourceDerivations);
+      return {
+        index: { notes: materializedNotes, ...candidateC.globalData.index },
+        issues: candidateC.globalData.issues,
+      };
+    }, persistedObjectSet),
+  };
+  const expectedDigest = jsonDigest(publicData);
+  const expectedQueries = queryProjection(publicData, inspectPath);
+  let rebuilt = reconstructFromDerivatives(stored, candidateB.sourceIssues);
+  const derivativesOnlyPublicResponse = jsonDigest(rebuilt) === expectedDigest;
+  const derivativesOnlyQueries =
+    JSON.stringify(queryProjection(rebuilt, inspectPath)) === JSON.stringify(expectedQueries);
+  rebuilt = undefined;
+  if (args.gcBetweenScenarios) global.gc();
+  rebuilt = {
+    index: {
+      notes: materializeNotes(stored.sourceDerivations),
+      ...candidateC.globalData.index,
+    },
+    issues: candidateC.globalData.issues,
+  };
+  const globalOverlayPublicResponse = jsonDigest(rebuilt) === expectedDigest;
+  const globalOverlayQueries =
+    JSON.stringify(queryProjection(rebuilt, inspectPath)) === JSON.stringify(expectedQueries);
+  rebuilt = undefined;
+  if (args.gcBetweenScenarios) global.gc();
+
+  return {
+    cacheVersion: stored.version,
+    sourceCount: stored.sourceDerivations.length,
+    exactDuplicateSources,
+    exactDuplicateFraction:
+      stored.sourceDerivations.length === 0
+        ? 0
+        : exactDuplicateSources / stored.sourceDerivations.length,
+    approximateDuplicatedSourceLocalBytes: stored.version === 4 ? sections.assembledNotesBytes : 0,
+    sections,
+    normalized: {
+      sourceDerivativeBytesPerSource:
+        sections.sourceDerivationsBytes / stored.sourceDerivations.length,
+      assembledResponseBytesPerSource:
+        sections.assembledResponseBytes / stored.sourceDerivations.length,
+    },
+    parseMemory,
+    candidates: candidateSizes,
+    candidateParseMemory,
+    reconstruction,
+    equivalence: {
+      derivativesOnlyPublicResponse,
+      globalOverlayPublicResponse,
+      derivativesOnlyQueries,
+      globalOverlayQueries,
+    },
+    notes: [
+      "Section byte estimates serialize each section independently and therefore do not sum exactly to total JSON bytes.",
+      "Reconstruction heap deltas are retained-heap approximations after an explicit benchmark-only GC when enabled; synchronous transient peaks may be higher.",
+      "The runtime validator is measured by production cache-load checkpoints and validates the parsed graph in place.",
+    ],
+  };
+}
+
+async function measureParsedRepresentation(cacheFile) {
+  if (args.gcBetweenScenarios) global.gc();
+  const baseline = process.memoryUsage();
+  const load = await readAndParseForMeasurement(cacheFile);
+  let parsed = load.parsed;
+  if (args.gcBetweenScenarios) global.gc();
+  const afterRawRelease = process.memoryUsage();
+
+  let derivatives = parsed.sourceDerivations;
+  parsed = undefined;
+  load.parsed = undefined;
+  if (args.gcBetweenScenarios) global.gc();
+  const derivativeOnly = process.memoryUsage();
+  const derivativeCount = derivatives.length;
+  derivatives = undefined;
+  if (args.gcBetweenScenarios) global.gc();
+  const afterDerivativeRelease = process.memoryUsage();
+
+  const secondLoad = await readAndParseForMeasurement(cacheFile);
+  let secondParsed = secondLoad.parsed;
+  let assembled =
+    secondParsed.version === 4
+      ? secondParsed.data
+      : {
+          index: {
+            notes: materializeNotes(secondParsed.sourceDerivations),
+            ...secondParsed.globalData.index,
+          },
+          issues: secondParsed.globalData.issues,
+        };
+  secondParsed = undefined;
+  secondLoad.parsed = undefined;
+  if (args.gcBetweenScenarios) global.gc();
+  const assembledOnly = process.memoryUsage();
+  const noteCount = Object.keys(assembled.index.notes).length;
+  assembled = undefined;
+  if (args.gcBetweenScenarios) global.gc();
+
+  return {
+    derivativeCount,
+    noteCount,
+    absoluteMiB: {
+      baseline: memoryMiB(baseline),
+      afterRawRead: memoryMiB(load.afterRawRead),
+      afterParse: memoryMiB(load.afterParse),
+      afterRawRelease: memoryMiB(afterRawRelease),
+      derivativeOnly: memoryMiB(derivativeOnly),
+      afterDerivativeRelease: memoryMiB(afterDerivativeRelease),
+      assembledOnly: memoryMiB(assembledOnly),
+    },
+    heapDeltaMiB: {
+      rawRead: (load.afterRawRead.heapUsed - baseline.heapUsed) / 2 ** 20,
+      parsedWithRaw: (load.afterParse.heapUsed - baseline.heapUsed) / 2 ** 20,
+      parsedWithoutRaw: (afterRawRelease.heapUsed - baseline.heapUsed) / 2 ** 20,
+      derivativeOnly: (derivativeOnly.heapUsed - afterDerivativeRelease.heapUsed) / 2 ** 20,
+      assembledOnly: (assembledOnly.heapUsed - afterDerivativeRelease.heapUsed) / 2 ** 20,
+    },
+  };
+}
+
+async function readAndParseForMeasurement(cacheFile) {
+  const raw = await fs.readFile(cacheFile, "utf8");
+  const afterRawRead = process.memoryUsage();
+  const parsed = JSON.parse(raw);
+  const afterParse = process.memoryUsage();
+  return { parsed, afterRawRead, afterParse };
+}
+
+async function measureReconstruction(build, sourceObjectSet) {
+  if (args.gcBetweenScenarios) global.gc();
+  const before = process.memoryUsage();
+  const startedAt = performance.now();
+  let result = build();
+  const durationMs = performance.now() - startedAt;
+  if (args.gcBetweenScenarios) global.gc();
+  const after = process.memoryUsage();
+  const resultObjectNodes = countObjectNodes(result);
+  const newlyOwnedObjectNodes = countObjectNodes(result, sourceObjectSet);
+  result = undefined;
+  if (args.gcBetweenScenarios) global.gc();
+  return {
+    durationMs,
+    retainedHeapDeltaMiB: (after.heapUsed - before.heapUsed) / 2 ** 20,
+    resultObjectNodes,
+    newlyOwnedObjectNodes,
+  };
+}
+
+async function measureSerializedParse(value) {
+  if (args.gcBetweenScenarios) global.gc();
+  const before = process.memoryUsage();
+  const load = stringifyAndParseForMeasurement(value);
+  if (args.gcBetweenScenarios) global.gc();
+  const parsedWithoutRaw = process.memoryUsage();
+  load.parsed = undefined;
+  if (args.gcBetweenScenarios) global.gc();
+  return {
+    bytes: load.bytes,
+    heapDeltaMiB: {
+      raw: (load.afterRaw.heapUsed - before.heapUsed) / 2 ** 20,
+      parsedWithRaw: (load.afterParse.heapUsed - before.heapUsed) / 2 ** 20,
+      parsedWithoutRaw: (parsedWithoutRaw.heapUsed - before.heapUsed) / 2 ** 20,
+    },
+  };
+}
+
+function stringifyAndParseForMeasurement(value) {
+  const raw = `${JSON.stringify(value, null, 2)}\n`;
+  const bytes = Buffer.byteLength(raw, "utf8");
+  const afterRaw = process.memoryUsage();
+  const parsed = JSON.parse(raw);
+  const afterParse = process.memoryUsage();
+  return { parsed, bytes, afterRaw, afterParse };
+}
+
+function reconstructFromDerivatives(stored, sourceIssues) {
+  const active = Object.fromEntries(
+    stored.sourceDerivations.map((entry) => [entry.path, entry.data]),
+  );
+  const index = assembleIndex(active, {
+    excludedPaths: stored.manifest.sources
+      .filter((source) => source.state === "excluded")
+      .map((source) => source.path),
+  });
+  return { index, issues: [...sourceIssues, ...validate(index)] };
+}
+
+function queryProjection(data, inspectPath) {
+  return {
+    search: buildIndexSearchResponse(data, "tag-3"),
+    filter: buildIndexFilterResponse(data, "broken-links"),
+    inspect: buildVaultInspectResponse(data, inspectPath),
+  };
+}
+
+function countObjectNodes(value, excluded = new Set()) {
+  const seen = new Set();
+  const visit = (candidate) => {
+    if (
+      !candidate ||
+      typeof candidate !== "object" ||
+      seen.has(candidate) ||
+      excluded.has(candidate)
+    ) {
+      return 0;
+    }
+    seen.add(candidate);
+    return 1 + Object.values(candidate).reduce((total, child) => total + visit(child), 0);
+  };
+  return visit(value);
+}
+
+function collectObjectReferences(value) {
+  const references = new Set();
+  const visit = (candidate) => {
+    if (!candidate || typeof candidate !== "object" || references.has(candidate)) return;
+    references.add(candidate);
+    for (const child of Object.values(candidate)) visit(child);
+  };
+  visit(value);
+  return references;
+}
+
+function materializeNotes(sourceDerivations) {
+  const notes = {};
+  for (const source of sourceDerivations) notes[source.path] = source.data;
+  return notes;
+}
+
+function jsonBytes(value) {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
+}
+
+function prettyJsonBytes(value) {
+  return Buffer.byteLength(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function jsonDigest(value) {
+  return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function printRepresentationAnalysis(analysis) {
+  if (analysis.unavailable) {
+    console.log(`Representation analysis unavailable: ${analysis.unavailable}`);
+    return;
+  }
+  const mib = (bytes) => (bytes / 2 ** 20).toFixed(2);
+  console.log(
+    `Representation: manifest ${mib(analysis.sections.manifestBytes)} MiB; derivatives ${mib(analysis.sections.sourceDerivationsBytes)} MiB; public projection ${mib(analysis.sections.assembledResponseBytes)} MiB; persisted duplicated notes ${mib(analysis.approximateDuplicatedSourceLocalBytes)} MiB`,
+  );
+  console.log(
+    `Candidates (pretty): A ${mib(analysis.candidates.currentV4PrettyBytes)} MiB; B ${mib(analysis.candidates.derivativesOnlyPrettyBytes)} MiB; C ${mib(analysis.candidates.derivativesGlobalOverlayPrettyBytes)} MiB`,
+  );
+  console.log(
+    `Reconstruction: B ${analysis.reconstruction.derivativesOnly.durationMs.toFixed(1)} ms / ${analysis.reconstruction.derivativesOnly.retainedHeapDeltaMiB.toFixed(1)} MiB retained; C ${analysis.reconstruction.derivativesGlobalOverlay.durationMs.toFixed(1)} ms / ${analysis.reconstruction.derivativesGlobalOverlay.retainedHeapDeltaMiB.toFixed(1)} MiB retained`,
+  );
 }
 
 function environmentInfo() {

@@ -17,11 +17,12 @@ import {
   STRUCTURAL_INDEX_DERIVATION_VERSION,
   vaultRootHash,
   type MachineIndexOperationOptions,
+  type StoredMachineIndex,
 } from "./indexCache.js";
 import { buildIndexFilterResponse } from "./indexFilters.js";
 import { buildVaultInspectResponse } from "./indexInspect.js";
 import { buildIndexSearchResponse } from "./indexSearch.js";
-import type { VaultInfo } from "./types.js";
+import type { VaultIndexResponse, VaultInfo } from "./types.js";
 
 async function makeVault(t: TestContext): Promise<{ cwd: string; vault: VaultInfo }> {
   const cwd = await makeTestTempDir(t, "arepo-index-cache-cwd-");
@@ -54,6 +55,24 @@ async function writeFile(root: string, rel: string, content: string): Promise<vo
   const file = path.join(root, rel);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, content, "utf8");
+}
+
+function materializeStoredResponse(stored: {
+  sourceDerivations: { path: string; data: VaultIndexResponse["index"]["notes"][string] }[];
+  globalData: {
+    index: Omit<VaultIndexResponse["index"], "notes">;
+    issues: VaultIndexResponse["issues"];
+  };
+}): VaultIndexResponse {
+  return {
+    index: {
+      notes: Object.fromEntries(
+        stored.sourceDerivations.map((source) => [source.path, source.data]),
+      ),
+      ...stored.globalData.index,
+    },
+    issues: stored.globalData.issues,
+  };
 }
 
 type WorkCounts = {
@@ -140,10 +159,7 @@ test("concurrent machine index rebuilds do not leave a broken cache file", async
   );
 
   const cacheFile = await machineIndexPath(vault, cwd);
-  const stored = JSON.parse(await fs.readFile(cacheFile, "utf8")) as {
-    kind: string;
-    data: { index: { notes: Record<string, unknown> } };
-  };
+  const stored = JSON.parse(await fs.readFile(cacheFile, "utf8")) as StoredMachineIndex;
   const cacheDirFiles = await fs.readdir(path.dirname(cacheFile));
 
   assert.equal(
@@ -151,7 +167,8 @@ test("concurrent machine index rebuilds do not leave a broken cache file", async
     true,
   );
   assert.equal(stored.kind, "arepo.machineIndex");
-  assert.equal(Object.keys(stored.data.index.notes).length, 2);
+  assert.equal(stored.sourceDerivations.length, 2);
+  assert.equal(Object.hasOwn(stored.globalData.index, "notes"), false);
   assert.equal(cacheDirFiles.filter((file) => file.endsWith(".tmp")).length, 0);
 });
 
@@ -175,7 +192,8 @@ test("partial structural indexes are published through the existing machine-inde
   const stored = JSON.parse(await fs.readFile(cacheFile, "utf8")) as {
     kind: string;
     version: number;
-    data: typeof data;
+    sourceDerivations: { path: string; data: (typeof data.index.notes)[string] }[];
+    globalData: { index: Omit<typeof data.index, "notes">; issues: typeof data.issues };
   };
 
   assert.equal(data.index.notes["failed.md"], undefined);
@@ -192,8 +210,8 @@ test("partial structural indexes are published through the existing machine-inde
     ],
   );
   assert.equal(stored.kind, "arepo.machineIndex");
-  assert.equal(stored.version, 4);
-  assert.deepEqual(stored.data, JSON.parse(JSON.stringify(data)));
+  assert.equal(stored.version, MACHINE_INDEX_VERSION);
+  assert.deepEqual(materializeStoredResponse(stored), JSON.parse(JSON.stringify(data)));
 });
 
 test("machine-index publication failures remain global", async (t) => {
@@ -232,7 +250,7 @@ test("get cache misses do not hide publication failures", async (t) => {
   await assert.rejects(() => getMachineIndex(vault, cwd));
 });
 
-test("get creates a v4 cache with deterministic private validity metadata", async (t) => {
+test("get creates a v5 cache with deterministic private validity metadata", async (t) => {
   const { cwd, vault } = await makeVault(t);
 
   const first = await getMachineIndexResult(vault, cwd);
@@ -251,7 +269,7 @@ test("get creates a v4 cache with deterministic private validity metadata", asyn
       derivationVersion: number;
       data: Record<string, unknown>;
     }[];
-    data: { index: { notes: Record<string, Record<string, unknown>> } };
+    globalData: { index: Record<string, unknown>; issues: unknown[] };
   };
 
   assert.equal(first.cacheStatus, "rebuilt");
@@ -289,19 +307,15 @@ test("get creates a v4 cache with deterministic private validity metadata", asyn
   ]) {
     assert.equal(raw.includes(hidden), false, hidden);
   }
-  assert.equal(Object.hasOwn(stored.data.index.notes, "plain.txt"), false);
-  assert.equal(Object.hasOwn(stored.data.index.notes, "conversation.arepo-chat.json"), false);
-  assert.equal(
-    Object.values(stored.data.index.notes).some((note) => Object.hasOwn(note, "body")),
-    false,
-  );
+  assert.equal(Object.hasOwn(stored, "data"), false);
+  assert.equal(Object.hasOwn(stored.globalData.index, "notes"), false);
   assert.equal(
     stored.sourceDerivations.some((derivative) => Object.hasOwn(derivative.data, "body")),
     false,
   );
 });
 
-test("v4 work counters prove cold, warm, changed, fallback, and force behavior", async (t) => {
+test("v5 work counters prove cold, warm, changed, fallback, and force behavior", async (t) => {
   const { cwd, vault } = await makeVault(t);
 
   const cold = measureWork();
@@ -350,6 +364,46 @@ test("v4 work counters prove cold, warm, changed, fallback, and force behavior",
     globalAssemblies: 1,
     publications: 1,
   });
+});
+
+test("v5 warm hits materialize notes from derivatives without global assembly", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  const cold = await getMachineIndex(vault, cwd);
+  let materializations = 0;
+  const warmWork = measureWork();
+  warmWork.options.instrumentation!.onPublicResponseMaterialization = () => {
+    materializations += 1;
+  };
+
+  const warm = await getMachineIndexResult(vault, cwd, warmWork.options);
+  const stored = JSON.parse(
+    await fs.readFile(await machineIndexPath(vault, cwd), "utf8"),
+  ) as StoredMachineIndex & Record<string, unknown>;
+
+  assert.equal(warm.cacheStatus, "hit");
+  assert.deepEqual(warm.data, cold);
+  assert.equal(materializations, 1);
+  assert.equal(warmWork.counts.globalAssemblies, 0);
+  assert.equal(warmWork.counts.sourceDerivations, 0);
+  assert.equal(warmWork.counts.publications, 0);
+  assert.equal(Object.hasOwn(stored, "data"), false);
+  assert.equal(Object.hasOwn(stored.globalData.index, "notes"), false);
+  assert.deepEqual(materializeStoredResponse(stored), cold);
+});
+
+test("v5 generated representation is deterministic apart from generatedAt", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  const firstData = await rebuildMachineIndex(vault, cwd);
+  const cacheFile = await machineIndexPath(vault, cwd);
+  const first = JSON.parse(await fs.readFile(cacheFile, "utf8")) as StoredMachineIndex;
+  const secondData = await rebuildMachineIndex(vault, cwd);
+  const second = JSON.parse(await fs.readFile(cacheFile, "utf8")) as StoredMachineIndex;
+
+  assert.deepEqual(secondData, firstData);
+  assert.deepEqual(
+    { ...second, generatedAt: "<generated>" },
+    { ...first, generatedAt: "<generated>" },
+  );
 });
 
 test("cold, warm, changed, and force operations release each canonical body promptly", async (t) => {
@@ -694,6 +748,7 @@ test("legacy, mismatched, and malformed generated caches rebuild safely", async 
     ["v1", (stored) => JSON.stringify({ ...stored, version: 1 })],
     ["v2", (stored) => JSON.stringify({ ...stored, version: 2 })],
     ["v3", (stored) => JSON.stringify({ ...stored, version: 3 })],
+    ["v4", (stored) => JSON.stringify({ ...stored, version: 4 })],
     [
       "derivation",
       (stored) =>
@@ -730,7 +785,49 @@ test("legacy, mismatched, and malformed generated caches rebuild safely", async 
         }),
     ],
     ["malformed JSON", () => "{not-json"],
-    ["malformed data", (stored) => JSON.stringify({ ...stored, data: { index: {} } })],
+    [
+      "malformed global data",
+      (stored) => JSON.stringify({ ...stored, globalData: { index: {}, issues: [] } }),
+    ],
+    [
+      "global data containing notes",
+      (stored) => {
+        const globalData = stored.globalData as { index: Record<string, unknown> };
+        return JSON.stringify({
+          ...stored,
+          globalData: { ...globalData, index: { ...globalData.index, notes: {} } },
+        });
+      },
+    ],
+    [
+      "malformed global link",
+      (stored) => {
+        const globalData = stored.globalData as {
+          index: Record<string, unknown>;
+          issues: unknown[];
+        };
+        return JSON.stringify({
+          ...stored,
+          globalData: {
+            ...globalData,
+            index: { ...globalData.index, outgoingLinks: { "note.md": [{ target: 42 }] } },
+          },
+        });
+      },
+    ],
+    [
+      "malformed global issue",
+      (stored) => {
+        const globalData = stored.globalData as {
+          index: Record<string, unknown>;
+          issues: unknown[];
+        };
+        return JSON.stringify({
+          ...stored,
+          globalData: { ...globalData, issues: [{ kind: "missing-id", path: 42 }] },
+        });
+      },
+    ],
   ];
 
   for (const [label, mutate] of cases) {
@@ -785,15 +882,15 @@ test("source and global derivation versions invalidate only their semantic layer
   });
 });
 
-test("malformed source derivatives and v3 caches rederive safely", async (t) => {
-  for (const cacheKind of ["malformed derivative", "v3"] as const) {
+test("malformed source derivatives and v4 caches rederive safely", async (t) => {
+  for (const cacheKind of ["malformed derivative", "v4"] as const) {
     await t.test(cacheKind, async (t) => {
       const { cwd, vault } = await makeVault(t);
       await getMachineIndex(vault, cwd);
       const cacheFile = await machineIndexPath(vault, cwd);
       const stored = JSON.parse(await fs.readFile(cacheFile, "utf8")) as Record<string, unknown>;
-      if (cacheKind === "v3") {
-        stored.version = 3;
+      if (cacheKind === "v4") {
+        stored.version = 4;
         delete stored.sourceDerivations;
       } else {
         const sourceDerivations = stored.sourceDerivations as {
@@ -813,14 +910,14 @@ test("malformed source derivatives and v3 caches rederive safely", async (t) => 
       });
       assert.equal(
         (JSON.parse(await fs.readFile(cacheFile, "utf8")) as { version: number }).version,
-        4,
+        MACHINE_INDEX_VERSION,
       );
     });
   }
 });
 
-test("v1, v2, and v3 owned generated files remain removable", async (t) => {
-  for (const version of [1, 2, 3]) {
+test("v1 through v4 owned generated files remain removable", async (t) => {
+  for (const version of [1, 2, 3, 4]) {
     await t.test(`v${version}`, async (t) => {
       const { cwd, vault } = await makeVault(t);
       const file = await machineIndexPath(vault, cwd);
@@ -979,8 +1076,11 @@ test("concurrent force rebuild and get serialize without stale publication", asy
   assert.equal(forced.index.notes["note.md"]?.title, "Current");
   assert.equal(retrieved.cacheStatus, "hit");
   assert.equal(retrieved.data.index.notes["note.md"]?.title, "Current");
-  const stored = JSON.parse(await fs.readFile(await machineIndexPath(vault, cwd), "utf8")) as {
-    data: typeof forced;
-  };
-  assert.equal(stored.data.index.notes["note.md"]?.title, "Current");
+  const stored = JSON.parse(
+    await fs.readFile(await machineIndexPath(vault, cwd), "utf8"),
+  ) as StoredMachineIndex;
+  assert.equal(
+    stored.sourceDerivations.find((source) => source.path === "note.md")?.data.title,
+    "Current",
+  );
 });

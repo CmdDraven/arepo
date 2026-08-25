@@ -350,10 +350,13 @@ configured app data directory:
 These files are disposable caches. They may be deleted and rebuilt from the
 Markdown vault. Markdown files remain the source of truth. AREPO must not
 depend on a user-created `index.md` file to make graph, backlinks, validation,
-or search work. The version 4 cache stores disposable per-source Markdown
-structural derivations without full source bodies. Matching content hashes let
-unchanged sources skip parsing while global link, backlink, duplicate, orphan,
-and validation state is reassembled deterministically when inputs change.
+or search work. The version 5 cache stores disposable per-source Markdown
+structural derivations once, without full source bodies, plus a compact global
+overlay for link, backlink, duplicate, orphan, and validation state. A validated
+unchanged cache materializes the public notes map from those derivatives without
+rerunning global assembly or republishing the cache. Matching content hashes let
+unchanged sources skip parsing while global state is reassembled deterministically
+when inputs change.
 Whole-index validation still reads and hashes every in-scope Markdown body
 because the current watcher cannot prove exact-on-access content identity; AREPO
 falls back to canonical source reads rather than trusting size, mtime, or a
@@ -382,8 +385,10 @@ overridden with `--files`, `--average-bytes`, `--links-per-file`, `--seed`,
 `--warm-iterations`, and `--json`. The `file-heavy` and `byte-heavy` profiles
 separate per-file filesystem overhead from canonical read/hash bandwidth.
 The optional `bench:index:gc` form exposes Node's garbage collector and runs it
-between scenarios for cleaner comparative memory samples. AREPO application
-code never invokes or depends on explicit garbage collection.
+between scenarios for cleaner comparative memory samples. The JSON result also
+includes cache-section sizes, isolated parse/retention measurements, and measured
+derivative-only versus compact-global-overlay reconstruction candidates. AREPO
+application code never invokes or depends on explicit garbage collection.
 
 Benchmark timings are machine- and environment-specific. Repeated runs are
 normally affected by the operating system page cache; the harness does not
