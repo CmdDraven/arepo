@@ -372,6 +372,7 @@ removes the fixtures when it finishes or fails:
 npm run bench:index -- --profile small
 npm run bench:index -- --profile medium
 npm run bench:index -- --profile datacentre
+npm run bench:index:gc -- --profile medium
 ```
 
 The 50,000-file datacentre profile is explicitly opt-in and checks available
@@ -380,6 +381,9 @@ links per source, seed, warm iterations, and an optional JSON result path can be
 overridden with `--files`, `--average-bytes`, `--links-per-file`, `--seed`,
 `--warm-iterations`, and `--json`. The `file-heavy` and `byte-heavy` profiles
 separate per-file filesystem overhead from canonical read/hash bandwidth.
+The optional `bench:index:gc` form exposes Node's garbage collector and runs it
+between scenarios for cleaner comparative memory samples. AREPO application
+code never invokes or depends on explicit garbage collection.
 
 Benchmark timings are machine- and environment-specific. Repeated runs are
 normally affected by the operating system page cache; the harness does not

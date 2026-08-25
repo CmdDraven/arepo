@@ -78,6 +78,7 @@ try {
     if (interrupted) throw new Error("Benchmark cancelled.");
     const samples = [];
     for (let iteration = 0; iteration < iterations; iteration += 1) {
+      if (args.gcBetweenScenarios) global.gc();
       samples.push(await measureOperation(operation));
     }
     const row = summarizeSamples(scenario, samples, corpus);
@@ -136,7 +137,7 @@ try {
   const cacheFile = await machineIndexPath(vault, cwd);
   const cacheBytes = (await fs.stat(cacheFile)).size;
   const result = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     environment: environmentInfo(),
     profile,
     corpus: {
@@ -157,6 +158,9 @@ try {
       "Repeated scenarios are OS-cache-warm; this harness does not flush the operating-system page cache.",
       "Phase durations from concurrent operations are accumulated observer durations and may overlap in wall time.",
       "Memory peaks are sampled process-wide and are approximate.",
+      args.gcBetweenScenarios
+        ? "Explicit GC ran between scenarios; application code never invokes GC."
+        : "Explicit GC was not used between scenarios.",
     ],
   };
   console.log(
@@ -185,6 +189,10 @@ function parseArgs(argv) {
       out.includeTenPercent = true;
       continue;
     }
+    if (arg === "--gc-between-scenarios") {
+      out.gcBetweenScenarios = true;
+      continue;
+    }
     const [name, inline] = arg.split("=", 2);
     const key = {
       "--profile": "profile",
@@ -202,6 +210,9 @@ function parseArgs(argv) {
     out[key] = key === "profile" || key === "json" ? value : Number(value);
   }
   out.warmIterations = positiveInteger(out.warmIterations, "warm-iterations");
+  if (out.gcBetweenScenarios && typeof global.gc !== "function") {
+    fail("--gc-between-scenarios requires node --expose-gc.");
+  }
   return out;
 }
 
@@ -347,6 +358,8 @@ async function measureOperation(operation) {
     cacheBytesWritten: 0,
     fsConcurrencyHighWater: 0,
     duplicateBodyReads: 0,
+    peakLiveBodies: 0,
+    peakLiveBodyBytes: 0,
   };
   const phases = {
     discoveryMs: 0,
@@ -360,7 +373,10 @@ async function measureOperation(operation) {
     queryMs: 0,
   };
   let activeReads = 0;
+  let liveBodies = 0;
+  let liveBodyBytes = 0;
   const readPaths = new Set();
+  const memoryCheckpoints = [];
   const instrumentation = {
     onMarkdownBodyRead: (sourcePath) => {
       counts.bodyReads += 1;
@@ -374,6 +390,16 @@ async function measureOperation(operation) {
     },
     onMarkdownBodyReadSettled: () => {
       activeReads -= 1;
+    },
+    onMarkdownBodyRetained: (_sourcePath, bytes) => {
+      liveBodies += 1;
+      liveBodyBytes += bytes;
+      counts.peakLiveBodies = Math.max(counts.peakLiveBodies, liveBodies);
+      counts.peakLiveBodyBytes = Math.max(counts.peakLiveBodyBytes, liveBodyBytes);
+    },
+    onMarkdownBodyReleased: (_sourcePath, bytes) => {
+      liveBodies -= 1;
+      liveBodyBytes -= bytes;
     },
     onHashCalculated: (_sourcePath, durationMs) => {
       counts.hashes += 1;
@@ -414,6 +440,15 @@ async function measureOperation(operation) {
     onPublication: () => {
       counts.publications += 1;
     },
+    onMemoryCheckpoint: (phase) => {
+      sampleMemory();
+      memoryCheckpoints.push({
+        phase,
+        memory: memoryMiB(process.memoryUsage()),
+        liveBodies,
+        liveBodyMiB: liveBodyBytes / 2 ** 20,
+      });
+    },
   };
   const before = process.memoryUsage();
   let peak = before;
@@ -451,6 +486,7 @@ async function measureOperation(operation) {
       peak: memoryMiB(peak),
       after: memoryMiB(after),
       processMaxRssMiB: process.resourceUsage().maxRSS / 1024,
+      checkpoints: memoryCheckpoints,
     },
   };
 }
@@ -477,7 +513,7 @@ function printRow(row) {
   const c = row.counts;
   const p = row.phases;
   console.log(
-    `${row.scenario.padEnd(29)} ${row.totalMs.toFixed(1).padStart(9)} ms | reads ${String(c.bodyReads).padStart(6)} (${formatMiB(c.bytesRead)}) | parses ${String(c.sourceDerivations).padStart(6)} | reused ${String(c.sourceDerivativesReused).padStart(6)} | assembly ${p.assemblyMs.toFixed(1).padStart(7)} ms | cache I/O ${(p.cacheReadMs + p.serializationMs + p.publicationMs).toFixed(1).padStart(7)} ms | peak RSS ${row.memory.peak.rss.toFixed(1)} MiB | fs high-water ${c.fsConcurrencyHighWater}`,
+    `${row.scenario.padEnd(29)} ${row.totalMs.toFixed(1).padStart(9)} ms | reads ${String(c.bodyReads).padStart(6)} (${formatMiB(c.bytesRead)}) | parses ${String(c.sourceDerivations).padStart(6)} | reused ${String(c.sourceDerivativesReused).padStart(6)} | assembly ${p.assemblyMs.toFixed(1).padStart(7)} ms | cache I/O ${(p.cacheReadMs + p.serializationMs + p.publicationMs).toFixed(1).padStart(7)} ms | live bodies ${String(c.peakLiveBodies).padStart(6)} (${formatMiB(c.peakLiveBodyBytes)}) | peak RSS ${row.memory.peak.rss.toFixed(1)} MiB | heap ${row.memory.peak.heapUsed.toFixed(1)} MiB | fs high-water ${c.fsConcurrencyHighWater}`,
   );
 }
 

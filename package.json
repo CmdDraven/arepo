@@ -16,7 +16,8 @@
     "backend:dev:server": "npm run backend:build && node dist-backend/backend/server.js",
     "frontend:menu": "node scripts/frontend-menu.mjs",
     "frontend:test": "node --experimental-strip-types --test src/lib/workspace/*.test.ts src/lib/vault/*.test.ts",
-    "bench:index": "npm run backend:build && node scripts/bench-index.mjs"
+    "bench:index": "npm run backend:build && node scripts/bench-index.mjs",
+    "bench:index:gc": "npm run backend:build && node --expose-gc scripts/bench-index.mjs --gc-between-scenarios"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

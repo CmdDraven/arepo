@@ -91,6 +91,47 @@ function measureWork(): { counts: WorkCounts; options: MachineIndexOperationOpti
   };
 }
 
+function measureBodyLifetime(maxConcurrentMarkdownReads = 2): {
+  state: {
+    liveBodies: number;
+    liveBytes: number;
+    peakBodies: number;
+    peakBytes: number;
+    retained: number;
+    released: number;
+  };
+  options: MachineIndexOperationOptions;
+} {
+  const state = {
+    liveBodies: 0,
+    liveBytes: 0,
+    peakBodies: 0,
+    peakBytes: 0,
+    retained: 0,
+    released: 0,
+  };
+  return {
+    state,
+    options: {
+      maxConcurrentMarkdownReads,
+      instrumentation: {
+        onMarkdownBodyRetained: (_path, bytes) => {
+          state.liveBodies += 1;
+          state.liveBytes += bytes;
+          state.retained += 1;
+          state.peakBodies = Math.max(state.peakBodies, state.liveBodies);
+          state.peakBytes = Math.max(state.peakBytes, state.liveBytes);
+        },
+        onMarkdownBodyReleased: (_path, bytes) => {
+          state.liveBodies -= 1;
+          state.liveBytes -= bytes;
+          state.released += 1;
+        },
+      },
+    },
+  };
+}
+
 test("concurrent machine index rebuilds do not leave a broken cache file", async (t) => {
   const { cwd, vault } = await makeVault(t);
 
@@ -309,6 +350,29 @@ test("v4 work counters prove cold, warm, changed, fallback, and force behavior",
     globalAssemblies: 1,
     publications: 1,
   });
+});
+
+test("cold, warm, changed, and force operations release each canonical body promptly", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  const runMeasured = async (
+    operation: (options: MachineIndexOperationOptions) => Promise<unknown>,
+  ) => {
+    const measured = measureBodyLifetime();
+    await operation(measured.options);
+    assert.equal(measured.state.retained, 2);
+    assert.equal(measured.state.released, 2);
+    assert.equal(measured.state.liveBodies, 0);
+    assert.equal(measured.state.liveBytes, 0);
+    assert.ok(measured.state.peakBodies > 0);
+    assert.ok(measured.state.peakBodies <= 2);
+    assert.ok(measured.state.peakBytes < 1024);
+  };
+
+  await runMeasured((options) => getMachineIndex(vault, cwd, options));
+  await runMeasured((options) => getMachineIndex(vault, cwd, options));
+  await fs.writeFile(path.join(vault.rootPath, "note.md"), "# Changed\n\n[[other]]\n", "utf8");
+  await runMeasured((options) => getMachineIndex(vault, cwd, options));
+  await runMeasured((options) => rebuildMachineIndex(vault, cwd, options));
 });
 
 test("refresh reassembles globally while reusing unchanged source derivations", async (t) => {

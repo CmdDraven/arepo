@@ -9,8 +9,8 @@ import {
 } from "../src/lib/vault/indexer.js";
 import { getAppDataDir } from "./config.js";
 import {
-  captureStructuralIndexInputs,
-  type CapturedStructuralIndexInputs,
+  discoverStructuralIndexSources,
+  processStructuralIndexSources,
   type StructuralIndexInputManifest,
 } from "./vaultFs.js";
 import type { VaultIndexResponse, VaultInfo } from "./types.js";
@@ -55,6 +55,9 @@ export type MachineIndexInstrumentation = {
   onHashCalculated?: (path: string, durationMs: number) => void;
   onDiscoveryComplete?: (fileCount: number, durationMs: number) => void;
   onSourceCaptureComplete?: (durationMs: number) => void;
+  onMarkdownBodyRetained?: (path: string, bytes: number) => void;
+  onMarkdownBodyReleased?: (path: string, bytes: number) => void;
+  onMemoryCheckpoint?: (phase: string) => void;
   onSourceDerived?: (path: string, durationMs: number) => void;
   onSourceDerivativeReused?: (path: string) => void;
   onGlobalAssembly?: (durationMs: number) => void;
@@ -116,7 +119,7 @@ async function runMachineIndexOperation(
   const file = await machineIndexPath(vault, cwd);
   return withIndexLock(indexOperationLocks, file, async () => {
     const instrumentation = options.instrumentation;
-    const inputs = await captureStructuralIndexInputs(vault, {
+    const captureInstrumentation = {
       maxConcurrentMarkdownReads: options.maxConcurrentMarkdownReads,
       onMarkdownBodyRead: instrumentation?.onMarkdownBodyRead,
       onMarkdownBodyReadComplete: instrumentation?.onMarkdownBodyReadComplete,
@@ -124,86 +127,105 @@ async function runMachineIndexOperation(
       onHashCalculated: instrumentation?.onHashCalculated,
       onDiscoveryComplete: instrumentation?.onDiscoveryComplete,
       onSourceCaptureComplete: instrumentation?.onSourceCaptureComplete,
-    });
-    const stored =
-      mode === "force" ? undefined : await readStoredMachineIndex(file, instrumentation);
+      onMarkdownBodyRetained: instrumentation?.onMarkdownBodyRetained,
+      onMemoryCheckpoint: instrumentation?.onMemoryCheckpoint,
+      onMarkdownBodyReleased: instrumentation?.onMarkdownBodyReleased,
+    };
+    const discovery = await discoverStructuralIndexSources(vault, captureInstrumentation);
+    instrumentation?.onMemoryCheckpoint?.("before-cache-load");
+    let stored = mode === "force" ? undefined : await readStoredMachineIndex(file, instrumentation);
     const expectedRootHash = await vaultRootHash(vault);
-    const reusableStored =
+    let reusableStored =
       stored && stored.vault.id === vault.id && stored.vault.rootPathHash === expectedRootHash
         ? stored
         : undefined;
+    const reusableManifest = reusableStored?.manifest;
+    const reusableSourceDerivations = reusableStored?.sourceDerivations ?? [];
+    const reusableGlobalDerivationVersion = reusableStored?.derivationVersion;
+    let wholeHitData =
+      mode === "get" && reusableGlobalDerivationVersion === STRUCTURAL_INDEX_DERIVATION_VERSION
+        ? reusableStored?.data
+        : undefined;
+    stored = undefined;
+    reusableStored = undefined;
+    const cachedByPath = new Map(
+      (mode === "force" ? [] : reusableSourceDerivations).map((entry) => [entry.path, entry]),
+    );
+    const processed = await processStructuralIndexSources(
+      discovery,
+      ({ path: sourcePath, content, contentHash }) => {
+        const cached = cachedByPath.get(sourcePath);
+        if (
+          cached &&
+          cached.contentHash === contentHash &&
+          cached.derivationVersion === MARKDOWN_SOURCE_DERIVATION_VERSION &&
+          cached.data.path === sourcePath
+        ) {
+          instrumentation?.onSourceDerivativeReused?.(sourcePath);
+          return cached;
+        }
+        wholeHitData = undefined;
+        const derivationStartedAt = instrumentation?.onSourceDerived ? performance.now() : 0;
+        const derivative = toPersistedMarkdownSourceDerivation(
+          deriveMarkdownSource(sourcePath, content),
+        );
+        if (instrumentation?.onSourceDerived) {
+          instrumentation.onSourceDerived(sourcePath, performance.now() - derivationStartedAt);
+        }
+        return {
+          path: sourcePath,
+          contentHash,
+          derivationVersion: MARKDOWN_SOURCE_DERIVATION_VERSION,
+          data: derivative,
+        };
+      },
+      captureInstrumentation,
+    );
+    const sourceDerivations = processed.processedSources.map(({ data }) => data);
 
     if (
       mode === "get" &&
-      reusableStored &&
-      reusableStored.derivationVersion === STRUCTURAL_INDEX_DERIVATION_VERSION &&
-      manifestsEqual(reusableStored.manifest, inputs.manifest) &&
-      sourceDerivationsMatchManifest(reusableStored.sourceDerivations, inputs.manifest)
+      wholeHitData &&
+      reusableManifest &&
+      manifestsEqual(reusableManifest, processed.manifest) &&
+      sourceDerivationsMatchManifest(reusableSourceDerivations, processed.manifest)
     ) {
       instrumentation?.onCacheHit?.();
-      return { data: reusableStored.data, cacheStatus: "hit" };
+      instrumentation?.onMemoryCheckpoint?.("operation-complete");
+      return { data: wholeHitData, cacheStatus: "hit" };
     }
 
-    const { data, sourceDerivations } = buildFromCapturedInputs(
-      inputs,
-      mode === "force" ? [] : (reusableStored?.sourceDerivations ?? []),
-      instrumentation,
-    );
+    cachedByPath.clear();
+    wholeHitData = undefined;
+    instrumentation?.onMemoryCheckpoint?.("after-obsolete-cache-release");
+    const data = assembleProcessedSources(processed, sourceDerivations, instrumentation);
     await writeMachineIndexUnlocked(
       file,
       vault,
-      inputs.manifest,
+      processed.manifest,
       sourceDerivations,
       data,
       instrumentation,
       expectedRootHash,
     );
+    instrumentation?.onMemoryCheckpoint?.("operation-complete");
     return { data, cacheStatus: "rebuilt" };
   });
 }
 
-function buildFromCapturedInputs(
-  inputs: CapturedStructuralIndexInputs,
-  cachedSourceDerivations: StoredMarkdownSourceDerivation[],
+function assembleProcessedSources(
+  inputs: {
+    sourceIssues: import("../src/lib/vault/indexer.js").ValidationIssue[];
+    excludedPaths: string[];
+  },
+  sourceDerivations: StoredMarkdownSourceDerivation[],
   instrumentation?: MachineIndexInstrumentation,
-): {
-  data: VaultIndexResponse;
-  sourceDerivations: StoredMarkdownSourceDerivation[];
-} {
-  const cachedByPath = new Map(cachedSourceDerivations.map((entry) => [entry.path, entry]));
+): VaultIndexResponse {
   const active: Record<string, MarkdownSourceDerivation> = {};
-  const sourceDerivations: StoredMarkdownSourceDerivation[] = [];
-  for (const source of inputs.manifest.sources) {
-    if (source.state !== "readable") continue;
-    const cached = cachedByPath.get(source.path);
-    let derivative: MarkdownSourceDerivation;
-    if (
-      cached &&
-      cached.contentHash === source.contentHash &&
-      cached.derivationVersion === MARKDOWN_SOURCE_DERIVATION_VERSION &&
-      cached.data.path === source.path
-    ) {
-      derivative = cached.data;
-      instrumentation?.onSourceDerivativeReused?.(source.path);
-    } else {
-      const body = inputs.readableFiles[source.path];
-      if (body === undefined) {
-        throw new Error("Readable structural source is missing its captured body.");
-      }
-      const derivationStartedAt = instrumentation?.onSourceDerived ? performance.now() : 0;
-      derivative = toPersistedMarkdownSourceDerivation(deriveMarkdownSource(source.path, body));
-      if (instrumentation?.onSourceDerived) {
-        instrumentation.onSourceDerived(source.path, performance.now() - derivationStartedAt);
-      }
-    }
-    active[source.path] = derivative;
-    sourceDerivations.push({
-      path: source.path,
-      contentHash: source.contentHash,
-      derivationVersion: MARKDOWN_SOURCE_DERIVATION_VERSION,
-      data: derivative,
-    });
+  for (const source of sourceDerivations) {
+    active[source.path] = source.data;
   }
+  instrumentation?.onMemoryCheckpoint?.("after-source-derivation");
 
   const assemblyStartedAt = instrumentation?.onGlobalAssembly ? performance.now() : 0;
   const index = assembleIndex(active, { excludedPaths: inputs.excludedPaths });
@@ -214,7 +236,8 @@ function buildFromCapturedInputs(
   if (instrumentation?.onGlobalAssembly) {
     instrumentation.onGlobalAssembly(performance.now() - assemblyStartedAt);
   }
-  return { data, sourceDerivations };
+  instrumentation?.onMemoryCheckpoint?.("after-global-assembly");
+  return data;
 }
 
 async function writeMachineIndexUnlocked(
@@ -255,6 +278,7 @@ async function writeMachineIndexUnlocked(
         performance.now() - serializationStartedAt,
       );
     }
+    instrumentation?.onMemoryCheckpoint?.("after-cache-serialization");
     const publicationStartedAt = instrumentation?.onCachePublication ? performance.now() : 0;
     await writeTempFileForRename(tmp, serialized);
     await fs.rename(tmp, file);
@@ -262,6 +286,7 @@ async function writeMachineIndexUnlocked(
       instrumentation.onCachePublication(serializedBytes, performance.now() - publicationStartedAt);
     }
     instrumentation?.onPublication?.();
+    instrumentation?.onMemoryCheckpoint?.("after-cache-publication");
   } catch (error) {
     await fs.unlink(tmp).catch((unlinkError: NodeJS.ErrnoException) => {
       if (unlinkError.code !== "ENOENT") throw unlinkError;
@@ -278,6 +303,7 @@ async function readStoredMachineIndex(
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
+    instrumentation?.onMemoryCheckpoint?.("after-cache-read");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
@@ -285,6 +311,7 @@ async function readStoredMachineIndex(
   try {
     const parsed: unknown = JSON.parse(raw);
     const result = isStoredMachineIndex(parsed) ? parsed : undefined;
+    instrumentation?.onMemoryCheckpoint?.("after-cache-parse-validation");
     instrumentation?.onCacheRead?.(Buffer.byteLength(raw, "utf8"), performance.now() - startedAt);
     return result;
   } catch {

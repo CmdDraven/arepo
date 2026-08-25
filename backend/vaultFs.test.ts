@@ -10,8 +10,10 @@ import {
   captureStructuralIndexInputs,
   createVaultFile,
   DEFAULT_MAX_CONCURRENT_MARKDOWN_READS,
+  discoverStructuralIndexSources,
   deleteVaultFile,
   listSupportedTextFiles,
+  processStructuralIndexSources,
   readVaultFile,
   renameVaultPath,
   writeVaultFile,
@@ -361,6 +363,145 @@ test("structural source reads preserve ordering under a configured concurrency b
     configuredInputs.manifest.sources.map((source) => source.path),
     expectedPaths,
   );
+});
+
+test("streamed structural processing releases bodies and normalizes adversarial completion order", async (t) => {
+  const vault = await makeVault(t);
+  for (let index = 0; index < 4; index += 1) {
+    await createVaultFile(vault, `ordered-${index}.md`, `# Ordered ${index}\n`);
+  }
+  const discovery = await discoverStructuralIndexSources(vault);
+  const originalReadFile = fs.readFile;
+  const releases = new Map<string, () => void>();
+  let started = 0;
+  let notifyStarted!: () => void;
+  const allStarted = new Promise<void>((resolve) => {
+    notifyStarted = resolve;
+  });
+  fs.readFile = (async (file, ...args) => {
+    if (typeof file === "string" && file.endsWith(".md")) {
+      started += 1;
+      if (started === 4) notifyStarted();
+      await new Promise<void>((resolve) => {
+        releases.set(path.basename(file), resolve);
+      });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+
+  let liveBodies = 0;
+  let peakBodies = 0;
+  const processing = processStructuralIndexSources(
+    discovery,
+    ({ path: sourcePath }) => sourcePath,
+    {
+      maxConcurrentMarkdownReads: 4,
+      onMarkdownBodyRetained: () => {
+        liveBodies += 1;
+        peakBodies = Math.max(peakBodies, liveBodies);
+      },
+      onMarkdownBodyReleased: () => {
+        liveBodies -= 1;
+      },
+    },
+  );
+  await allStarted;
+  for (const file of ["ordered-3.md", "ordered-2.md", "ordered-1.md", "ordered-0.md"]) {
+    releases.get(file)?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  const result = await processing;
+
+  assert.equal(liveBodies, 0);
+  assert.ok(peakBodies <= 4);
+  assert.deepEqual(
+    result.processedSources.map(({ path: sourcePath }) => sourcePath),
+    ["ordered-0.md", "ordered-1.md", "ordered-2.md", "ordered-3.md"],
+  );
+  assert.deepEqual(
+    result.manifest.sources.map(({ path: sourcePath }) => sourcePath),
+    ["ordered-0.md", "ordered-1.md", "ordered-2.md", "ordered-3.md"],
+  );
+});
+
+test("streamed structural processing balances body accounting for source-local and global failures", async (t) => {
+  const vault = await makeVault(t);
+  for (const sourcePath of ["failure.md", "good-a.md", "good-b.md", "good-c.md"]) {
+    await createVaultFile(vault, sourcePath, `# ${sourcePath}\n`);
+  }
+  const discovery = await discoverStructuralIndexSources(vault);
+  const originalReadFile = fs.readFile;
+  const failedPath = path.join(vault.rootPath, "failure.md");
+  let retained = 0;
+  let released = 0;
+  fs.readFile = (async (file, ...args) => {
+    if (file === failedPath) {
+      throw Object.assign(new Error("source-local"), { code: "EIO" });
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+
+  const partial = await processStructuralIndexSources(
+    discovery,
+    ({ path: sourcePath }) => sourcePath,
+    {
+      maxConcurrentMarkdownReads: 2,
+      onMarkdownBodyRetained: () => {
+        retained += 1;
+      },
+      onMarkdownBodyReleased: () => {
+        released += 1;
+      },
+    },
+  );
+  assert.equal(retained, 3);
+  assert.equal(released, 3);
+  assert.deepEqual(
+    partial.manifest.sources.find(({ path: sourcePath }) => sourcePath === "failure.md"),
+    { path: "failure.md", state: "unavailable" },
+  );
+
+  let readStarts = 0;
+  let readSettles = 0;
+  retained = 0;
+  released = 0;
+  fs.readFile = (async (file, ...args) => {
+    if (typeof file === "string" && file.endsWith(".md")) {
+      if (file === failedPath) {
+        throw Object.assign(new Error("global exhaustion"), { code: "EMFILE" });
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+  await assert.rejects(
+    () =>
+      processStructuralIndexSources(discovery, ({ path: sourcePath }) => sourcePath, {
+        maxConcurrentMarkdownReads: 2,
+        onMarkdownBodyRead: () => {
+          readStarts += 1;
+        },
+        onMarkdownBodyReadSettled: () => {
+          readSettles += 1;
+        },
+        onMarkdownBodyRetained: () => {
+          retained += 1;
+        },
+        onMarkdownBodyReleased: () => {
+          released += 1;
+        },
+      }),
+    /global exhaustion/,
+  );
+  assert.equal(readStarts, 2);
+  assert.equal(readSettles, 2);
+  assert.equal(retained, released);
 });
 
 test("structural indexing isolates one path-bearing Markdown read failure", async (t) => {

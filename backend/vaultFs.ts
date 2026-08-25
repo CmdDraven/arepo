@@ -1,7 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { buildIndex, validate, type ValidationIssue } from "../src/lib/vault/indexer.js";
+import {
+  assembleIndex,
+  buildIndex,
+  deriveMarkdownSource,
+  validate,
+  type ValidationIssue,
+} from "../src/lib/vault/indexer.js";
 import { sourceKindForPath, sourcePolicy } from "../src/lib/vault/sourcePolicy.js";
 import { defaultVaultIndexScope, markdownPathInScope } from "./indexScope.js";
 import { PublicApiError } from "./publicApiError.js";
@@ -72,6 +78,20 @@ export type CapturedStructuralIndexInputs = {
   excludedPaths: string[];
 };
 
+export type StructuralIndexSourceDiscovery = {
+  scope: VaultIndexScope;
+  files: VaultFile[];
+  excludedPaths: string[];
+  root: string;
+};
+
+export type ProcessedStructuralIndexSources<T> = {
+  manifest: StructuralIndexInputManifest;
+  processedSources: Array<{ path: string; data: T }>;
+  sourceIssues: ValidationIssue[];
+  excludedPaths: string[];
+};
+
 export type StructuralIndexCaptureOptions = {
   maxConcurrentMarkdownReads?: number;
   onMarkdownBodyRead?: (path: string) => void;
@@ -80,6 +100,9 @@ export type StructuralIndexCaptureOptions = {
   onHashCalculated?: (path: string, durationMs: number) => void;
   onDiscoveryComplete?: (fileCount: number, durationMs: number) => void;
   onSourceCaptureComplete?: (durationMs: number) => void;
+  onMarkdownBodyRetained?: (path: string, bytes: number) => void;
+  onMarkdownBodyReleased?: (path: string, bytes: number) => void;
+  onMemoryCheckpoint?: (phase: string) => void;
 };
 
 export async function listMarkdownFiles(vault: VaultInfo): Promise<VaultFile[]> {
@@ -263,13 +286,23 @@ export async function deleteVaultFile(
 }
 
 export async function buildVaultIndex(vault: VaultInfo): Promise<VaultIndexResponse> {
-  return buildVaultIndexFromInputs(await captureStructuralIndexInputs(vault));
+  const discovery = await discoverStructuralIndexSources(vault);
+  const processed = await processStructuralIndexSources(discovery, ({ path, content }) =>
+    deriveMarkdownSource(path, content),
+  );
+  const index = assembleIndex(
+    Object.fromEntries(processed.processedSources.map(({ path, data }) => [path, data])),
+    {
+      excludedPaths: processed.excludedPaths,
+    },
+  );
+  return { index, issues: [...processed.sourceIssues, ...validate(index)] };
 }
 
-export async function captureStructuralIndexInputs(
+export async function discoverStructuralIndexSources(
   vault: VaultInfo,
   options: StructuralIndexCaptureOptions = {},
-): Promise<CapturedStructuralIndexInputs> {
+): Promise<StructuralIndexSourceDiscovery> {
   requirePermission(vault.permissions.readIndex, "Vault index is not readable");
   const configuredScope = vault.vaultIndexScope ?? defaultVaultIndexScope();
   const scope: VaultIndexScope = {
@@ -281,11 +314,103 @@ export async function captureStructuralIndexInputs(
   const discoveryStartedAt = options.onDiscoveryComplete ? performance.now() : 0;
   const allFiles = await listMarkdownFiles(vault);
   options.onDiscoveryComplete?.(allFiles.length, performance.now() - discoveryStartedAt);
+  options.onMemoryCheckpoint?.("after-source-discovery");
   const files = allFiles.filter((file) => markdownPathInScope(file.path, scope));
   const excludedPaths = allFiles
     .filter((file) => !markdownPathInScope(file.path, scope))
     .map((file) => file.path);
   const root = await realVaultRoot(vault);
+  return { scope, files, excludedPaths, root };
+}
+
+export async function processStructuralIndexSources<T>(
+  discovery: StructuralIndexSourceDiscovery,
+  processReadableSource: (source: {
+    path: string;
+    content: string;
+    contentHash: string;
+  }) => T | Promise<T>,
+  options: StructuralIndexCaptureOptions = {},
+): Promise<ProcessedStructuralIndexSources<T>> {
+  const { scope, files, excludedPaths, root } = discovery;
+  const sourceIssues: ValidationIssue[] = [];
+  const sources: StructuralIndexSourceManifestEntry[] = excludedPaths.map((path) => ({
+    path,
+    state: "excluded",
+  }));
+  const captureStartedAt = options.onSourceCaptureComplete ? performance.now() : 0;
+  const outcomes = await mapWithConcurrency(
+    files,
+    options.maxConcurrentMarkdownReads ?? DEFAULT_MAX_CONCURRENT_MARKDOWN_READS,
+    async (file) => {
+      let content: string;
+      let bytes: number;
+      options.onMarkdownBodyRead?.(file.path);
+      try {
+        content = await fs.readFile(
+          await resolveExistingVaultPathFromRoot(root, file.path),
+          "utf8",
+        );
+        bytes = Buffer.byteLength(content, "utf8");
+        options.onMarkdownBodyReadComplete?.(file.path, bytes);
+      } catch (error) {
+        if (!isIsolatableIndexSourceFailure(error)) throw error;
+        return { path: file.path, state: "unavailable" as const };
+      } finally {
+        options.onMarkdownBodyReadSettled?.(file.path);
+      }
+
+      options.onMarkdownBodyRetained?.(file.path, bytes);
+      try {
+        const hashStartedAt = options.onHashCalculated ? performance.now() : 0;
+        const contentHash = hashContent(content);
+        if (options.onHashCalculated) {
+          options.onHashCalculated(file.path, performance.now() - hashStartedAt);
+        }
+        const data = await processReadableSource({ path: file.path, content, contentHash });
+        return { path: file.path, state: "readable" as const, contentHash, data };
+      } finally {
+        options.onMarkdownBodyReleased?.(file.path, bytes);
+      }
+    },
+  );
+
+  const processedSources: Array<{ path: string; data: T }> = [];
+  for (const outcome of outcomes) {
+    if (outcome.state === "unavailable") {
+      sources.push({ path: outcome.path, state: "unavailable" });
+      sourceIssues.push({
+        kind: "source-unreadable",
+        path: outcome.path,
+        message: "Source file could not be read.",
+        severity: "error",
+      });
+    } else {
+      sources.push({
+        path: outcome.path,
+        state: "readable",
+        contentHash: outcome.contentHash,
+      });
+      processedSources.push({ path: outcome.path, data: outcome.data });
+    }
+  }
+  sources.sort((a, b) => a.path.localeCompare(b.path));
+  options.onSourceCaptureComplete?.(performance.now() - captureStartedAt);
+  options.onMemoryCheckpoint?.("after-source-processing");
+  return {
+    manifest: { scope, sources },
+    processedSources,
+    sourceIssues,
+    excludedPaths,
+  };
+}
+
+export async function captureStructuralIndexInputs(
+  vault: VaultInfo,
+  options: StructuralIndexCaptureOptions = {},
+): Promise<CapturedStructuralIndexInputs> {
+  const discovery = await discoverStructuralIndexSources(vault, options);
+  const { scope, files, excludedPaths, root } = discovery;
   const readableFiles: Record<string, string> = {};
   const sourceIssues: ValidationIssue[] = [];
   const sources: StructuralIndexSourceManifestEntry[] = excludedPaths.map((path) => ({
@@ -303,7 +428,9 @@ export async function captureStructuralIndexInputs(
           await resolveExistingVaultPathFromRoot(root, file.path),
           "utf8",
         );
-        options.onMarkdownBodyReadComplete?.(file.path, Buffer.byteLength(content, "utf8"));
+        const bytes = Buffer.byteLength(content, "utf8");
+        options.onMarkdownBodyReadComplete?.(file.path, bytes);
+        options.onMarkdownBodyRetained?.(file.path, bytes);
         return {
           path: file.path,
           content,
@@ -341,6 +468,7 @@ export async function captureStructuralIndexInputs(
   }
   sources.sort((a, b) => a.path.localeCompare(b.path));
   options.onSourceCaptureComplete?.(performance.now() - captureStartedAt);
+  options.onMemoryCheckpoint?.("after-source-capture");
   return { manifest: { scope, sources }, readableFiles, sourceIssues, excludedPaths };
 }
 
@@ -353,16 +481,24 @@ async function mapWithConcurrency<T, R>(
   const limit = Math.max(1, Math.min(items.length, Math.floor(requestedLimit)));
   const results = new Array<R>(items.length);
   let nextIndex = 0;
+  let firstFailure: unknown;
   await Promise.all(
     Array.from({ length: limit }, async () => {
       while (true) {
+        if (firstFailure !== undefined) return;
         const index = nextIndex;
         nextIndex += 1;
         if (index >= items.length) return;
-        results[index] = await work(items[index]);
+        try {
+          results[index] = await work(items[index]);
+        } catch (error) {
+          if (firstFailure === undefined) firstFailure = error;
+          return;
+        }
       }
     }),
   );
+  if (firstFailure !== undefined) throw firstFailure;
   return results;
 }
 
