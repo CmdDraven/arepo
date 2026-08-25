@@ -89,54 +89,67 @@ try {
     printRow(row);
     return row;
   };
+  let observationAnalysis;
 
   await run("cold-build", (options) => getMachineIndexResult(vault, cwd, options));
   if (!args.representationOnly) {
-    await run(
+    const warm = await run(
       MACHINE_INDEX_VERSION >= 5 ? "warm-validated-overlay-hit" : "warm-whole-hit",
       (options) => getMachineIndexResult(vault, cwd, options),
       args.warmIterations,
     );
 
-    await mutateSources(vaultRoot, corpus.paths, [0], 1);
-    await run("one-file-changed", (options) => getMachineIndexResult(vault, cwd, options));
+    if (!args.observationOnly) {
+      await mutateSources(vaultRoot, corpus.paths, [0], 1);
+      await run("one-file-changed", (options) => getMachineIndexResult(vault, cwd, options));
 
-    await mutateSources(vaultRoot, corpus.paths, selectFraction(profile.files, 0.01), 2);
-    await run("one-percent-changed", (options) => getMachineIndexResult(vault, cwd, options));
+      await mutateSources(vaultRoot, corpus.paths, selectFraction(profile.files, 0.01), 2);
+      await run("one-percent-changed", (options) => getMachineIndexResult(vault, cwd, options));
 
-    await mutateSources(vaultRoot, corpus.paths, [Math.min(11, profile.files - 1)], 5);
-    await run("watcher-triggered-refresh", (options) => refreshMachineIndex(vault, cwd, options));
+      await mutateSources(vaultRoot, corpus.paths, [Math.min(11, profile.files - 1)], 5);
+      await run("watcher-triggered-refresh", (options) => refreshMachineIndex(vault, cwd, options));
 
-    if (profile.name !== "datacentre" || args.includeTenPercent) {
-      await mutateSources(vaultRoot, corpus.paths, selectFraction(profile.files, 0.1), 3);
-      await run("ten-percent-changed", (options) => getMachineIndexResult(vault, cwd, options));
+      if (profile.name !== "datacentre" || args.includeTenPercent) {
+        await mutateSources(vaultRoot, corpus.paths, selectFraction(profile.files, 0.1), 3);
+        await run("ten-percent-changed", (options) => getMachineIndexResult(vault, cwd, options));
+      }
+
+      await run("explicit-force-reindex", (options) => rebuildMachineIndex(vault, cwd, options));
+
+      await run("search-filter-inspect-warm", async (options) => {
+        const result = await getMachineIndexResult(vault, cwd, options);
+        const queryStartedAt = performance.now();
+        buildIndexSearchResponse(result.data, "tag-3");
+        buildIndexFilterResponse(result.data, "broken-links");
+        buildVaultInspectResponse(result.data, corpus.paths[0]);
+        return { queryMs: performance.now() - queryStartedAt };
+      });
+
+      await run("concurrent-warm-gets", (options) =>
+        Promise.all([
+          getMachineIndexResult(vault, cwd, options),
+          getMachineIndexResult(vault, cwd, options),
+        ]),
+      );
+
+      await mutateSources(vaultRoot, corpus.paths, [Math.min(7, profile.files - 1)], 4);
+      await run("concurrent-get-after-change", (options) =>
+        Promise.all([
+          getMachineIndexResult(vault, cwd, options),
+          getMachineIndexResult(vault, cwd, options),
+        ]),
+      );
+    } else {
+      const pathValidationStartedAt = performance.now();
+      await validateCorpusPaths(vaultRoot, corpus.paths);
+      const pathValidationMs = performance.now() - pathValidationStartedAt;
+      observationAnalysis = {
+        pathValidationMs,
+        level1EstimatedMs: warm.totalMs - warm.phases.captureMs + pathValidationMs,
+        level2And3MeasuredFloorMs: warm.totalMs - warm.phases.discoveryMs - warm.phases.captureMs,
+        note: "Level 1 replaces canonical capture with a benchmark-only mirror of current symlink-segment, lstat, and realpath checks. Level 2/3 exclude provider replay/checkpoint cost.",
+      };
     }
-
-    await run("explicit-force-reindex", (options) => rebuildMachineIndex(vault, cwd, options));
-
-    await run("search-filter-inspect-warm", async (options) => {
-      const result = await getMachineIndexResult(vault, cwd, options);
-      const queryStartedAt = performance.now();
-      buildIndexSearchResponse(result.data, "tag-3");
-      buildIndexFilterResponse(result.data, "broken-links");
-      buildVaultInspectResponse(result.data, corpus.paths[0]);
-      return { queryMs: performance.now() - queryStartedAt };
-    });
-
-    await run("concurrent-warm-gets", (options) =>
-      Promise.all([
-        getMachineIndexResult(vault, cwd, options),
-        getMachineIndexResult(vault, cwd, options),
-      ]),
-    );
-
-    await mutateSources(vaultRoot, corpus.paths, [Math.min(7, profile.files - 1)], 4);
-    await run("concurrent-get-after-change", (options) =>
-      Promise.all([
-        getMachineIndexResult(vault, cwd, options),
-        getMachineIndexResult(vault, cwd, options),
-      ]),
-    );
   }
 
   const cacheFile = await machineIndexPath(vault, cwd);
@@ -159,6 +172,7 @@ try {
       bytesPerCanonicalByte: cacheBytes / corpus.bytes,
     },
     representation,
+    observationAnalysis,
     rows,
     notes: [
       "AREPO-cache-cold does not imply OS-page-cache-cold.",
@@ -185,6 +199,25 @@ try {
   await fs.rm(fixtureRoot, { recursive: true, force: true });
 }
 
+async function validateCorpusPaths(root, paths) {
+  const realRoot = await fs.realpath(root);
+  await mapConcurrent(paths, 32, async (relativePath) => {
+    let current = realRoot;
+    for (const segment of relativePath.split("/")) {
+      current = path.join(current, segment);
+      const segmentStat = await fs.lstat(current);
+      if (segmentStat.isSymbolicLink()) throw new Error("Unexpected symlink in benchmark corpus.");
+    }
+    const leafStat = await fs.lstat(current);
+    if (!leafStat.isFile()) throw new Error("Unexpected non-file in benchmark corpus.");
+    const real = await fs.realpath(current);
+    const relative = path.relative(realRoot, real);
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw new Error("Benchmark path escaped its fixture root.");
+    }
+  });
+}
+
 function parseArgs(argv) {
   const out = {
     profile: "small",
@@ -203,6 +236,10 @@ function parseArgs(argv) {
     }
     if (arg === "--representation-only") {
       out.representationOnly = true;
+      continue;
+    }
+    if (arg === "--observation-only") {
+      out.observationOnly = true;
       continue;
     }
     const [name, inline] = arg.split("=", 2);

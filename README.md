@@ -65,7 +65,9 @@ See [docs/roadmap.md](docs/roadmap.md) for the current local-node roadmap and
 self-host notes. Phase 4 security design work is tracked in
 [docs/node-security-checkpoint.md](docs/node-security-checkpoint.md). The local
 protected-mode operator flow is documented in
-[docs/protected-mode-operator-workflow.md](docs/protected-mode-operator-workflow.md).
+[docs/protected-mode-operator-workflow.md](docs/protected-mode-operator-workflow.md). The evidence and
+decision boundary for any future zero-read source validation is documented in
+[docs/source-observation-feasibility.md](docs/source-observation-feasibility.md).
 
 ## Run Locally
 
