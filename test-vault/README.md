@@ -6,7 +6,7 @@ tags: [test, markdown, local]
 
 # AREPO Test Vault
 
-This folder is a disposable example Markdown vault for AREPO. It is kept in the repository as a manual-test and demo fixture, not as generated app data and not as a real user vault.
+This folder is a disposable example vault for AREPO. It is kept in the repository as a manual-test and demo fixture, not as generated app data and not as a real user vault.
 
 It demonstrates:
 
@@ -17,6 +17,7 @@ It demonstrates:
 - intentional broken-link validation
 - graph mode with linked notes and missing-link nodes
 - ignored wikilinks inside fenced code blocks and inline code
+- a read-only plain-text source that remains outside Markdown index and graph semantics
 
 Current fixture layout:
 
@@ -25,6 +26,7 @@ test-vault/
 ├── README.md
 ├── Notes/
 │   ├── note.md
+│   ├── Note.txt
 │   └── Nestest/
 │       └── note.md
 └── Reference/

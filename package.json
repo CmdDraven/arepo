@@ -1,6 +1,9 @@
 {
   "name": "arepo",
+  "description": "Local-first knowledge mapping for user-owned documents.",
   "private": true,
+  "license": "Apache-2.0",
+  "author": "Synavera Discorporated Ltd.",
   "sideEffects": false,
   "type": "module",
   "scripts": {

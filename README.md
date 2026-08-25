@@ -4,6 +4,8 @@
 
 Local-first knowledge mapping for user-owned documents.
 
+AREPO is experimental, pre-release software and is not yet production-ready.
+
 AREPO maps ordinary documents, tracks relationships and provenance, and enables
 optional enrichment without taking ownership of the source files. Markdown is
 the first-class V1 format: plain `.md` files are the source of truth, and the
@@ -51,7 +53,8 @@ but neither mode makes LAN, reverse-proxy, or internet exposure safe.
 
 A normal user runs a local Node backend on one machine and opens the web UI in
 a browser. The browser talks to the backend on localhost. The backend only
-reads and writes configured Markdown vault folders.
+reads supported sources in configured vault folders and only mutates Markdown
+notes.
 
 ### Extensible Node Mode
 
@@ -136,9 +139,9 @@ AREPO_ALLOWED_ORIGINS=http://localhost:9001 npm run backend:dev
 
 ## Example Test Vault
 
-The repository includes `test-vault/` as a small example Markdown vault for
-demos and manual acceptance testing. It is ordinary Markdown content, not
-generated app data and not a real user vault.
+The repository includes `test-vault/` as a small example vault for demos and
+manual acceptance testing. It contains deliberately synthetic source content,
+not generated app data or a real user vault.
 
 To try it, start AREPO locally, open Vault Settings, and add the absolute path
 to `test-vault/` as a vault. From the repository root, this prints the path to
@@ -589,3 +592,9 @@ and includes Local Node Diagnostics checks.
 - No remote node registration yet.
 - Markdown preview is sanitized in the browser, but the backend API should still
   not be exposed to untrusted networks.
+
+## License
+
+AREPO is licensed under the [Apache License 2.0](LICENSE).
+
+Copyright 2026 Synavera Discorporated Ltd.
