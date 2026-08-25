@@ -362,6 +362,31 @@ possibly stale watcher snapshot.
 The frontend still owns preview rendering and graph layout, but note content
 and the index now come from the local backend.
 
+### Index benchmark
+
+The structural-index benchmark generates deterministic synthetic vaults in a
+temporary directory, measures indexing work and broad timing/memory phases, and
+removes the fixtures when it finishes or fails:
+
+```bash
+npm run bench:index -- --profile small
+npm run bench:index -- --profile medium
+npm run bench:index -- --profile datacentre
+```
+
+The 50,000-file datacentre profile is explicitly opt-in and checks available
+temporary-filesystem space before generation. File count, average source size,
+links per source, seed, warm iterations, and an optional JSON result path can be
+overridden with `--files`, `--average-bytes`, `--links-per-file`, `--seed`,
+`--warm-iterations`, and `--json`. The `file-heavy` and `byte-heavy` profiles
+separate per-file filesystem overhead from canonical read/hash bandwidth.
+
+Benchmark timings are machine- and environment-specific. Repeated runs are
+normally affected by the operating system page cache; the harness does not
+pretend to flush it. These measurements are not performance thresholds and do
+not run in the normal test, lint, or build commands. Correctness and work-count
+contracts remain covered by deterministic automated tests instead.
+
 The UI includes read-only structural index filters for broken links, orphan
 notes, tags, folders, duplicate frontmatter IDs, and duplicate heading anchors.
 These filters query the generated machine index and do not persist new canonical

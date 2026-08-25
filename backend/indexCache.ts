@@ -50,13 +50,24 @@ export type MachineIndexResult = {
 
 export type MachineIndexInstrumentation = {
   onMarkdownBodyRead?: (path: string) => void;
-  onSourceDerived?: (path: string) => void;
-  onGlobalAssembly?: () => void;
+  onMarkdownBodyReadComplete?: (path: string, bytes: number) => void;
+  onMarkdownBodyReadSettled?: (path: string) => void;
+  onHashCalculated?: (path: string, durationMs: number) => void;
+  onDiscoveryComplete?: (fileCount: number, durationMs: number) => void;
+  onSourceCaptureComplete?: (durationMs: number) => void;
+  onSourceDerived?: (path: string, durationMs: number) => void;
+  onSourceDerivativeReused?: (path: string) => void;
+  onGlobalAssembly?: (durationMs: number) => void;
+  onCacheRead?: (bytes: number, durationMs: number) => void;
+  onCacheHit?: () => void;
+  onCacheSerialization?: (bytes: number, durationMs: number) => void;
+  onCachePublication?: (bytes: number, durationMs: number) => void;
   onPublication?: () => void;
 };
 
 export type MachineIndexOperationOptions = {
   instrumentation?: MachineIndexInstrumentation;
+  maxConcurrentMarkdownReads?: number;
 };
 
 export type GeneratedDataRemoval = {
@@ -106,9 +117,16 @@ async function runMachineIndexOperation(
   return withIndexLock(indexOperationLocks, file, async () => {
     const instrumentation = options.instrumentation;
     const inputs = await captureStructuralIndexInputs(vault, {
+      maxConcurrentMarkdownReads: options.maxConcurrentMarkdownReads,
       onMarkdownBodyRead: instrumentation?.onMarkdownBodyRead,
+      onMarkdownBodyReadComplete: instrumentation?.onMarkdownBodyReadComplete,
+      onMarkdownBodyReadSettled: instrumentation?.onMarkdownBodyReadSettled,
+      onHashCalculated: instrumentation?.onHashCalculated,
+      onDiscoveryComplete: instrumentation?.onDiscoveryComplete,
+      onSourceCaptureComplete: instrumentation?.onSourceCaptureComplete,
     });
-    const stored = mode === "force" ? undefined : await readStoredMachineIndex(file);
+    const stored =
+      mode === "force" ? undefined : await readStoredMachineIndex(file, instrumentation);
     const expectedRootHash = await vaultRootHash(vault);
     const reusableStored =
       stored && stored.vault.id === vault.id && stored.vault.rootPathHash === expectedRootHash
@@ -122,6 +140,7 @@ async function runMachineIndexOperation(
       manifestsEqual(reusableStored.manifest, inputs.manifest) &&
       sourceDerivationsMatchManifest(reusableStored.sourceDerivations, inputs.manifest)
     ) {
+      instrumentation?.onCacheHit?.();
       return { data: reusableStored.data, cacheStatus: "hit" };
     }
 
@@ -165,13 +184,17 @@ function buildFromCapturedInputs(
       cached.data.path === source.path
     ) {
       derivative = cached.data;
+      instrumentation?.onSourceDerivativeReused?.(source.path);
     } else {
       const body = inputs.readableFiles[source.path];
       if (body === undefined) {
         throw new Error("Readable structural source is missing its captured body.");
       }
-      instrumentation?.onSourceDerived?.(source.path);
+      const derivationStartedAt = instrumentation?.onSourceDerived ? performance.now() : 0;
       derivative = toPersistedMarkdownSourceDerivation(deriveMarkdownSource(source.path, body));
+      if (instrumentation?.onSourceDerived) {
+        instrumentation.onSourceDerived(source.path, performance.now() - derivationStartedAt);
+      }
     }
     active[source.path] = derivative;
     sourceDerivations.push({
@@ -182,12 +205,15 @@ function buildFromCapturedInputs(
     });
   }
 
-  instrumentation?.onGlobalAssembly?.();
+  const assemblyStartedAt = instrumentation?.onGlobalAssembly ? performance.now() : 0;
   const index = assembleIndex(active, { excludedPaths: inputs.excludedPaths });
   const data = toPersistedVaultIndexResponse({
     index,
     issues: [...inputs.sourceIssues, ...validate(index)],
   });
+  if (instrumentation?.onGlobalAssembly) {
+    instrumentation.onGlobalAssembly(performance.now() - assemblyStartedAt);
+  }
   return { data, sourceDerivations };
 }
 
@@ -217,8 +243,24 @@ async function writeMachineIndexUnlocked(
   await fs.mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`;
   try {
-    await writeTempFileForRename(tmp, `${JSON.stringify(stored, null, 2)}\n`);
+    const serializationStartedAt = instrumentation?.onCacheSerialization ? performance.now() : 0;
+    const serialized = `${JSON.stringify(stored, null, 2)}\n`;
+    const serializedBytes =
+      instrumentation?.onCacheSerialization || instrumentation?.onCachePublication
+        ? Buffer.byteLength(serialized, "utf8")
+        : 0;
+    if (instrumentation?.onCacheSerialization) {
+      instrumentation.onCacheSerialization(
+        serializedBytes,
+        performance.now() - serializationStartedAt,
+      );
+    }
+    const publicationStartedAt = instrumentation?.onCachePublication ? performance.now() : 0;
+    await writeTempFileForRename(tmp, serialized);
     await fs.rename(tmp, file);
+    if (instrumentation?.onCachePublication) {
+      instrumentation.onCachePublication(serializedBytes, performance.now() - publicationStartedAt);
+    }
     instrumentation?.onPublication?.();
   } catch (error) {
     await fs.unlink(tmp).catch((unlinkError: NodeJS.ErrnoException) => {
@@ -228,7 +270,11 @@ async function writeMachineIndexUnlocked(
   }
 }
 
-async function readStoredMachineIndex(file: string): Promise<StoredMachineIndex | undefined> {
+async function readStoredMachineIndex(
+  file: string,
+  instrumentation?: MachineIndexInstrumentation,
+): Promise<StoredMachineIndex | undefined> {
+  const startedAt = instrumentation?.onCacheRead ? performance.now() : 0;
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
@@ -238,8 +284,11 @@ async function readStoredMachineIndex(file: string): Promise<StoredMachineIndex 
   }
   try {
     const parsed: unknown = JSON.parse(raw);
-    return isStoredMachineIndex(parsed) ? parsed : undefined;
+    const result = isStoredMachineIndex(parsed) ? parsed : undefined;
+    instrumentation?.onCacheRead?.(Buffer.byteLength(raw, "utf8"), performance.now() - startedAt);
+    return result;
   } catch {
+    instrumentation?.onCacheRead?.(Buffer.byteLength(raw, "utf8"), performance.now() - startedAt);
     return undefined;
   }
 }

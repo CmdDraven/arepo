@@ -7,7 +7,9 @@ import { makeTestTempDir } from "./testTemp.js";
 import {
   atomicWriteFile,
   buildVaultIndex,
+  captureStructuralIndexInputs,
   createVaultFile,
+  DEFAULT_MAX_CONCURRENT_MARKDOWN_READS,
   deleteVaultFile,
   listSupportedTextFiles,
   readVaultFile,
@@ -309,6 +311,56 @@ test("backend index reports duplicate ids, duplicate anchors, broken links, and 
   assert.ok(issues.some((issue) => issue.kind === "duplicate-id"));
   assert.ok(issues.some((issue) => issue.kind === "duplicate-anchor"));
   assert.ok(issues.some((issue) => issue.kind === "broken-wikilink"));
+});
+
+test("structural source reads preserve ordering under a configured concurrency bound", async (t) => {
+  const vault = await makeVault(t);
+  const sourceCount = DEFAULT_MAX_CONCURRENT_MARKDOWN_READS + 5;
+  for (let index = 0; index < sourceCount; index += 1) {
+    await createVaultFile(vault, `source-${String(index).padStart(2, "0")}.md`, `# ${index}\n`);
+  }
+
+  const originalReadFile = fs.readFile;
+  let active = 0;
+  let highWater = 0;
+  fs.readFile = (async (file, ...args) => {
+    if (typeof file === "string" && file.endsWith(".md")) {
+      active += 1;
+      highWater = Math.max(highWater, active);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      try {
+        return await originalReadFile(file, ...args);
+      } finally {
+        active -= 1;
+      }
+    }
+    return originalReadFile(file, ...args);
+  }) as typeof fs.readFile;
+  t.after(() => {
+    fs.readFile = originalReadFile;
+  });
+
+  const defaultInputs = await captureStructuralIndexInputs(vault);
+
+  assert.equal(highWater, DEFAULT_MAX_CONCURRENT_MARKDOWN_READS);
+  highWater = 0;
+  const configuredInputs = await captureStructuralIndexInputs(vault, {
+    maxConcurrentMarkdownReads: 3,
+  });
+
+  assert.equal(highWater, 3);
+  const expectedPaths = Array.from(
+    { length: sourceCount },
+    (_, index) => `source-${String(index).padStart(2, "0")}.md`,
+  );
+  assert.deepEqual(
+    defaultInputs.manifest.sources.map((source) => source.path),
+    expectedPaths,
+  );
+  assert.deepEqual(
+    configuredInputs.manifest.sources.map((source) => source.path),
+    expectedPaths,
+  );
 });
 
 test("structural indexing isolates one path-bearing Markdown read failure", async (t) => {

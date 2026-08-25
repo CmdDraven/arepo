@@ -28,6 +28,7 @@ type WritePrecondition = {
 };
 
 const fileWriteLocks = new Map<string, Promise<void>>();
+export const DEFAULT_MAX_CONCURRENT_MARKDOWN_READS = 32;
 
 class VaultObservationUnavailableError extends PublicApiError {}
 class VaultPathUnavailableError extends VaultObservationUnavailableError {}
@@ -72,7 +73,13 @@ export type CapturedStructuralIndexInputs = {
 };
 
 export type StructuralIndexCaptureOptions = {
+  maxConcurrentMarkdownReads?: number;
   onMarkdownBodyRead?: (path: string) => void;
+  onMarkdownBodyReadComplete?: (path: string, bytes: number) => void;
+  onMarkdownBodyReadSettled?: (path: string) => void;
+  onHashCalculated?: (path: string, durationMs: number) => void;
+  onDiscoveryComplete?: (fileCount: number, durationMs: number) => void;
+  onSourceCaptureComplete?: (durationMs: number) => void;
 };
 
 export async function listMarkdownFiles(vault: VaultInfo): Promise<VaultFile[]> {
@@ -271,7 +278,9 @@ export async function captureStructuralIndexInputs(
       maxDepth: configuredScope.markdown.maxDepth,
     },
   };
+  const discoveryStartedAt = options.onDiscoveryComplete ? performance.now() : 0;
   const allFiles = await listMarkdownFiles(vault);
+  options.onDiscoveryComplete?.(allFiles.length, performance.now() - discoveryStartedAt);
   const files = allFiles.filter((file) => markdownPathInScope(file.path, scope));
   const excludedPaths = allFiles
     .filter((file) => !markdownPathInScope(file.path, scope))
@@ -283,22 +292,29 @@ export async function captureStructuralIndexInputs(
     path,
     state: "excluded",
   }));
-  const reads = await Promise.all(
-    files.map(async (file) => {
+  const captureStartedAt = options.onSourceCaptureComplete ? performance.now() : 0;
+  const reads = await mapWithConcurrency(
+    files,
+    options.maxConcurrentMarkdownReads ?? DEFAULT_MAX_CONCURRENT_MARKDOWN_READS,
+    async (file) => {
       try {
         options.onMarkdownBodyRead?.(file.path);
+        const content = await fs.readFile(
+          await resolveExistingVaultPathFromRoot(root, file.path),
+          "utf8",
+        );
+        options.onMarkdownBodyReadComplete?.(file.path, Buffer.byteLength(content, "utf8"));
         return {
           path: file.path,
-          content: await fs.readFile(
-            await resolveExistingVaultPathFromRoot(root, file.path),
-            "utf8",
-          ),
+          content,
         };
       } catch (error) {
         if (!isIsolatableIndexSourceFailure(error)) throw error;
         return { path: file.path, content: undefined };
+      } finally {
+        options.onMarkdownBodyReadSettled?.(file.path);
       }
-    }),
+    },
   );
   for (const read of reads) {
     if (read.content === undefined) {
@@ -311,15 +327,43 @@ export async function captureStructuralIndexInputs(
       });
     } else {
       readableFiles[read.path] = read.content;
+      const hashStartedAt = options.onHashCalculated ? performance.now() : 0;
+      const contentHash = hashContent(read.content);
+      if (options.onHashCalculated) {
+        options.onHashCalculated(read.path, performance.now() - hashStartedAt);
+      }
       sources.push({
         path: read.path,
         state: "readable",
-        contentHash: hashContent(read.content),
+        contentHash,
       });
     }
   }
   sources.sort((a, b) => a.path.localeCompare(b.path));
+  options.onSourceCaptureComplete?.(performance.now() - captureStartedAt);
   return { manifest: { scope, sources }, readableFiles, sourceIssues, excludedPaths };
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  requestedLimit: number,
+  work: (item: T) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const limit = Math.max(1, Math.min(items.length, Math.floor(requestedLimit)));
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  await Promise.all(
+    Array.from({ length: limit }, async () => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= items.length) return;
+        results[index] = await work(items[index]);
+      }
+    }),
+  );
+  return results;
 }
 
 export function buildVaultIndexFromInputs(
