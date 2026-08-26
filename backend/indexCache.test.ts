@@ -82,6 +82,14 @@ type WorkCounts = {
   publications: number;
 };
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function measureWork(): { counts: WorkCounts; options: MachineIndexOperationOptions } {
   const counts: WorkCounts = {
     bodyReads: 0,
@@ -1062,6 +1070,97 @@ test("concurrent gets after one change single-flight derivation and publication"
     globalAssemblies: 1,
     publications: 1,
   });
+});
+
+test("serialized canonical verification rejects naive late-join single-flight semantics", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  await getMachineIndex(vault, cwd);
+  const notePath = path.join(vault.rootPath, "note.md");
+  const originalReadFile = fs.readFile;
+  const firstReadCaptured = deferred();
+  const releaseFirstRead = deferred();
+  let pauseNextNoteRead = true;
+  t.after(() => {
+    releaseFirstRead.resolve();
+    fs.readFile = originalReadFile;
+  });
+  fs.readFile = (async (file, ...args) => {
+    const content = await originalReadFile(file, ...args);
+    if (pauseNextNoteRead && file === notePath) {
+      pauseNextNoteRead = false;
+      firstReadCaptured.resolve();
+      await releaseFirstRead.promise;
+    }
+    return content;
+  }) as typeof fs.readFile;
+
+  const serializedAWork = measureWork();
+  const serializedBWork = measureWork();
+  const serializedA = getMachineIndexResult(vault, cwd, {
+    ...serializedAWork.options,
+    maxConcurrentMarkdownReads: 1,
+  });
+  await firstReadCaptured.promise;
+  await fs.writeFile(notePath, "# Changed After A Read\n", "utf8");
+  const serializedB = getMachineIndexResult(vault, cwd, {
+    ...serializedBWork.options,
+    maxConcurrentMarkdownReads: 1,
+  });
+  releaseFirstRead.resolve();
+
+  const [aResult, bResult] = await Promise.all([serializedA, serializedB]);
+  assert.equal(aResult.data.index.notes["note.md"]?.title, "Note");
+  assert.equal(bResult.data.index.notes["note.md"]?.title, "Changed After A Read");
+  assert.equal(serializedAWork.counts.bodyReads, 2);
+  assert.equal(serializedBWork.counts.bodyReads, 2);
+
+  await fs.writeFile(notePath, "# Note\n\nbody-only-cache-secret\n\n[[other]]\n", "utf8");
+  await rebuildMachineIndex(vault, cwd);
+  const naiveReadCaptured = deferred();
+  const releaseNaiveRead = deferred();
+  pauseNextNoteRead = true;
+  fs.readFile = (async (file, ...args) => {
+    const content = await originalReadFile(file, ...args);
+    if (pauseNextNoteRead && file === notePath) {
+      pauseNextNoteRead = false;
+      naiveReadCaptured.resolve();
+      await releaseNaiveRead.promise;
+    }
+    return content;
+  }) as typeof fs.readFile;
+
+  let inFlight:
+    | Promise<ReturnType<typeof getMachineIndexResult> extends Promise<infer T> ? T : never>
+    | undefined;
+  const naiveSingleFlight = () => {
+    if (inFlight) return inFlight;
+    const operation = getMachineIndexResult(vault, cwd, {
+      maxConcurrentMarkdownReads: 1,
+    }).finally(() => {
+      if (inFlight === operation) inFlight = undefined;
+    });
+    inFlight = operation;
+    return operation;
+  };
+
+  const naiveA = naiveSingleFlight();
+  await naiveReadCaptured.promise;
+  await fs.writeFile(notePath, "# Changed After Naive A Read\n", "utf8");
+  const naiveB = naiveSingleFlight();
+  assert.equal(naiveB, naiveA);
+  releaseNaiveRead.resolve();
+
+  const [naiveAResult, naiveBResult] = await Promise.all([naiveA, naiveB]);
+  assert.equal(naiveAResult.data.index.notes["note.md"]?.title, "Note");
+  assert.equal(naiveBResult.data.index.notes["note.md"]?.title, "Note");
+  assert.equal(inFlight, undefined);
+  const independentlyVerified = await getMachineIndexResult(vault, cwd, {
+    maxConcurrentMarkdownReads: 1,
+  });
+  assert.equal(
+    independentlyVerified.data.index.notes["note.md"]?.title,
+    "Changed After Naive A Read",
+  );
 });
 
 test("concurrent force rebuild and get serialize without stale publication", async (t) => {

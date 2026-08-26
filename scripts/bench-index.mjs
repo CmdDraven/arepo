@@ -132,6 +132,24 @@ try {
         ]),
       );
 
+      await run("five-concurrent-warm-gets", (options) =>
+        Promise.all(Array.from({ length: 5 }, () => getMachineIndexResult(vault, cwd, options))),
+      );
+
+      await run("concurrent-index-queries", async (options) => {
+        await Promise.all([
+          getMachineIndexResult(vault, cwd, options).then((result) =>
+            buildIndexSearchResponse(result.data, "tag-3"),
+          ),
+          getMachineIndexResult(vault, cwd, options).then((result) =>
+            buildIndexFilterResponse(result.data, "broken-links"),
+          ),
+          getMachineIndexResult(vault, cwd, options).then((result) =>
+            buildVaultInspectResponse(result.data, corpus.paths[0]),
+          ),
+        ]);
+      });
+
       await mutateSources(vaultRoot, corpus.paths, [Math.min(7, profile.files - 1)], 4);
       await run("concurrent-get-after-change", (options) =>
         Promise.all([
@@ -394,6 +412,7 @@ function selectFraction(fileCount, fraction) {
 
 async function measureOperation(operation) {
   const counts = {
+    sourceDiscoveries: 0,
     supportedFiles: 0,
     bodyReads: 0,
     bytesRead: 0,
@@ -402,6 +421,8 @@ async function measureOperation(operation) {
     sourceDerivativesReused: 0,
     globalAssemblies: 0,
     cacheHits: 0,
+    cacheReads: 0,
+    cacheJsonParses: 0,
     publications: 0,
     cacheBytesRead: 0,
     cacheBytesWritten: 0,
@@ -456,6 +477,7 @@ async function measureOperation(operation) {
       phases.hashMs += durationMs;
     },
     onDiscoveryComplete: (fileCount, durationMs) => {
+      counts.sourceDiscoveries += 1;
       counts.supportedFiles = Math.max(counts.supportedFiles, fileCount);
       phases.discoveryMs += durationMs;
     },
@@ -477,6 +499,8 @@ async function measureOperation(operation) {
       phases.materializationMs += durationMs;
     },
     onCacheRead: (bytes, durationMs) => {
+      counts.cacheReads += 1;
+      counts.cacheJsonParses += 1;
       counts.cacheBytesRead += bytes;
       phases.cacheReadMs += durationMs;
     },
@@ -566,7 +590,7 @@ function printRow(row) {
   const c = row.counts;
   const p = row.phases;
   console.log(
-    `${row.scenario.padEnd(29)} ${row.totalMs.toFixed(1).padStart(9)} ms | reads ${String(c.bodyReads).padStart(6)} (${formatMiB(c.bytesRead)}) | parses ${String(c.sourceDerivations).padStart(6)} | reused ${String(c.sourceDerivativesReused).padStart(6)} | assembly ${p.assemblyMs.toFixed(1).padStart(7)} ms | cache I/O ${(p.cacheReadMs + p.serializationMs + p.publicationMs).toFixed(1).padStart(7)} ms | live bodies ${String(c.peakLiveBodies).padStart(6)} (${formatMiB(c.peakLiveBodyBytes)}) | peak RSS ${row.memory.peak.rss.toFixed(1)} MiB | heap ${row.memory.peak.heapUsed.toFixed(1)} MiB | fs high-water ${c.fsConcurrencyHighWater}`,
+    `${row.scenario.padEnd(29)} ${row.totalMs.toFixed(1).padStart(9)} ms | discoveries ${String(c.sourceDiscoveries).padStart(2)} | reads ${String(c.bodyReads).padStart(6)} (${formatMiB(c.bytesRead)}) | cache parses ${String(c.cacheJsonParses).padStart(2)} | parses ${String(c.sourceDerivations).padStart(6)} | reused ${String(c.sourceDerivativesReused).padStart(6)} | assembly ${p.assemblyMs.toFixed(1).padStart(7)} ms | cache I/O ${(p.cacheReadMs + p.serializationMs + p.publicationMs).toFixed(1).padStart(7)} ms | live bodies ${String(c.peakLiveBodies).padStart(6)} (${formatMiB(c.peakLiveBodyBytes)}) | peak RSS ${row.memory.peak.rss.toFixed(1)} MiB | heap ${row.memory.peak.heapUsed.toFixed(1)} MiB | fs high-water ${c.fsConcurrencyHighWater}`,
   );
 }
 
