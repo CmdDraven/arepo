@@ -90,6 +90,31 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve };
 }
 
+function installHandleBodyReadInterceptor(
+  sourcePath: string,
+  afterRead: () => Promise<void>,
+): () => void {
+  const originalOpen = fs.open;
+  fs.open = (async (file, ...args) => {
+    const handle = await originalOpen(file, ...args);
+    if (file === sourcePath) {
+      const originalReadFile = handle.readFile.bind(handle);
+      Object.defineProperty(handle, "readFile", {
+        configurable: true,
+        value: async () => {
+          const body = (await originalReadFile()) as Buffer;
+          await afterRead();
+          return body;
+        },
+      });
+    }
+    return handle;
+  }) as typeof fs.open;
+  return () => {
+    fs.open = originalOpen;
+  };
+}
+
 function measureWork(): { counts: WorkCounts; options: MachineIndexOperationOptions } {
   const counts: WorkCounts = {
     bodyReads: 0,
@@ -1078,26 +1103,25 @@ test("serialized canonical verification rejects naive late-join single-flight se
   const firstReadCaptured = deferred();
   const releaseFirstRead = deferred();
   let pauseNextNoteRead = true;
+  let restoreOpen: () => void = () => undefined;
   t.after(() => {
     releaseFirstRead.resolve();
+    restoreOpen();
   });
   const notePath = path.join(vault.rootPath, "note.md");
+  restoreOpen = installHandleBodyReadInterceptor(notePath, async () => {
+    if (pauseNextNoteRead) {
+      pauseNextNoteRead = false;
+      firstReadCaptured.resolve();
+      await releaseFirstRead.promise;
+    }
+  });
 
   const serializedAWork = measureWork();
   const serializedBWork = measureWork();
   const serializedA = getMachineIndexResult(vault, cwd, {
     ...serializedAWork.options,
     maxConcurrentMarkdownReads: 1,
-    instrumentation: {
-      ...serializedAWork.options.instrumentation,
-      afterSourceBodyRead: async (sourcePath) => {
-        if (pauseNextNoteRead && sourcePath === "note.md") {
-          pauseNextNoteRead = false;
-          firstReadCaptured.resolve();
-          await releaseFirstRead.promise;
-        }
-      },
-    },
   });
   await firstReadCaptured.promise;
   await fs.writeFile(notePath, "# Changed After A Read\n", "utf8");
@@ -1108,6 +1132,7 @@ test("serialized canonical verification rejects naive late-join single-flight se
   releaseFirstRead.resolve();
 
   const [aResult, bResult] = await Promise.all([serializedA, serializedB]);
+  restoreOpen();
   assert.equal(aResult.data.index.notes["note.md"]?.title, "Note");
   assert.equal(bResult.data.index.notes["note.md"]?.title, "Changed After A Read");
   assert.equal(serializedAWork.counts.bodyReads, 2);
@@ -1118,6 +1143,13 @@ test("serialized canonical verification rejects naive late-join single-flight se
   const naiveReadCaptured = deferred();
   const releaseNaiveRead = deferred();
   pauseNextNoteRead = true;
+  restoreOpen = installHandleBodyReadInterceptor(notePath, async () => {
+    if (pauseNextNoteRead) {
+      pauseNextNoteRead = false;
+      naiveReadCaptured.resolve();
+      await releaseNaiveRead.promise;
+    }
+  });
 
   let inFlight:
     | Promise<ReturnType<typeof getMachineIndexResult> extends Promise<infer T> ? T : never>
@@ -1126,15 +1158,6 @@ test("serialized canonical verification rejects naive late-join single-flight se
     if (inFlight) return inFlight;
     const operation = getMachineIndexResult(vault, cwd, {
       maxConcurrentMarkdownReads: 1,
-      instrumentation: {
-        afterSourceBodyRead: async (sourcePath) => {
-          if (pauseNextNoteRead && sourcePath === "note.md") {
-            pauseNextNoteRead = false;
-            naiveReadCaptured.resolve();
-            await releaseNaiveRead.promise;
-          }
-        },
-      },
     }).finally(() => {
       if (inFlight === operation) inFlight = undefined;
     });
@@ -1150,6 +1173,7 @@ test("serialized canonical verification rejects naive late-join single-flight se
   releaseNaiveRead.resolve();
 
   const [naiveAResult, naiveBResult] = await Promise.all([naiveA, naiveB]);
+  restoreOpen();
   assert.equal(naiveAResult.data.index.notes["note.md"]?.title, "Note");
   assert.equal(naiveBResult.data.index.notes["note.md"]?.title, "Note");
   assert.equal(inFlight, undefined);

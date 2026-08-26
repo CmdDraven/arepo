@@ -34,12 +34,29 @@ type WritePrecondition = {
   expectedHash?: unknown;
 };
 
+type MutationPathIdentity = {
+  dev: bigint;
+  ino: bigint;
+};
+
+type MutationDirectoryGuard = Array<{
+  absolutePath: string;
+  identity: MutationPathIdentity;
+}>;
+
+type WritableVaultMutationPath = {
+  absolutePath: string;
+  targetIdentity: MutationPathIdentity | null;
+  targetMode: number;
+};
+
 const fileWriteLocks = new Map<string, Promise<void>>();
 export const DEFAULT_MAX_CONCURRENT_MARKDOWN_READS = 32;
 
 class VaultObservationUnavailableError extends PublicApiError {}
 class VaultPathUnavailableError extends VaultObservationUnavailableError {}
 class VaultSourceChangedDuringReadError extends VaultPathUnavailableError {}
+class StructuralIndexInstrumentationError extends Error {}
 
 const ISOLATABLE_SOURCE_FILESYSTEM_CODES = new Set([
   "EACCES",
@@ -96,12 +113,8 @@ export type ProcessedStructuralIndexSources<T> = {
 
 export type StructuralIndexCaptureOptions = {
   maxConcurrentMarkdownReads?: number;
-  afterSourcePathValidated?: (path: string) => void | Promise<void>;
   onSourceHandleOpened?: (path: string) => void;
   onSourceHandleStat?: (path: string) => void;
-  afterSourceIdentityVerified?: (path: string) => void | Promise<void>;
-  beforeSourceBodyRead?: (path: string) => void | Promise<void>;
-  afterSourceBodyRead?: (path: string) => void | Promise<void>;
   onSourceHandleClosed?: (path: string) => void;
   onMarkdownBodyRead?: (path: string) => void;
   onMarkdownBodyReadComplete?: (path: string, bytes: number) => void;
@@ -206,11 +219,27 @@ export async function writeVaultFile(
   requirePermission(vault.permissions.writeContent, "Vault is not writable");
   if (typeof content !== "string") throw publicVaultError("content must be a string");
   const vaultPath = normalizeMarkdownFilePath(rawPath);
-  const absolutePath = await resolveWritableVaultPath(vault, vaultPath);
+  const root = await realVaultRoot(vault);
+  const absolutePath = resolveInsideVault(root, vaultPath);
   return withFileWriteLock(absolutePath, async () => {
-    await assertUnchangedIfExpected(absolutePath, precondition);
-    await atomicWriteFileUnlocked(absolutePath, content);
-    const stat = await fs.lstat(absolutePath);
+    const initialParentGuard = await captureExistingMutationDirectoryGuard(
+      root,
+      path.dirname(absolutePath),
+    );
+    const resolved = await resolveWritableVaultMutationPath(root, vaultPath);
+    await assertMutationDirectoryGuardUnchanged(initialParentGuard);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    const parentGuard = await captureMutationDirectoryGuard(root, path.dirname(absolutePath));
+    assertMutationGuardPreservesPrefix(initialParentGuard, parentGuard);
+    await assertUnchangedIfExpected(root, vaultPath, resolved.targetIdentity, precondition);
+    const validateDestination = async () => {
+      await assertMutationDirectoryGuardUnchanged(parentGuard);
+      await assertMutationTargetUnchanged(absolutePath, resolved.targetIdentity);
+    };
+    const stat = await atomicWriteFileUnlocked(absolutePath, content, {
+      existingMode: resolved.targetMode,
+      validateDestination,
+    });
     return {
       path: vaultPath,
       kind: "markdown" as const,
@@ -229,16 +258,33 @@ export async function createVaultFile(
   requirePermission(vault.permissions.writeContent, "Vault is not writable");
   if (typeof content !== "string") throw publicVaultError("content must be a string");
   const vaultPath = normalizeMarkdownFilePath(rawPath);
-  const absolutePath = await resolveCreatableVaultPath(vault, vaultPath);
+  const root = await realVaultRoot(vault);
+  const absolutePath = await resolveCreatableVaultPathFromRoot(root, vaultPath);
+  const initialParentGuard = await captureExistingMutationDirectoryGuard(
+    root,
+    path.dirname(absolutePath),
+  );
+  await assertMutationDirectoryGuardUnchanged(initialParentGuard);
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await assertNoSymlinkSegments(root, vaultPath, true);
+  const parentGuard = await captureMutationDirectoryGuard(root, path.dirname(absolutePath));
+  assertMutationGuardPreservesPrefix(initialParentGuard, parentGuard);
+  await assertMutationTargetUnchanged(absolutePath, null, "Destination already exists");
+  await assertMutationDirectoryGuardUnchanged(parentGuard);
   const handle = await fs.open(absolutePath, "wx");
   try {
+    await assertMutationDirectoryGuardUnchanged(parentGuard);
     await handle.writeFile(content, "utf8");
+    const stat = await handle.stat();
+    return {
+      path: vaultPath,
+      kind: "markdown" as const,
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+    };
   } finally {
     await handle.close();
   }
-  const stat = await fs.lstat(absolutePath);
-  return { path: vaultPath, kind: "markdown" as const, mtimeMs: stat.mtimeMs, size: stat.size };
 }
 
 export async function createVaultFolder(
@@ -247,7 +293,11 @@ export async function createVaultFolder(
 ): Promise<{ path: string }> {
   requirePermission(vault.permissions.writeContent, "Vault is not writable");
   const vaultPath = normalizeVaultFolderPath(rawPath);
-  const absolutePath = await resolveCreatableVaultPath(vault, vaultPath);
+  const root = await realVaultRoot(vault);
+  const absolutePath = await resolveCreatableVaultPathFromRoot(root, vaultPath);
+  const parentGuard = await captureMutationDirectoryGuard(root, path.dirname(absolutePath));
+  await assertMutationTargetUnchanged(absolutePath, null, "Destination already exists");
+  await assertMutationDirectoryGuardUnchanged(parentGuard);
   await fs.mkdir(absolutePath, { recursive: false });
   return { path: vaultPath };
 }
@@ -263,18 +313,40 @@ export async function renameVaultPath(
     kind === "folder" ? normalizeVaultFolderPath(fromPath) : normalizeMarkdownFilePath(fromPath);
   const to =
     kind === "folder" ? normalizeVaultFolderPath(toPath) : normalizeMarkdownFilePath(toPath);
-  const fromAbsolute = await resolveExistingVaultPath(vault, from);
-  const toAbsolute = await resolveCreatableVaultPath(vault, to);
+  const root = await realVaultRoot(vault);
+  const sourceParentGuard = await captureMutationDirectoryGuard(
+    root,
+    path.dirname(resolveInsideVault(root, from)),
+  );
+  const source = await resolveExistingVaultMutationPath(root, from, kind);
+  const fromAbsolute = source.absolutePath;
+  const toAbsolute = await resolveCreatableVaultPathFromRoot(root, to);
+  const initialDestinationParentGuard = await captureExistingMutationDirectoryGuard(
+    root,
+    path.dirname(toAbsolute),
+  );
   if (kind === "folder") {
     await assertNoSymlinksInTree(fromAbsolute);
     await assertNoImmutableSupportedSourcesInTree(fromAbsolute);
   }
+  await assertMutationDirectoryGuardUnchanged(sourceParentGuard);
+  await assertMutationDirectoryGuardUnchanged(initialDestinationParentGuard);
   await fs.mkdir(path.dirname(toAbsolute), { recursive: true });
-  try {
-    await fs.lstat(toAbsolute);
-    throw publicVaultError("Destination already exists");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  await assertNoSymlinkSegments(root, to, true);
+  const destinationParentGuard = await captureMutationDirectoryGuard(
+    root,
+    path.dirname(toAbsolute),
+  );
+  assertMutationGuardPreservesPrefix(initialDestinationParentGuard, destinationParentGuard);
+  await assertMutationTargetUnchanged(toAbsolute, null, "Destination already exists");
+  await assertMutationDirectoryGuardUnchanged(sourceParentGuard);
+  await assertMutationTargetUnchanged(fromAbsolute, source.identity, undefined, kind);
+  await assertMutationDirectoryGuardUnchanged(destinationParentGuard);
+  await assertMutationTargetUnchanged(toAbsolute, null, "Destination already exists");
+  if (kind === "folder") {
+    await assertNoSymlinksInTree(fromAbsolute);
+    await assertNoImmutableSupportedSourcesInTree(fromAbsolute);
+    await assertMutationTargetUnchanged(fromAbsolute, source.identity, undefined, kind);
   }
   await fs.rename(fromAbsolute, toAbsolute);
   return { fromPath: from, toPath: to };
@@ -286,8 +358,13 @@ export async function deleteVaultFile(
 ): Promise<{ path: string }> {
   requirePermission(vault.permissions.deleteFiles, "Vault is not configured for deletes");
   const vaultPath = normalizeMarkdownFilePath(rawPath);
-  const absolutePath = await resolveExistingVaultPath(vault, vaultPath);
-  await fs.unlink(absolutePath);
+  const root = await realVaultRoot(vault);
+  const absolutePath = resolveInsideVault(root, vaultPath);
+  const parentGuard = await captureMutationDirectoryGuard(root, path.dirname(absolutePath));
+  const resolved = await resolveExistingVaultMutationPath(root, vaultPath, "file");
+  await assertMutationDirectoryGuardUnchanged(parentGuard);
+  await assertMutationTargetUnchanged(resolved.absolutePath, resolved.identity);
+  await fs.unlink(resolved.absolutePath);
   return { path: vaultPath };
 }
 
@@ -319,8 +396,12 @@ export async function discoverStructuralIndexSources(
   };
   const discoveryStartedAt = options.onDiscoveryComplete ? performance.now() : 0;
   const allFiles = await listMarkdownFiles(vault);
-  options.onDiscoveryComplete?.(allFiles.length, performance.now() - discoveryStartedAt);
-  options.onMemoryCheckpoint?.("after-source-discovery");
+  emitStructuralIndexInstrumentation(
+    options.onDiscoveryComplete,
+    allFiles.length,
+    performance.now() - discoveryStartedAt,
+  );
+  emitStructuralIndexInstrumentation(options.onMemoryCheckpoint, "after-source-discovery");
   const files = allFiles.filter((file) => markdownPathInScope(file.path, scope));
   const excludedPaths = allFiles
     .filter((file) => !markdownPathInScope(file.path, scope))
@@ -358,18 +439,18 @@ export async function processStructuralIndexSources<T>(
           file.path,
           options,
         ));
-        options.onMarkdownBodyReadComplete?.(file.path, bytes);
+        emitStructuralIndexInstrumentation(options.onMarkdownBodyReadComplete, file.path, bytes);
       } catch (error) {
         if (!isIsolatableIndexSourceFailure(error)) throw error;
         return { path: file.path, state: "unavailable" as const };
       }
 
-      options.onMarkdownBodyRetained?.(file.path, bytes);
+      emitStructuralIndexInstrumentation(options.onMarkdownBodyRetained, file.path, bytes);
       try {
         const data = await processReadableSource({ path: file.path, content, contentHash });
         return { path: file.path, state: "readable" as const, contentHash, data };
       } finally {
-        options.onMarkdownBodyReleased?.(file.path, bytes);
+        emitStructuralIndexInstrumentation(options.onMarkdownBodyReleased, file.path, bytes);
       }
     },
   );
@@ -394,8 +475,11 @@ export async function processStructuralIndexSources<T>(
     }
   }
   sources.sort((a, b) => a.path.localeCompare(b.path));
-  options.onSourceCaptureComplete?.(performance.now() - captureStartedAt);
-  options.onMemoryCheckpoint?.("after-source-processing");
+  emitStructuralIndexInstrumentation(
+    options.onSourceCaptureComplete,
+    performance.now() - captureStartedAt,
+  );
+  emitStructuralIndexInstrumentation(options.onMemoryCheckpoint, "after-source-processing");
   return {
     manifest: { scope, sources },
     processedSources,
@@ -427,8 +511,8 @@ export async function captureStructuralIndexInputs(
           file.path,
           options,
         );
-        options.onMarkdownBodyReadComplete?.(file.path, bytes);
-        options.onMarkdownBodyRetained?.(file.path, bytes);
+        emitStructuralIndexInstrumentation(options.onMarkdownBodyReadComplete, file.path, bytes);
+        emitStructuralIndexInstrumentation(options.onMarkdownBodyRetained, file.path, bytes);
         return {
           path: file.path,
           content,
@@ -459,8 +543,11 @@ export async function captureStructuralIndexInputs(
     }
   }
   sources.sort((a, b) => a.path.localeCompare(b.path));
-  options.onSourceCaptureComplete?.(performance.now() - captureStartedAt);
-  options.onMemoryCheckpoint?.("after-source-capture");
+  emitStructuralIndexInstrumentation(
+    options.onSourceCaptureComplete,
+    performance.now() - captureStartedAt,
+  );
+  emitStructuralIndexInstrumentation(options.onMemoryCheckpoint, "after-source-capture");
   return { manifest: { scope, sources }, readableFiles, sourceIssues, excludedPaths };
 }
 
@@ -502,36 +589,72 @@ export function buildVaultIndexFromInputs(
 }
 
 export async function atomicWriteFile(absolutePath: string, content: string): Promise<void> {
-  return withFileWriteLock(absolutePath, () => atomicWriteFileUnlocked(absolutePath, content));
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await withFileWriteLock(absolutePath, () => atomicWriteFileUnlocked(absolutePath, content));
 }
 
-async function atomicWriteFileUnlocked(absolutePath: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+async function atomicWriteFileUnlocked(
+  absolutePath: string,
+  content: string,
+  options: {
+    existingMode?: number;
+    validateDestination?: () => Promise<void>;
+  } = {},
+): Promise<import("node:fs").Stats> {
   const directory = path.dirname(absolutePath);
   const tmp = path.join(
     directory,
     `.${path.basename(absolutePath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
   );
-  const existingMode = await fs
-    .stat(absolutePath)
-    .then((stat) => stat.mode)
-    .catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return 0o666;
-      throw error;
-    });
+  const existingMode =
+    options.existingMode ??
+    (await fs
+      .stat(absolutePath)
+      .then((stat) => stat.mode)
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return 0o666;
+        throw error;
+      }));
+  let temporaryIdentity: MutationPathIdentity | undefined;
   try {
+    if (options.validateDestination) await options.validateDestination();
     const handle = await fs.open(tmp, "wx", existingMode);
+    let stat: import("node:fs").Stats;
     try {
+      const openedStat = await handle.stat({ bigint: true });
+      temporaryIdentity = fileIdentity(openedStat);
+      if (options.validateDestination) await options.validateDestination();
       await handle.writeFile(content, "utf8");
       await handle.sync();
+      stat = await handle.stat();
     } finally {
       await handle.close();
     }
+    if (options.validateDestination) await options.validateDestination();
     await fs.rename(tmp, absolutePath);
     await syncDirectory(directory);
+    return stat;
   } catch (error) {
-    await fs.unlink(tmp).catch(() => undefined);
+    if (temporaryIdentity) await removeMutationTemporaryIfOwned(tmp, temporaryIdentity);
     throw error;
+  }
+}
+
+async function removeMutationTemporaryIfOwned(
+  absolutePath: string,
+  expectedIdentity: MutationPathIdentity,
+): Promise<void> {
+  const stat = await fs.lstat(absolutePath, { bigint: true }).catch((error) => {
+    if (isMissingPathError(error)) return null;
+    throw error;
+  });
+  if (
+    stat &&
+    !stat.isSymbolicLink() &&
+    stat.isFile() &&
+    sameVaultFileIdentity(expectedIdentity, stat)
+  ) {
+    await fs.unlink(absolutePath);
   }
 }
 
@@ -560,23 +683,6 @@ async function realVaultRoot(vault: VaultInfo): Promise<string> {
     throw vaultObservationUnavailableError("Vault root is not a directory");
   }
   return root;
-}
-
-async function resolveExistingVaultPath(vault: VaultInfo, vaultPath: string): Promise<string> {
-  const root = await realVaultRoot(vault);
-  return resolveExistingVaultPathFromRoot(root, vaultPath);
-}
-
-async function resolveExistingVaultPathFromRoot(root: string, vaultPath: string): Promise<string> {
-  const absolutePath = resolveInsideVault(root, vaultPath);
-  await assertNoSymlinkSegments(root, vaultPath, false);
-  const stat = await fs.lstat(absolutePath);
-  if (stat.isSymbolicLink()) {
-    throw vaultPathUnavailableError("Symlinks are not allowed inside vault paths");
-  }
-  const real = await fs.realpath(absolutePath);
-  ensureInside(root, real);
-  return absolutePath;
 }
 
 type VaultFileIdentity = {
@@ -628,24 +734,24 @@ async function readVerifiedVaultFileFromRoot(
     let handle: import("node:fs/promises").FileHandle | undefined;
     try {
       const resolved = await resolveExistingVaultFileFromRoot(root, vaultPath);
-      await options.afterSourcePathValidated?.(vaultPath);
       handle = await fs.open(resolved.absolutePath, sourceReadOpenFlags());
-      options.onSourceHandleOpened?.(vaultPath);
+      emitStructuralIndexInstrumentation(options.onSourceHandleOpened, vaultPath);
       const openedStat = await handle.stat({ bigint: true });
-      options.onSourceHandleStat?.(vaultPath);
+      emitStructuralIndexInstrumentation(options.onSourceHandleStat, vaultPath);
       if (!openedStat.isFile() || !sameVaultFileIdentity(resolved.identity, openedStat)) {
         throw vaultSourceChangedDuringReadError();
       }
-      await options.afterSourceIdentityVerified?.(vaultPath);
-      options.onMarkdownBodyRead?.(vaultPath);
+      emitStructuralIndexInstrumentation(options.onMarkdownBodyRead, vaultPath);
       try {
-        await options.beforeSourceBodyRead?.(vaultPath);
         const body = await handle.readFile();
-        await options.afterSourceBodyRead?.(vaultPath);
         const hashStartedAt = options.onHashCalculated ? performance.now() : 0;
         const contentHash = hashBytes(body);
         if (options.onHashCalculated) {
-          options.onHashCalculated(vaultPath, performance.now() - hashStartedAt);
+          emitStructuralIndexInstrumentation(
+            options.onHashCalculated,
+            vaultPath,
+            performance.now() - hashStartedAt,
+          );
         }
         return {
           content: body.toString("utf8"),
@@ -654,7 +760,7 @@ async function readVerifiedVaultFileFromRoot(
           stat: openedStat,
         };
       } finally {
-        options.onMarkdownBodyReadSettled?.(vaultPath);
+        emitStructuralIndexInstrumentation(options.onMarkdownBodyReadSettled, vaultPath);
       }
     } catch (error) {
       if (attempt + 1 < maxAttempts && isRetryableSourceReplacement(error)) continue;
@@ -662,7 +768,7 @@ async function readVerifiedVaultFileFromRoot(
     } finally {
       if (handle) {
         await handle.close();
-        options.onSourceHandleClosed?.(vaultPath);
+        emitStructuralIndexInstrumentation(options.onSourceHandleClosed, vaultPath);
       }
     }
   }
@@ -689,7 +795,23 @@ function isRetryableSourceReplacement(error: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR" || code === "ELOOP" || code === "EISDIR";
 }
 
+function emitStructuralIndexInstrumentation<TArgs extends unknown[]>(
+  callback: ((...args: TArgs) => void) | undefined,
+  ...args: TArgs
+): void {
+  if (!callback) return;
+  try {
+    callback(...args);
+  } catch (error) {
+    throw new StructuralIndexInstrumentationError(
+      error instanceof Error ? error.message : "Structural index instrumentation failed",
+      { cause: error },
+    );
+  }
+}
+
 function isIsolatableIndexSourceFailure(error: unknown): boolean {
+  if (error instanceof StructuralIndexInstrumentationError) return false;
   if (error instanceof VaultPathUnavailableError) return true;
   return isExpectedSourceFilesystemFailure(error);
 }
@@ -706,29 +828,70 @@ function isExpectedSourceFilesystemFailure(error: unknown): boolean {
   return typeof code === "string" && ISOLATABLE_SOURCE_FILESYSTEM_CODES.has(code);
 }
 
-async function resolveWritableVaultPath(vault: VaultInfo, vaultPath: string): Promise<string> {
-  const root = await realVaultRoot(vault);
+async function resolveCreatableVaultPathFromRoot(root: string, vaultPath: string): Promise<string> {
   const absolutePath = resolveInsideVault(root, vaultPath);
   await assertNoSymlinkSegments(root, vaultPath, true);
-  const stat = await fs.lstat(absolutePath).catch((error) => {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
-  });
-  if (stat?.isSymbolicLink()) {
-    throw vaultPathUnavailableError("Symlinks are not allowed inside vault paths");
-  }
-  if (stat) {
-    const real = await fs.realpath(absolutePath);
-    ensureInside(root, real);
-  }
   return absolutePath;
 }
 
-async function resolveCreatableVaultPath(vault: VaultInfo, vaultPath: string): Promise<string> {
-  const root = await realVaultRoot(vault);
+async function resolveWritableVaultMutationPath(
+  root: string,
+  vaultPath: string,
+): Promise<WritableVaultMutationPath> {
   const absolutePath = resolveInsideVault(root, vaultPath);
   await assertNoSymlinkSegments(root, vaultPath, true);
-  return absolutePath;
+  const stat = await fs.lstat(absolutePath, { bigint: true }).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  });
+  if (!stat) {
+    return { absolutePath, targetIdentity: null, targetMode: 0o666 };
+  }
+  if (stat.isSymbolicLink()) {
+    throw vaultPathUnavailableError("Symlinks are not allowed inside vault paths");
+  }
+  if (!stat.isFile()) {
+    throw vaultPathUnavailableError("Vault source is not a regular file");
+  }
+  const real = await fs.realpath(absolutePath);
+  ensureInside(root, real);
+  const realStat = await fs.lstat(real, { bigint: true });
+  if (!realStat.isFile() || !sameVaultFileIdentity(stat, realStat)) {
+    throw mutationConflictError();
+  }
+  return {
+    absolutePath,
+    targetIdentity: fileIdentity(stat),
+    targetMode: Number(stat.mode),
+  };
+}
+
+async function resolveExistingVaultMutationPath(
+  root: string,
+  vaultPath: string,
+  kind: "file" | "folder",
+): Promise<{ absolutePath: string; identity: MutationPathIdentity }> {
+  const absolutePath = resolveInsideVault(root, vaultPath);
+  await assertNoSymlinkSegments(root, vaultPath, false);
+  const stat = await fs.lstat(absolutePath, { bigint: true });
+  if (stat.isSymbolicLink()) {
+    throw vaultPathUnavailableError("Symlinks are not allowed inside vault paths");
+  }
+  if (kind === "file" ? !stat.isFile() : !stat.isDirectory()) {
+    throw vaultPathUnavailableError(
+      kind === "file" ? "Vault source is not a regular file" : "Vault path is not a directory",
+    );
+  }
+  const real = await fs.realpath(absolutePath);
+  ensureInside(root, real);
+  const realStat = await fs.lstat(real, { bigint: true });
+  if (
+    (kind === "file" ? !realStat.isFile() : !realStat.isDirectory()) ||
+    !sameVaultFileIdentity(stat, realStat)
+  ) {
+    throw mutationConflictError();
+  }
+  return { absolutePath, identity: fileIdentity(stat) };
 }
 
 async function assertNoSymlinkSegments(
@@ -778,6 +941,103 @@ async function assertNoImmutableSupportedSourcesInTree(root: string): Promise<vo
   });
 }
 
+async function captureMutationDirectoryGuard(
+  root: string,
+  directory: string,
+): Promise<MutationDirectoryGuard> {
+  const guard = await captureExistingMutationDirectoryGuard(root, directory);
+  if (guard.at(-1)?.absolutePath !== directory) throw mutationConflictError();
+  return guard;
+}
+
+async function captureExistingMutationDirectoryGuard(
+  root: string,
+  directory: string,
+): Promise<MutationDirectoryGuard> {
+  ensureInside(root, directory);
+  const relative = path.relative(root, directory);
+  const segments = relative === "" ? [] : relative.split(path.sep);
+  const guard: MutationDirectoryGuard = [];
+  let current = root;
+  for (const segment of ["", ...segments]) {
+    if (segment) current = path.join(current, segment);
+    const stat = await fs.lstat(current, { bigint: true }).catch((error) => {
+      if (isMissingPathError(error)) return null;
+      throw error;
+    });
+    if (!stat) break;
+    if (stat.isSymbolicLink() || !stat.isDirectory()) throw mutationConflictError();
+    guard.push({ absolutePath: current, identity: fileIdentity(stat) });
+  }
+  return guard;
+}
+
+function assertMutationGuardPreservesPrefix(
+  expected: MutationDirectoryGuard,
+  actual: MutationDirectoryGuard,
+): void {
+  if (
+    actual.length < expected.length ||
+    expected.some(
+      (entry, index) =>
+        actual[index]?.absolutePath !== entry.absolutePath ||
+        !sameVaultFileIdentity(entry.identity, actual[index].identity),
+    )
+  ) {
+    throw mutationConflictError();
+  }
+}
+
+async function assertMutationDirectoryGuardUnchanged(guard: MutationDirectoryGuard): Promise<void> {
+  for (const entry of guard) {
+    const stat = await fs.lstat(entry.absolutePath, { bigint: true }).catch((error) => {
+      if (isMissingPathError(error)) return null;
+      throw error;
+    });
+    if (
+      !stat ||
+      stat.isSymbolicLink() ||
+      !stat.isDirectory() ||
+      !sameVaultFileIdentity(entry.identity, stat)
+    ) {
+      throw mutationConflictError();
+    }
+  }
+}
+
+async function assertMutationTargetUnchanged(
+  absolutePath: string,
+  expectedIdentity: MutationPathIdentity | null,
+  existingMessage?: string,
+  kind: "file" | "folder" = "file",
+): Promise<void> {
+  const stat = await fs.lstat(absolutePath, { bigint: true }).catch((error) => {
+    if (isMissingPathError(error)) return null;
+    throw error;
+  });
+  if (!expectedIdentity) {
+    if (stat) {
+      if (existingMessage) throw publicVaultError(existingMessage);
+      throw mutationConflictError();
+    }
+    return;
+  }
+  if (
+    !stat ||
+    stat.isSymbolicLink() ||
+    (kind === "file" ? !stat.isFile() : !stat.isDirectory()) ||
+    !sameVaultFileIdentity(expectedIdentity, stat)
+  ) {
+    throw mutationConflictError();
+  }
+}
+
+function isMissingPathError(error: unknown): boolean {
+  const code =
+    typeof error === "object" && error !== null ? (error as NodeJS.ErrnoException).code : undefined;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
 function ensureInside(root: string, absolutePath: string): void {
   const relative = path.relative(root, absolutePath);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -786,7 +1046,9 @@ function ensureInside(root: string, absolutePath: string): void {
 }
 
 async function assertUnchangedIfExpected(
-  absolutePath: string,
+  root: string,
+  vaultPath: string,
+  expectedIdentity: MutationPathIdentity | null,
   precondition: WritePrecondition,
 ): Promise<void> {
   const expectedHash =
@@ -795,19 +1057,16 @@ async function assertUnchangedIfExpected(
     typeof precondition.expectedMtimeMs === "number" ? precondition.expectedMtimeMs : undefined;
   if (!expectedHash && typeof expectedMtimeMs !== "number") return;
 
-  const content = await fs.readFile(absolutePath, "utf8");
-  const stat = await fs.lstat(absolutePath);
-  const hashMatches = expectedHash ? hashContent(content) === expectedHash : true;
+  if (!expectedIdentity) throw mutationConflictError();
+  const verified = await readVerifiedVaultFileFromRoot(root, vaultPath);
+  if (!sameVaultFileIdentity(expectedIdentity, verified.stat)) throw mutationConflictError();
+  const hashMatches = expectedHash ? verified.contentHash === expectedHash : true;
   const mtimeMatches =
-    typeof expectedMtimeMs === "number" ? Math.abs(stat.mtimeMs - expectedMtimeMs) < 1 : true;
+    typeof expectedMtimeMs === "number"
+      ? Math.abs(Number(verified.stat.mtimeNs) / 1_000_000 - expectedMtimeMs) < 1
+      : true;
   if (!hashMatches || !mtimeMatches) {
-    throw new PublicApiError(
-      409,
-      "File changed on disk since it was opened. Reload before saving.",
-      {
-        code: "CONFLICT",
-      },
-    );
+    throw writeConflictError();
   }
 }
 
@@ -846,6 +1105,22 @@ function vaultSourceChangedDuringReadError(): VaultSourceChangedDuringReadError 
 function vaultObservationUnavailableError(message: string): VaultObservationUnavailableError {
   return new VaultObservationUnavailableError(400, message, {
     code: "invalid-vault-operation",
+  });
+}
+
+function writeConflictError(): PublicApiError {
+  return new PublicApiError(
+    409,
+    "File changed on disk since it was opened. Reload before saving.",
+    {
+      code: "CONFLICT",
+    },
+  );
+}
+
+function mutationConflictError(): PublicApiError {
+  return new PublicApiError(409, "Vault path changed during operation. Refresh and retry.", {
+    code: "CONFLICT",
   });
 }
 

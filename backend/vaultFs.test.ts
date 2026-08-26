@@ -26,6 +26,54 @@ import { buildGraph } from "../src/lib/vault/graph.js";
 import { PublicApiError } from "./publicApiError.js";
 import type { VaultInfo } from "./types.js";
 
+function installOpenInterceptor(
+  intercept: (
+    file: Parameters<typeof fs.open>[0],
+    open: () => ReturnType<typeof fs.open>,
+  ) => ReturnType<typeof fs.open>,
+): () => void {
+  const originalOpen = fs.open;
+  fs.open = ((file, ...args) =>
+    intercept(file, () => originalOpen(file, ...args))) as typeof fs.open;
+  return () => {
+    fs.open = originalOpen;
+  };
+}
+
+function installLstatInterceptor(
+  intercept: (
+    file: Parameters<typeof fs.lstat>[0],
+    lstat: () => ReturnType<typeof fs.lstat>,
+  ) => ReturnType<typeof fs.lstat>,
+): () => void {
+  const originalLstat = fs.lstat;
+  fs.lstat = ((file, ...args) =>
+    intercept(file, () => originalLstat(file, ...args))) as typeof fs.lstat;
+  return () => {
+    fs.lstat = originalLstat;
+  };
+}
+
+function assertBoundedMutationConflict(error: unknown): boolean {
+  assert.ok(error instanceof PublicApiError);
+  assert.equal(error.status, 409);
+  assert.equal(error.code, "CONFLICT");
+  assert.equal(error.message, "Vault path changed during operation. Refresh and retry.");
+  assert.doesNotMatch(error.message, /[/\\]|EACCES|ENOENT|symlink|private/i);
+  return true;
+}
+
+function interceptHandleRead(
+  handle: Awaited<ReturnType<typeof fs.open>>,
+  intercept: (read: () => Promise<Buffer>) => Promise<Buffer>,
+): void {
+  const originalReadFile = handle.readFile.bind(handle);
+  Object.defineProperty(handle, "readFile", {
+    configurable: true,
+    value: () => intercept(() => originalReadFile() as Promise<Buffer>),
+  });
+}
+
 async function makeVault(t: TestContext): Promise<VaultInfo> {
   const rootPath = await makeTestTempDir(t, "arepo-vault-");
   return {
@@ -76,6 +124,13 @@ test("reads and writes files inside the vault root", async (t) => {
   const after = await readVaultFile(vault, "Notes/a.md");
   assert.equal(after.content, "# A2\n");
   assert.equal(written.hash, after.hash);
+});
+
+test("write preserves the existing create-if-missing behavior", async (t) => {
+  const vault = await makeVault(t);
+  const written = await writeVaultFile(vault, "Nested/new.md", "# New\n");
+  assert.equal(written.path, "Nested/new.md");
+  assert.equal((await readVaultFile(vault, "Nested/new.md")).content, "# New\n");
 });
 
 test("discovers and reads supported UTF-8 source files with explicit kinds", async (t) => {
@@ -280,6 +335,282 @@ test("serializes optimistic writes so only one writer can consume a file version
   assert.match((await readVaultFile(vault, "a.md")).content, /^# Writer [AB]\n$/);
 });
 
+test("aborts an atomic write when the existing target identity changes before commit", async (t) => {
+  const vault = await makeVault(t);
+  const target = path.join(vault.rootPath, "note.md");
+  const displaced = path.join(vault.rootPath, "displaced.md");
+  await fs.writeFile(target, "# Original\n", "utf8");
+  const before = await readVaultFile(vault, "note.md");
+  let replaced = false;
+  const restoreLstat = installLstatInterceptor(async (file, lstat) => {
+    if (!replaced && String(file) === target) {
+      const entries = await fs.readdir(vault.rootPath);
+      if (entries.some((entry) => entry.startsWith(".note.md.") && entry.endsWith(".tmp"))) {
+        replaced = true;
+        await fs.rename(target, displaced);
+        await fs.writeFile(target, "# External replacement\n", "utf8");
+      }
+    }
+    return lstat();
+  });
+  try {
+    await assert.rejects(
+      () =>
+        writeVaultFile(vault, "note.md", "# AREPO edit\n", {
+          expectedHash: before.hash,
+          expectedMtimeMs: before.mtimeMs,
+        }),
+      assertBoundedMutationConflict,
+    );
+  } finally {
+    restoreLstat();
+  }
+
+  assert.equal(replaced, true);
+  assert.equal(await fs.readFile(target, "utf8"), "# External replacement\n");
+  assert.equal(await fs.readFile(displaced, "utf8"), "# Original\n");
+  assert.equal(
+    (await fs.readdir(vault.rootPath)).some(
+      (entry) => entry.startsWith(".note.md.") && entry.endsWith(".tmp"),
+    ),
+    false,
+  );
+});
+
+test("aborts an atomic write when the target becomes a symlink before commit", async (t) => {
+  const vault = await makeVault(t);
+  const outside = await makeTestTempDir(t, "arepo-write-outside-");
+  const target = path.join(vault.rootPath, "note.md");
+  const outsideTarget = path.join(outside, "private.md");
+  await fs.writeFile(target, "# Original\n", "utf8");
+  await fs.writeFile(outsideTarget, "# Private\n", "utf8");
+  let replaced = false;
+  const restoreLstat = installLstatInterceptor(async (file, lstat) => {
+    if (!replaced && String(file) === target) {
+      const entries = await fs.readdir(vault.rootPath);
+      if (entries.some((entry) => entry.startsWith(".note.md.") && entry.endsWith(".tmp"))) {
+        replaced = true;
+        await fs.unlink(target);
+        await fs.symlink(outsideTarget, target);
+      }
+    }
+    return lstat();
+  });
+  try {
+    await assert.rejects(
+      () => writeVaultFile(vault, "note.md", "# AREPO edit\n"),
+      assertBoundedMutationConflict,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EPERM") t.skip("symlinks unavailable");
+    else throw error;
+  } finally {
+    restoreLstat();
+  }
+
+  if (replaced) assert.equal(await fs.readFile(outsideTarget, "utf8"), "# Private\n");
+});
+
+test("aborts an atomic write when the target disappears before commit", async (t) => {
+  const vault = await makeVault(t);
+  const target = path.join(vault.rootPath, "note.md");
+  await fs.writeFile(target, "# Original\n", "utf8");
+  let removed = false;
+  const restoreLstat = installLstatInterceptor(async (file, lstat) => {
+    if (!removed && String(file) === target) {
+      const entries = await fs.readdir(vault.rootPath);
+      if (entries.some((entry) => entry.startsWith(".note.md.") && entry.endsWith(".tmp"))) {
+        removed = true;
+        await fs.unlink(target);
+      }
+    }
+    return lstat();
+  });
+  try {
+    await assert.rejects(
+      () => writeVaultFile(vault, "note.md", "# AREPO edit\n"),
+      assertBoundedMutationConflict,
+    );
+  } finally {
+    restoreLstat();
+  }
+
+  assert.equal(removed, true);
+  await assert.rejects(() => fs.access(target), /ENOENT/);
+  assert.equal(
+    (await fs.readdir(vault.rootPath)).some(
+      (entry) => entry.startsWith(".note.md.") && entry.endsWith(".tmp"),
+    ),
+    false,
+  );
+});
+
+test("aborts delete when the authorized file identity changes before unlink", async (t) => {
+  const vault = await makeVault(t);
+  const target = path.join(vault.rootPath, "note.md");
+  const displaced = path.join(vault.rootPath, "displaced.md");
+  await fs.writeFile(target, "# Original\n", "utf8");
+  let targetStats = 0;
+  const restoreLstat = installLstatInterceptor(async (file, lstat) => {
+    if (String(file) === target && ++targetStats === 4) {
+      await fs.rename(target, displaced);
+      await fs.writeFile(target, "# External replacement\n", "utf8");
+    }
+    return lstat();
+  });
+  try {
+    await assert.rejects(() => deleteVaultFile(vault, "note.md"), assertBoundedMutationConflict);
+  } finally {
+    restoreLstat();
+  }
+
+  assert.equal(await fs.readFile(target, "utf8"), "# External replacement\n");
+  assert.equal(await fs.readFile(displaced, "utf8"), "# Original\n");
+});
+
+test("aborts delete when the authorized file disappears before unlink", async (t) => {
+  const vault = await makeVault(t);
+  const target = path.join(vault.rootPath, "note.md");
+  await fs.writeFile(target, "# Original\n", "utf8");
+  let targetStats = 0;
+  const restoreLstat = installLstatInterceptor(async (file, lstat) => {
+    if (String(file) === target && ++targetStats === 4) await fs.unlink(target);
+    return lstat();
+  });
+  try {
+    await assert.rejects(() => deleteVaultFile(vault, "note.md"), assertBoundedMutationConflict);
+  } finally {
+    restoreLstat();
+  }
+  await assert.rejects(() => fs.access(target), /ENOENT/);
+});
+
+test("aborts file rename when the authorized source identity changes before rename", async (t) => {
+  const vault = await makeVault(t);
+  const source = path.join(vault.rootPath, "source.md");
+  const displaced = path.join(vault.rootPath, "displaced.md");
+  const destination = path.join(vault.rootPath, "destination.md");
+  await fs.writeFile(source, "# Original\n", "utf8");
+  let sourceStats = 0;
+  const restoreLstat = installLstatInterceptor(async (file, lstat) => {
+    if (String(file) === source && ++sourceStats === 4) {
+      await fs.rename(source, displaced);
+      await fs.writeFile(source, "# External replacement\n", "utf8");
+    }
+    return lstat();
+  });
+  try {
+    await assert.rejects(
+      () => renameVaultPath(vault, "source.md", "destination.md"),
+      assertBoundedMutationConflict,
+    );
+  } finally {
+    restoreLstat();
+  }
+
+  assert.equal(await fs.readFile(source, "utf8"), "# External replacement\n");
+  assert.equal(await fs.readFile(displaced, "utf8"), "# Original\n");
+  await assert.rejects(() => fs.access(destination), /ENOENT/);
+});
+
+test("aborts rename when the destination parent identity changes before commit", async (t) => {
+  const vault = await makeVault(t);
+  const source = path.join(vault.rootPath, "source.md");
+  const destinationParent = path.join(vault.rootPath, "destination");
+  const displacedParent = path.join(vault.rootPath, "displaced-destination");
+  await fs.writeFile(source, "# Source\n", "utf8");
+  await fs.mkdir(destinationParent);
+  let parentStats = 0;
+  const restoreLstat = installLstatInterceptor(async (file, lstat) => {
+    if (String(file) === destinationParent && ++parentStats === 6) {
+      await fs.rename(destinationParent, displacedParent);
+      await fs.mkdir(destinationParent);
+    }
+    return lstat();
+  });
+  try {
+    await assert.rejects(
+      () => renameVaultPath(vault, "source.md", "destination/renamed.md"),
+      assertBoundedMutationConflict,
+    );
+  } finally {
+    restoreLstat();
+  }
+
+  assert.equal(await fs.readFile(source, "utf8"), "# Source\n");
+  await assert.rejects(() => fs.access(path.join(destinationParent, "renamed.md")), /ENOENT/);
+  await assert.rejects(() => fs.access(path.join(displacedParent, "renamed.md")), /ENOENT/);
+});
+
+test("aborts folder rename when the authorized directory identity changes before commit", async (t) => {
+  const vault = await makeVault(t);
+  const source = path.join(vault.rootPath, "source");
+  const displaced = path.join(vault.rootPath, "displaced-source");
+  const destination = path.join(vault.rootPath, "destination");
+  await fs.mkdir(source);
+  await fs.writeFile(path.join(source, "original.md"), "# Original\n", "utf8");
+  let sourceStats = 0;
+  const restoreLstat = installLstatInterceptor(async (file, lstat) => {
+    if (String(file) === source && ++sourceStats === 4) {
+      await fs.rename(source, displaced);
+      await fs.mkdir(source);
+      await fs.writeFile(path.join(source, "external.md"), "# External\n", "utf8");
+    }
+    return lstat();
+  });
+  try {
+    await assert.rejects(
+      () => renameVaultPath(vault, "source", "destination", "folder"),
+      assertBoundedMutationConflict,
+    );
+  } finally {
+    restoreLstat();
+  }
+
+  assert.equal(await fs.readFile(path.join(source, "external.md"), "utf8"), "# External\n");
+  assert.equal(await fs.readFile(path.join(displaced, "original.md"), "utf8"), "# Original\n");
+  await assert.rejects(() => fs.access(destination), /ENOENT/);
+});
+
+test("aborts create when the destination parent identity changes before exclusive open", async (t) => {
+  const vault = await makeVault(t);
+  const parent = path.join(vault.rootPath, "notes");
+  const displacedParent = path.join(vault.rootPath, "displaced-notes");
+  const target = path.join(parent, "new.md");
+  await fs.mkdir(parent);
+  let parentStats = 0;
+  const restoreLstat = installLstatInterceptor(async (file, lstat) => {
+    if (String(file) === parent && ++parentStats === 6) {
+      await fs.rename(parent, displacedParent);
+      await fs.mkdir(parent);
+    }
+    return lstat();
+  });
+  try {
+    await assert.rejects(
+      () => createVaultFile(vault, "notes/new.md", "# New\n"),
+      assertBoundedMutationConflict,
+    );
+  } finally {
+    restoreLstat();
+  }
+
+  await assert.rejects(() => fs.access(target), /ENOENT/);
+  await assert.rejects(() => fs.access(path.join(displacedParent, "new.md")), /ENOENT/);
+});
+
+test("create remains exclusive and rejects a known destination conflict", async (t) => {
+  const vault = await makeVault(t);
+  const target = path.join(vault.rootPath, "existing.md");
+  await fs.writeFile(target, "# Existing\n", "utf8");
+
+  await assert.rejects(
+    () => createVaultFile(vault, "existing.md", "# Replacement\n"),
+    /Destination already exists/,
+  );
+  assert.equal(await fs.readFile(target, "utf8"), "# Existing\n");
+});
+
 test("atomic writes clean temporary files when the final rename fails", async (t) => {
   const vault = await makeVault(t);
   const target = path.join(vault.rootPath, "occupied.md");
@@ -332,16 +663,28 @@ test("structural source reads preserve ordering under a configured concurrency b
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const inputs = await captureStructuralIndexInputs(vault, {
-      maxConcurrentMarkdownReads: expectedConcurrency,
-      beforeSourceBodyRead: async () => {
-        active += 1;
-        highWater = Math.max(highWater, active);
-        if (active === expectedConcurrency) release();
-        await gate;
-        active -= 1;
-      },
+    const restoreOpen = installOpenInterceptor(async (file, open) => {
+      const handle = await open();
+      if (typeof file === "string" && file.endsWith(".md")) {
+        interceptHandleRead(handle, async (read) => {
+          active += 1;
+          highWater = Math.max(highWater, active);
+          if (active === expectedConcurrency) release();
+          await gate;
+          active -= 1;
+          return read();
+        });
+      }
+      return handle;
     });
+    let inputs: Awaited<ReturnType<typeof captureStructuralIndexInputs>>;
+    try {
+      inputs = await captureStructuralIndexInputs(vault, {
+        maxConcurrentMarkdownReads: expectedConcurrency,
+      });
+    } finally {
+      restoreOpen();
+    }
     return { highWater, inputs };
   };
 
@@ -382,9 +725,9 @@ test("structural capture rejects parent replacement after validation without rea
   let bodyReads = 0;
   let handlesOpened = 0;
   let handlesClosed = 0;
-  const inputs = await captureStructuralIndexInputs(vault, {
-    afterSourcePathValidated: async (sourcePath) => {
-      if (sourcePath !== "parent/note.md" || changed) return;
+  const sourcePath = path.join(parent, "note.md");
+  const restoreOpen = installOpenInterceptor(async (file, open) => {
+    if (file === sourcePath && !changed) {
       changed = true;
       await fs.rename(parent, originalParent);
       try {
@@ -392,21 +735,29 @@ test("structural capture rejects parent replacement after validation without rea
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "EPERM") {
           t.skip("directory symlinks unavailable");
-          return;
+          return open();
         }
         throw error;
       }
-    },
-    onMarkdownBodyRead: () => {
-      bodyReads += 1;
-    },
-    onSourceHandleOpened: () => {
-      handlesOpened += 1;
-    },
-    onSourceHandleClosed: () => {
-      handlesClosed += 1;
-    },
+    }
+    return open();
   });
+  let inputs: Awaited<ReturnType<typeof captureStructuralIndexInputs>>;
+  try {
+    inputs = await captureStructuralIndexInputs(vault, {
+      onMarkdownBodyRead: () => {
+        bodyReads += 1;
+      },
+      onSourceHandleOpened: () => {
+        handlesOpened += 1;
+      },
+      onSourceHandleClosed: () => {
+        handlesClosed += 1;
+      },
+    });
+  } finally {
+    restoreOpen();
+  }
   const result = buildVaultIndexFromInputs(inputs);
 
   assert.equal(changed, true);
@@ -426,16 +777,25 @@ test("structural capture rejects leaf replacement after validation before any bo
   const note = path.join(vault.rootPath, "note.md");
   await fs.writeFile(note, "# Validated Source\n", "utf8");
   let bodyReads = 0;
-
-  const inputs = await captureStructuralIndexInputs(vault, {
-    afterSourcePathValidated: async () => {
+  let replaced = false;
+  const restoreOpen = installOpenInterceptor(async (file, open) => {
+    if (file === note && !replaced) {
+      replaced = true;
       await fs.rename(note, path.join(vault.rootPath, "validated-original.md"));
       await fs.writeFile(note, "# Substituted Body\n", "utf8");
-    },
-    onMarkdownBodyRead: () => {
-      bodyReads += 1;
-    },
+    }
+    return open();
   });
+  let inputs: Awaited<ReturnType<typeof captureStructuralIndexInputs>>;
+  try {
+    inputs = await captureStructuralIndexInputs(vault, {
+      onMarkdownBodyRead: () => {
+        bodyReads += 1;
+      },
+    });
+  } finally {
+    restoreOpen();
+  }
 
   assert.equal(bodyReads, 0);
   assert.deepEqual(inputs.readableFiles, {});
@@ -451,24 +811,33 @@ test("structural capture rejects leaf replacement with a symlink", async (t) => 
   await fs.writeFile(note, "# Validated Source\n", "utf8");
   await fs.writeFile(outsideNote, "# Outside Symlink Target\n", "utf8");
   let bodyReads = 0;
-
-  const inputs = await captureStructuralIndexInputs(vault, {
-    afterSourcePathValidated: async () => {
+  let replaced = false;
+  const restoreOpen = installOpenInterceptor(async (file, open) => {
+    if (file === note && !replaced) {
+      replaced = true;
       await fs.unlink(note);
       try {
         await fs.symlink(outsideNote, note, "file");
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "EPERM") {
           t.skip("file symlinks unavailable");
-          return;
+          return open();
         }
         throw error;
       }
-    },
-    onMarkdownBodyRead: () => {
-      bodyReads += 1;
-    },
+    }
+    return open();
   });
+  let inputs: Awaited<ReturnType<typeof captureStructuralIndexInputs>>;
+  try {
+    inputs = await captureStructuralIndexInputs(vault, {
+      onMarkdownBodyRead: () => {
+        bodyReads += 1;
+      },
+    });
+  } finally {
+    restoreOpen();
+  }
 
   assert.equal(bodyReads, 0);
   assert.deepEqual(inputs.readableFiles, {});
@@ -480,16 +849,25 @@ test("structural capture rejects a leaf that becomes a directory", async (t) => 
   const note = path.join(vault.rootPath, "note.md");
   await fs.writeFile(note, "# Validated Source\n", "utf8");
   let bodyReads = 0;
-
-  const inputs = await captureStructuralIndexInputs(vault, {
-    afterSourcePathValidated: async () => {
+  let replaced = false;
+  const restoreOpen = installOpenInterceptor(async (file, open) => {
+    if (file === note && !replaced) {
+      replaced = true;
       await fs.unlink(note);
       await fs.mkdir(note);
-    },
-    onMarkdownBodyRead: () => {
-      bodyReads += 1;
-    },
+    }
+    return open();
   });
+  let inputs: Awaited<ReturnType<typeof captureStructuralIndexInputs>>;
+  try {
+    inputs = await captureStructuralIndexInputs(vault, {
+      onMarkdownBodyRead: () => {
+        bodyReads += 1;
+      },
+    });
+  } finally {
+    restoreOpen();
+  }
 
   assert.equal(bodyReads, 0);
   assert.deepEqual(inputs.readableFiles, {});
@@ -501,14 +879,24 @@ test("an opened and identity-verified source is not redirected by later pathname
   const note = path.join(vault.rootPath, "note.md");
   await fs.writeFile(note, "# Opened Safe Source\n", "utf8");
   let verified = 0;
-
-  const inputs = await captureStructuralIndexInputs(vault, {
-    afterSourceIdentityVerified: async () => {
-      verified += 1;
-      await fs.rename(note, path.join(vault.rootPath, "opened-original.md"));
-      await fs.writeFile(note, "# Later Path Replacement\n", "utf8");
-    },
+  const restoreOpen = installOpenInterceptor(async (file, open) => {
+    const handle = await open();
+    if (file === note) {
+      interceptHandleRead(handle, async (read) => {
+        verified += 1;
+        await fs.rename(note, path.join(vault.rootPath, "opened-original.md"));
+        await fs.writeFile(note, "# Later Path Replacement\n", "utf8");
+        return read();
+      });
+    }
+    return handle;
   });
+  let inputs: Awaited<ReturnType<typeof captureStructuralIndexInputs>>;
+  try {
+    inputs = await captureStructuralIndexInputs(vault);
+  } finally {
+    restoreOpen();
+  }
 
   assert.equal(verified, 1);
   assert.equal(inputs.readableFiles["note.md"], "# Opened Safe Source\n");
@@ -521,20 +909,14 @@ test("normal structural reads verify identity before body read and close every h
   const events: string[] = [];
 
   const inputs = await captureStructuralIndexInputs(vault, {
-    afterSourcePathValidated: () => {
-      events.push("validated");
-    },
     onSourceHandleOpened: () => events.push("opened"),
     onSourceHandleStat: () => events.push("fstat"),
-    afterSourceIdentityVerified: () => {
-      events.push("identity");
-    },
     onMarkdownBodyRead: () => events.push("read"),
     onSourceHandleClosed: () => events.push("closed"),
   });
 
   assert.equal(inputs.readableFiles["note.md"], "# Note\n");
-  assert.deepEqual(events, ["validated", "opened", "fstat", "identity", "read", "closed"]);
+  assert.deepEqual(events, ["opened", "fstat", "read", "closed"]);
 });
 
 test("structural identity verification hashes the exact bytes read from the handle", async (t) => {
@@ -655,7 +1037,9 @@ test("verified source handles close on fstat, body-read, and downstream failures
           closed += 1;
         },
         onHashCalculated: () => {
-          throw new Error("hash instrumentation failure");
+          const error = new Error("hash instrumentation failure") as NodeJS.ErrnoException;
+          error.code = "EACCES";
+          throw error;
         },
       }),
     /hash instrumentation failure/,
@@ -706,6 +1090,17 @@ test("streamed structural processing releases bodies and normalizes adversarial 
       releases.set(path.basename(sourcePath), resolve);
     });
   };
+  const restoreOpen = installOpenInterceptor(async (file, open) => {
+    const handle = await open();
+    if (typeof file === "string" && file.endsWith(".md")) {
+      interceptHandleRead(handle, async (read) => {
+        await pauseBodyRead(file);
+        return read();
+      });
+    }
+    return handle;
+  });
+  t.after(restoreOpen);
 
   let liveBodies = 0;
   let peakBodies = 0;
@@ -714,7 +1109,6 @@ test("streamed structural processing releases bodies and normalizes adversarial 
     ({ path: sourcePath }) => sourcePath,
     {
       maxConcurrentMarkdownReads: 4,
-      beforeSourceBodyRead: pauseBodyRead,
       onMarkdownBodyRetained: () => {
         liveBodies += 1;
         peakBodies = Math.max(peakBodies, liveBodies);
@@ -729,7 +1123,7 @@ test("streamed structural processing releases bodies and normalizes adversarial 
     releases.get(file)?.();
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
-  const result = await processing;
+  const result = await processing.finally(restoreOpen);
 
   assert.equal(liveBodies, 0);
   assert.ok(peakBodies <= 4);
@@ -751,17 +1145,22 @@ test("streamed structural processing balances body accounting for source-local a
   const discovery = await discoverStructuralIndexSources(vault);
   let retained = 0;
   let released = 0;
+  let restoreOpen = installOpenInterceptor(async (file, open) => {
+    const handle = await open();
+    if (typeof file === "string" && path.basename(file) === "failure.md") {
+      interceptHandleRead(handle, async () => {
+        throw Object.assign(new Error("source-local"), { code: "EIO" });
+      });
+    }
+    return handle;
+  });
+  t.after(() => restoreOpen());
 
   const partial = await processStructuralIndexSources(
     discovery,
     ({ path: sourcePath }) => sourcePath,
     {
       maxConcurrentMarkdownReads: 2,
-      beforeSourceBodyRead: (sourcePath) => {
-        if (sourcePath === "failure.md") {
-          throw Object.assign(new Error("source-local"), { code: "EIO" });
-        }
-      },
       onMarkdownBodyRetained: () => {
         retained += 1;
       },
@@ -769,7 +1168,7 @@ test("streamed structural processing balances body accounting for source-local a
         released += 1;
       },
     },
-  );
+  ).finally(restoreOpen);
   assert.equal(retained, 3);
   assert.equal(released, 3);
   assert.deepEqual(
@@ -781,16 +1180,23 @@ test("streamed structural processing balances body accounting for source-local a
   let readSettles = 0;
   retained = 0;
   released = 0;
+  restoreOpen = installOpenInterceptor(async (file, open) => {
+    const handle = await open();
+    if (typeof file === "string" && file.endsWith(".md")) {
+      interceptHandleRead(handle, async (read) => {
+        if (path.basename(file) === "failure.md") {
+          throw Object.assign(new Error("global exhaustion"), { code: "EMFILE" });
+        }
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        return read();
+      });
+    }
+    return handle;
+  });
   await assert.rejects(
     () =>
       processStructuralIndexSources(discovery, ({ path: sourcePath }) => sourcePath, {
         maxConcurrentMarkdownReads: 2,
-        beforeSourceBodyRead: async (sourcePath) => {
-          if (sourcePath === "failure.md") {
-            throw Object.assign(new Error("global exhaustion"), { code: "EMFILE" });
-          }
-          await new Promise<void>((resolve) => setImmediate(resolve));
-        },
         onMarkdownBodyRead: () => {
           readStarts += 1;
         },
@@ -806,6 +1212,7 @@ test("streamed structural processing balances body accounting for source-local a
       }),
     /global exhaustion/,
   );
+  restoreOpen();
   assert.equal(readStarts, 2);
   assert.equal(readSettles, 2);
   assert.equal(retained, released);

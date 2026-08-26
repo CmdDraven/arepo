@@ -49,6 +49,20 @@ function request(
   };
 }
 
+function installLstatInterceptor(
+  intercept: (
+    file: Parameters<typeof fs.lstat>[0],
+    lstat: () => ReturnType<typeof fs.lstat>,
+  ) => ReturnType<typeof fs.lstat>,
+): () => void {
+  const originalLstat = fs.lstat;
+  fs.lstat = ((file, ...args) =>
+    intercept(file, () => originalLstat(file, ...args))) as typeof fs.lstat;
+  return () => {
+    fs.lstat = originalLstat;
+  };
+}
+
 async function writeConfig(
   cwd: string,
   appDataDir: string,
@@ -2061,6 +2075,71 @@ test("file mutation endpoints reject plain-text targets", async (t) => {
   );
   assert.equal(await fs.readFile(path.join(rootPath, "read-only.txt"), "utf8"), "unchanged\n");
   await assert.rejects(() => fs.access(path.join(rootPath, "new.txt")));
+});
+
+test("failed mutation conflicts do not publish watcher success bookkeeping", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  const target = path.join(rootPath, "note.md");
+  const displaced = path.join(rootPath, "displaced.md");
+  await fs.writeFile(target, "# Original\n", "utf8");
+  const vault: VaultInfo = {
+    ...testVault(rootPath, "mutation-conflict-watcher"),
+    permissions: {
+      readIndex: true,
+      readContent: true,
+      writeContent: true,
+      deleteFiles: true,
+    },
+  };
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+
+  const before = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/file?path=note.md`),
+    cwd,
+  );
+  await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  let replaced = false;
+  const restoreLstat = installLstatInterceptor(async (file, lstat) => {
+    if (!replaced && String(file) === target) {
+      const entries = await fs.readdir(rootPath);
+      if (entries.some((entry) => entry.startsWith(".note.md.") && entry.endsWith(".tmp"))) {
+        replaced = true;
+        await fs.rename(target, displaced);
+        await fs.writeFile(target, "# External replacement\n", "utf8");
+      }
+    }
+    return lstat();
+  });
+  let response: Awaited<ReturnType<typeof routeRequest>>;
+  try {
+    response = await routeRequest(
+      request("PUT", `/api/vaults/${vault.id}/file?path=note.md`, {
+        content: "# AREPO edit\n",
+        expectedHash: (before.body as { hash: string }).hash,
+        expectedMtimeMs: (before.body as { mtimeMs: number }).mtimeMs,
+      }),
+      cwd,
+    );
+  } finally {
+    restoreLstat();
+  }
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(response.body, {
+    ok: false,
+    error: "Vault path changed during operation. Refresh and retry.",
+    code: "CONFLICT",
+  });
+  assert.equal(JSON.stringify(response.body).includes(rootPath), false);
+  assert.equal(await fs.readFile(target, "utf8"), "# External replacement\n");
+  const status = statusBody(
+    await routeRequest(request("GET", `/api/vaults/${vault.id}/status`), cwd),
+  );
+  assert.equal(status.changedExternally, true);
+  assert.equal(status.indexStatus, "stale");
+  assert.ok(status.changedPaths.includes("note.md"));
 });
 
 test("chat source metadata omits bodies while the content endpoint returns canonical JSON", async (t) => {

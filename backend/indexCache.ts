@@ -56,12 +56,8 @@ export type MachineIndexResult = {
 };
 
 export type MachineIndexInstrumentation = {
-  afterSourcePathValidated?: (path: string) => void | Promise<void>;
   onSourceHandleOpened?: (path: string) => void;
   onSourceHandleStat?: (path: string) => void;
-  afterSourceIdentityVerified?: (path: string) => void | Promise<void>;
-  beforeSourceBodyRead?: (path: string) => void | Promise<void>;
-  afterSourceBodyRead?: (path: string) => void | Promise<void>;
   onSourceHandleClosed?: (path: string) => void;
   onMarkdownBodyRead?: (path: string) => void;
   onMarkdownBodyReadComplete?: (path: string, bytes: number) => void;
@@ -134,25 +130,24 @@ async function runMachineIndexOperation(
   const file = await machineIndexPath(vault, cwd);
   return withIndexLock(indexOperationLocks, file, async () => {
     const instrumentation = options.instrumentation;
-    const captureInstrumentation = {
-      maxConcurrentMarkdownReads: options.maxConcurrentMarkdownReads,
-      afterSourcePathValidated: instrumentation?.afterSourcePathValidated,
-      onSourceHandleOpened: instrumentation?.onSourceHandleOpened,
-      onSourceHandleStat: instrumentation?.onSourceHandleStat,
-      afterSourceIdentityVerified: instrumentation?.afterSourceIdentityVerified,
-      beforeSourceBodyRead: instrumentation?.beforeSourceBodyRead,
-      afterSourceBodyRead: instrumentation?.afterSourceBodyRead,
-      onSourceHandleClosed: instrumentation?.onSourceHandleClosed,
-      onMarkdownBodyRead: instrumentation?.onMarkdownBodyRead,
-      onMarkdownBodyReadComplete: instrumentation?.onMarkdownBodyReadComplete,
-      onMarkdownBodyReadSettled: instrumentation?.onMarkdownBodyReadSettled,
-      onHashCalculated: instrumentation?.onHashCalculated,
-      onDiscoveryComplete: instrumentation?.onDiscoveryComplete,
-      onSourceCaptureComplete: instrumentation?.onSourceCaptureComplete,
-      onMarkdownBodyRetained: instrumentation?.onMarkdownBodyRetained,
-      onMemoryCheckpoint: instrumentation?.onMemoryCheckpoint,
-      onMarkdownBodyReleased: instrumentation?.onMarkdownBodyReleased,
-    };
+    const captureInstrumentation =
+      instrumentation || options.maxConcurrentMarkdownReads !== undefined
+        ? {
+            maxConcurrentMarkdownReads: options.maxConcurrentMarkdownReads,
+            onSourceHandleOpened: instrumentation?.onSourceHandleOpened,
+            onSourceHandleStat: instrumentation?.onSourceHandleStat,
+            onSourceHandleClosed: instrumentation?.onSourceHandleClosed,
+            onMarkdownBodyRead: instrumentation?.onMarkdownBodyRead,
+            onMarkdownBodyReadComplete: instrumentation?.onMarkdownBodyReadComplete,
+            onMarkdownBodyReadSettled: instrumentation?.onMarkdownBodyReadSettled,
+            onHashCalculated: instrumentation?.onHashCalculated,
+            onDiscoveryComplete: instrumentation?.onDiscoveryComplete,
+            onSourceCaptureComplete: instrumentation?.onSourceCaptureComplete,
+            onMarkdownBodyRetained: instrumentation?.onMarkdownBodyRetained,
+            onMemoryCheckpoint: instrumentation?.onMemoryCheckpoint,
+            onMarkdownBodyReleased: instrumentation?.onMarkdownBodyReleased,
+          }
+        : undefined;
     const discovery = await discoverStructuralIndexSources(vault, captureInstrumentation);
     instrumentation?.onMemoryCheckpoint?.("before-cache-load");
     let stored = mode === "force" ? undefined : await readStoredMachineIndex(file, instrumentation);
