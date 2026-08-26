@@ -184,16 +184,16 @@ test("partial structural indexes are published through the existing machine-inde
   const { cwd, vault } = await makeVault(t);
   const failedPath = path.join(vault.rootPath, "failed.md");
   await fs.writeFile(failedPath, "---\nid: failed\ntitle: Failed\n---\n# Failed\n", "utf8");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === failedPath) {
       throw Object.assign(new Error("injected per-source read failure"), { code: "EIO" });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const data = await rebuildMachineIndex(vault, cwd);
   const cacheFile = await machineIndexPath(vault, cwd);
@@ -647,13 +647,13 @@ test("source readability transitions retry and never reuse stale source semantic
   await fs.writeFile(failedPath, "# Recoverable\n\n# Sensitive Heading\n", "utf8");
   assert.ok((await getMachineIndex(vault, cwd)).index.notes["failed.md"]);
 
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   let failing = true;
   let failedReadAttempts = 0;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === failedPath) {
       failedReadAttempts += 1;
       if (failing) {
@@ -664,8 +664,8 @@ test("source readability transitions retry and never reuse stale source semantic
         });
       }
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const unavailableWork = measureWork();
   const unavailable = await getMachineIndexResult(vault, cwd, unavailableWork.options);
@@ -677,7 +677,7 @@ test("source readability transitions retry and never reuse stale source semantic
     ),
   );
   assert.deepEqual(unavailableWork.counts, {
-    bodyReads: 3,
+    bodyReads: 2,
     sourceDerivations: 0,
     globalAssemblies: 1,
     publications: 1,
@@ -690,7 +690,7 @@ test("source readability transitions retry and never reuse stale source semantic
   assert.equal(failedReadAttempts, 1);
   assert.equal(stillUnavailable.data.index.notes["failed.md"], undefined);
   assert.deepEqual(stillUnavailableWork.counts, {
-    bodyReads: 3,
+    bodyReads: 2,
     sourceDerivations: 0,
     globalAssemblies: 0,
     publications: 0,
@@ -719,19 +719,19 @@ test("multiple unavailable sources have deterministic bounded manifest and issue
   const zPath = path.join(vault.rootPath, "z-failed.md");
   await fs.writeFile(aPath, "# A secret body\n", "utf8");
   await fs.writeFile(zPath, "# Z secret body\n", "utf8");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === aPath || file === zPath) {
       throw Object.assign(new Error(`EACCES: ${String(file)}`), { code: "EACCES" });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const data = await getMachineIndex(vault, cwd);
-  const raw = await originalReadFile(await machineIndexPath(vault, cwd), "utf8");
+  const raw = await fs.readFile(await machineIndexPath(vault, cwd), "utf8");
   const stored = JSON.parse(raw) as {
     manifest: { sources: { path: string; state: string }[] };
   };
@@ -1075,30 +1075,29 @@ test("concurrent gets after one change single-flight derivation and publication"
 test("serialized canonical verification rejects naive late-join single-flight semantics", async (t) => {
   const { cwd, vault } = await makeVault(t);
   await getMachineIndex(vault, cwd);
-  const notePath = path.join(vault.rootPath, "note.md");
-  const originalReadFile = fs.readFile;
   const firstReadCaptured = deferred();
   const releaseFirstRead = deferred();
   let pauseNextNoteRead = true;
   t.after(() => {
     releaseFirstRead.resolve();
-    fs.readFile = originalReadFile;
   });
-  fs.readFile = (async (file, ...args) => {
-    const content = await originalReadFile(file, ...args);
-    if (pauseNextNoteRead && file === notePath) {
-      pauseNextNoteRead = false;
-      firstReadCaptured.resolve();
-      await releaseFirstRead.promise;
-    }
-    return content;
-  }) as typeof fs.readFile;
+  const notePath = path.join(vault.rootPath, "note.md");
 
   const serializedAWork = measureWork();
   const serializedBWork = measureWork();
   const serializedA = getMachineIndexResult(vault, cwd, {
     ...serializedAWork.options,
     maxConcurrentMarkdownReads: 1,
+    instrumentation: {
+      ...serializedAWork.options.instrumentation,
+      afterSourceBodyRead: async (sourcePath) => {
+        if (pauseNextNoteRead && sourcePath === "note.md") {
+          pauseNextNoteRead = false;
+          firstReadCaptured.resolve();
+          await releaseFirstRead.promise;
+        }
+      },
+    },
   });
   await firstReadCaptured.promise;
   await fs.writeFile(notePath, "# Changed After A Read\n", "utf8");
@@ -1119,15 +1118,6 @@ test("serialized canonical verification rejects naive late-join single-flight se
   const naiveReadCaptured = deferred();
   const releaseNaiveRead = deferred();
   pauseNextNoteRead = true;
-  fs.readFile = (async (file, ...args) => {
-    const content = await originalReadFile(file, ...args);
-    if (pauseNextNoteRead && file === notePath) {
-      pauseNextNoteRead = false;
-      naiveReadCaptured.resolve();
-      await releaseNaiveRead.promise;
-    }
-    return content;
-  }) as typeof fs.readFile;
 
   let inFlight:
     | Promise<ReturnType<typeof getMachineIndexResult> extends Promise<infer T> ? T : never>
@@ -1136,6 +1126,15 @@ test("serialized canonical verification rejects naive late-join single-flight se
     if (inFlight) return inFlight;
     const operation = getMachineIndexResult(vault, cwd, {
       maxConcurrentMarkdownReads: 1,
+      instrumentation: {
+        afterSourceBodyRead: async (sourcePath) => {
+          if (pauseNextNoteRead && sourcePath === "note.md") {
+            pauseNextNoteRead = false;
+            naiveReadCaptured.resolve();
+            await releaseNaiveRead.promise;
+          }
+        },
+      },
     }).finally(() => {
       if (inFlight === operation) inFlight = undefined;
     });

@@ -415,6 +415,9 @@ async function measureOperation(operation) {
     sourceDiscoveries: 0,
     supportedFiles: 0,
     bodyReads: 0,
+    sourceOpens: 0,
+    sourceFstats: 0,
+    openHandleHighWater: 0,
     bytesRead: 0,
     hashes: 0,
     sourceDerivations: 0,
@@ -444,11 +447,23 @@ async function measureOperation(operation) {
     queryMs: 0,
   };
   let activeReads = 0;
+  let openHandles = 0;
   let liveBodies = 0;
   let liveBodyBytes = 0;
   const readPaths = new Set();
   const memoryCheckpoints = [];
   const instrumentation = {
+    onSourceHandleOpened: () => {
+      counts.sourceOpens += 1;
+      openHandles += 1;
+      counts.openHandleHighWater = Math.max(counts.openHandleHighWater, openHandles);
+    },
+    onSourceHandleStat: () => {
+      counts.sourceFstats += 1;
+    },
+    onSourceHandleClosed: () => {
+      openHandles -= 1;
+    },
     onMarkdownBodyRead: (sourcePath) => {
       counts.bodyReads += 1;
       if (readPaths.has(sourcePath)) counts.duplicateBodyReads += 1;
@@ -590,7 +605,7 @@ function printRow(row) {
   const c = row.counts;
   const p = row.phases;
   console.log(
-    `${row.scenario.padEnd(29)} ${row.totalMs.toFixed(1).padStart(9)} ms | discoveries ${String(c.sourceDiscoveries).padStart(2)} | reads ${String(c.bodyReads).padStart(6)} (${formatMiB(c.bytesRead)}) | cache parses ${String(c.cacheJsonParses).padStart(2)} | parses ${String(c.sourceDerivations).padStart(6)} | reused ${String(c.sourceDerivativesReused).padStart(6)} | assembly ${p.assemblyMs.toFixed(1).padStart(7)} ms | cache I/O ${(p.cacheReadMs + p.serializationMs + p.publicationMs).toFixed(1).padStart(7)} ms | live bodies ${String(c.peakLiveBodies).padStart(6)} (${formatMiB(c.peakLiveBodyBytes)}) | peak RSS ${row.memory.peak.rss.toFixed(1)} MiB | heap ${row.memory.peak.heapUsed.toFixed(1)} MiB | fs high-water ${c.fsConcurrencyHighWater}`,
+    `${row.scenario.padEnd(29)} ${row.totalMs.toFixed(1).padStart(9)} ms | discoveries ${String(c.sourceDiscoveries).padStart(2)} | opens/fstats ${String(c.sourceOpens).padStart(6)}/${String(c.sourceFstats).padStart(6)} | reads ${String(c.bodyReads).padStart(6)} (${formatMiB(c.bytesRead)}) | cache parses ${String(c.cacheJsonParses).padStart(2)} | parses ${String(c.sourceDerivations).padStart(6)} | reused ${String(c.sourceDerivativesReused).padStart(6)} | assembly ${p.assemblyMs.toFixed(1).padStart(7)} ms | cache I/O ${(p.cacheReadMs + p.serializationMs + p.publicationMs).toFixed(1).padStart(7)} ms | live bodies ${String(c.peakLiveBodies).padStart(6)} (${formatMiB(c.peakLiveBodyBytes)}) | peak RSS ${row.memory.peak.rss.toFixed(1)} MiB | heap ${row.memory.peak.heapUsed.toFixed(1)} MiB | handles ${c.openHandleHighWater} | body-read high-water ${c.fsConcurrencyHighWater}`,
   );
 }
 

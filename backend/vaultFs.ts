@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import {
@@ -38,6 +39,7 @@ export const DEFAULT_MAX_CONCURRENT_MARKDOWN_READS = 32;
 
 class VaultObservationUnavailableError extends PublicApiError {}
 class VaultPathUnavailableError extends VaultObservationUnavailableError {}
+class VaultSourceChangedDuringReadError extends VaultPathUnavailableError {}
 
 const ISOLATABLE_SOURCE_FILESYSTEM_CODES = new Set([
   "EACCES",
@@ -94,6 +96,13 @@ export type ProcessedStructuralIndexSources<T> = {
 
 export type StructuralIndexCaptureOptions = {
   maxConcurrentMarkdownReads?: number;
+  afterSourcePathValidated?: (path: string) => void | Promise<void>;
+  onSourceHandleOpened?: (path: string) => void;
+  onSourceHandleStat?: (path: string) => void;
+  afterSourceIdentityVerified?: (path: string) => void | Promise<void>;
+  beforeSourceBodyRead?: (path: string) => void | Promise<void>;
+  afterSourceBodyRead?: (path: string) => void | Promise<void>;
+  onSourceHandleClosed?: (path: string) => void;
   onMarkdownBodyRead?: (path: string) => void;
   onMarkdownBodyReadComplete?: (path: string, bytes: number) => void;
   onMarkdownBodyReadSettled?: (path: string) => void;
@@ -176,18 +185,15 @@ export async function readVaultFile(
     throw vaultObservationUnavailableError("Vault is not readable");
   }
   const vaultPath = normalizeReadableTextFilePath(rawPath);
-  const absolutePath = await resolveExistingVaultPath(vault, vaultPath);
-  const [content, stat] = await Promise.all([
-    fs.readFile(absolutePath, "utf8"),
-    fs.lstat(absolutePath),
-  ]);
+  const root = await realVaultRoot(vault);
+  const { content, contentHash, stat } = await readVerifiedVaultFileFromRoot(root, vaultPath);
   return {
     path: vaultPath,
     kind: requiredVaultFileKind(vaultPath),
     content,
-    mtimeMs: stat.mtimeMs,
-    size: stat.size,
-    hash: hashContent(content),
+    mtimeMs: Number(stat.mtimeNs) / 1_000_000,
+    size: Number(stat.size),
+    hash: contentHash,
   };
 }
 
@@ -344,29 +350,22 @@ export async function processStructuralIndexSources<T>(
     options.maxConcurrentMarkdownReads ?? DEFAULT_MAX_CONCURRENT_MARKDOWN_READS,
     async (file) => {
       let content: string;
+      let contentHash: string;
       let bytes: number;
-      options.onMarkdownBodyRead?.(file.path);
       try {
-        content = await fs.readFile(
-          await resolveExistingVaultPathFromRoot(root, file.path),
-          "utf8",
-        );
-        bytes = Buffer.byteLength(content, "utf8");
+        ({ content, contentHash, bytes } = await readVerifiedVaultFileFromRoot(
+          root,
+          file.path,
+          options,
+        ));
         options.onMarkdownBodyReadComplete?.(file.path, bytes);
       } catch (error) {
         if (!isIsolatableIndexSourceFailure(error)) throw error;
         return { path: file.path, state: "unavailable" as const };
-      } finally {
-        options.onMarkdownBodyReadSettled?.(file.path);
       }
 
       options.onMarkdownBodyRetained?.(file.path, bytes);
       try {
-        const hashStartedAt = options.onHashCalculated ? performance.now() : 0;
-        const contentHash = hashContent(content);
-        if (options.onHashCalculated) {
-          options.onHashCalculated(file.path, performance.now() - hashStartedAt);
-        }
         const data = await processReadableSource({ path: file.path, content, contentHash });
         return { path: file.path, state: "readable" as const, contentHash, data };
       } finally {
@@ -423,23 +422,21 @@ export async function captureStructuralIndexInputs(
     options.maxConcurrentMarkdownReads ?? DEFAULT_MAX_CONCURRENT_MARKDOWN_READS,
     async (file) => {
       try {
-        options.onMarkdownBodyRead?.(file.path);
-        const content = await fs.readFile(
-          await resolveExistingVaultPathFromRoot(root, file.path),
-          "utf8",
+        const { content, contentHash, bytes } = await readVerifiedVaultFileFromRoot(
+          root,
+          file.path,
+          options,
         );
-        const bytes = Buffer.byteLength(content, "utf8");
         options.onMarkdownBodyReadComplete?.(file.path, bytes);
         options.onMarkdownBodyRetained?.(file.path, bytes);
         return {
           path: file.path,
           content,
+          contentHash,
         };
       } catch (error) {
         if (!isIsolatableIndexSourceFailure(error)) throw error;
         return { path: file.path, content: undefined };
-      } finally {
-        options.onMarkdownBodyReadSettled?.(file.path);
       }
     },
   );
@@ -454,15 +451,10 @@ export async function captureStructuralIndexInputs(
       });
     } else {
       readableFiles[read.path] = read.content;
-      const hashStartedAt = options.onHashCalculated ? performance.now() : 0;
-      const contentHash = hashContent(read.content);
-      if (options.onHashCalculated) {
-        options.onHashCalculated(read.path, performance.now() - hashStartedAt);
-      }
       sources.push({
         path: read.path,
         state: "readable",
-        contentHash,
+        contentHash: read.contentHash,
       });
     }
   }
@@ -585,6 +577,116 @@ async function resolveExistingVaultPathFromRoot(root: string, vaultPath: string)
   const real = await fs.realpath(absolutePath);
   ensureInside(root, real);
   return absolutePath;
+}
+
+type VaultFileIdentity = {
+  dev: bigint;
+  ino: bigint;
+};
+
+type ResolvedExistingVaultFile = {
+  absolutePath: string;
+  identity: VaultFileIdentity;
+};
+
+type VerifiedVaultFileRead = {
+  content: string;
+  contentHash: string;
+  bytes: number;
+  stat: import("node:fs").BigIntStats;
+};
+
+async function resolveExistingVaultFileFromRoot(
+  root: string,
+  vaultPath: string,
+): Promise<ResolvedExistingVaultFile> {
+  const absolutePath = resolveInsideVault(root, vaultPath);
+  await assertNoSymlinkSegments(root, vaultPath, false);
+  const stat = await fs.lstat(absolutePath, { bigint: true });
+  if (stat.isSymbolicLink()) {
+    throw vaultPathUnavailableError("Symlinks are not allowed inside vault paths");
+  }
+  if (!stat.isFile()) {
+    throw vaultPathUnavailableError("Vault source is not a regular file");
+  }
+  const real = await fs.realpath(absolutePath);
+  ensureInside(root, real);
+  const realStat = await fs.lstat(real, { bigint: true });
+  if (!realStat.isFile() || !sameVaultFileIdentity(stat, realStat)) {
+    throw vaultSourceChangedDuringReadError();
+  }
+  return { absolutePath, identity: fileIdentity(stat) };
+}
+
+async function readVerifiedVaultFileFromRoot(
+  root: string,
+  vaultPath: string,
+  options: StructuralIndexCaptureOptions = {},
+): Promise<VerifiedVaultFileRead> {
+  const maxAttempts = 2;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    let handle: import("node:fs/promises").FileHandle | undefined;
+    try {
+      const resolved = await resolveExistingVaultFileFromRoot(root, vaultPath);
+      await options.afterSourcePathValidated?.(vaultPath);
+      handle = await fs.open(resolved.absolutePath, sourceReadOpenFlags());
+      options.onSourceHandleOpened?.(vaultPath);
+      const openedStat = await handle.stat({ bigint: true });
+      options.onSourceHandleStat?.(vaultPath);
+      if (!openedStat.isFile() || !sameVaultFileIdentity(resolved.identity, openedStat)) {
+        throw vaultSourceChangedDuringReadError();
+      }
+      await options.afterSourceIdentityVerified?.(vaultPath);
+      options.onMarkdownBodyRead?.(vaultPath);
+      try {
+        await options.beforeSourceBodyRead?.(vaultPath);
+        const body = await handle.readFile();
+        await options.afterSourceBodyRead?.(vaultPath);
+        const hashStartedAt = options.onHashCalculated ? performance.now() : 0;
+        const contentHash = hashBytes(body);
+        if (options.onHashCalculated) {
+          options.onHashCalculated(vaultPath, performance.now() - hashStartedAt);
+        }
+        return {
+          content: body.toString("utf8"),
+          contentHash,
+          bytes: body.byteLength,
+          stat: openedStat,
+        };
+      } finally {
+        options.onMarkdownBodyReadSettled?.(vaultPath);
+      }
+    } catch (error) {
+      if (attempt + 1 < maxAttempts && isRetryableSourceReplacement(error)) continue;
+      throw error;
+    } finally {
+      if (handle) {
+        await handle.close();
+        options.onSourceHandleClosed?.(vaultPath);
+      }
+    }
+  }
+  throw new Error("Unreachable verified vault read state");
+}
+
+function sourceReadOpenFlags(): number {
+  if (process.platform === "win32") return fsConstants.O_RDONLY;
+  return fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW;
+}
+
+function fileIdentity(stat: import("node:fs").BigIntStats): VaultFileIdentity {
+  return { dev: stat.dev, ino: stat.ino };
+}
+
+function sameVaultFileIdentity(expected: VaultFileIdentity, actual: VaultFileIdentity): boolean {
+  return expected.dev === actual.dev && expected.ino === actual.ino;
+}
+
+function isRetryableSourceReplacement(error: unknown): boolean {
+  if (error instanceof VaultSourceChangedDuringReadError) return false;
+  const code =
+    typeof error === "object" && error !== null ? (error as NodeJS.ErrnoException).code : undefined;
+  return code === "ENOENT" || code === "ENOTDIR" || code === "ELOOP" || code === "EISDIR";
 }
 
 function isIsolatableIndexSourceFailure(error: unknown): boolean {
@@ -713,6 +815,10 @@ export function hashContent(content: string): string {
   return crypto.createHash("sha256").update(content, "utf8").digest("hex");
 }
 
+function hashBytes(content: Buffer): string {
+  return crypto.createHash("sha256").update(content).digest("hex");
+}
+
 export function vaultFileKind(filePath: string): VaultFileKind | null {
   return sourceKindForPath(filePath);
 }
@@ -729,6 +835,12 @@ function publicVaultError(message: string): PublicApiError {
 
 function vaultPathUnavailableError(message: string): VaultPathUnavailableError {
   return new VaultPathUnavailableError(400, message, { code: "invalid-vault-operation" });
+}
+
+function vaultSourceChangedDuringReadError(): VaultSourceChangedDuringReadError {
+  return new VaultSourceChangedDuringReadError(400, "Vault source changed while being read", {
+    code: "invalid-vault-operation",
+  });
 }
 
 function vaultObservationUnavailableError(message: string): VaultObservationUnavailableError {

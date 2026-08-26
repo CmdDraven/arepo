@@ -3008,14 +3008,14 @@ test("partial indexes keep index, search, filters, and inspect available for rea
 
   const initial = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
   assert.equal(initial.status, 200);
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   const sensitivePath = "/private/example/secret-vault/failed.md";
   const rawMessage = `EACCES: permission denied, open '${sensitivePath}'`;
   let failing = true;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === failedPath && failing) {
       throw Object.assign(new Error(rawMessage), {
         code: "EACCES",
@@ -3024,8 +3024,8 @@ test("partial indexes keep index, search, filters, and inspect available for rea
         path: sensitivePath,
       });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const indexResponse = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
   assert.equal(indexResponse.status, 200);
@@ -3141,12 +3141,12 @@ test("index requests do not require an initial watcher snapshot of an unreadable
   await fs.writeFile(failedPath, "---\nid: failed\ntitle: Failed\n---\n# Failed\n", "utf8");
   const vault = testVault(rootPath, "initial-partial-index");
   await writeConfig(cwd, appDataDir, { vaults: [vault] });
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   const sensitivePath = "/private/example/initial-watcher-secret.md";
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === failedPath) {
       throw Object.assign(new Error(`EPERM: operation not permitted, open '${sensitivePath}'`), {
         code: "EPERM",
@@ -3154,8 +3154,8 @@ test("index requests do not require an initial watcher snapshot of an unreadable
         path: sensitivePath,
       });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const response = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
 
@@ -3179,18 +3179,18 @@ test("unexpected initial watcher observation failures propagate before structura
   await fs.writeFile(notePath, "---\nid: note\ntitle: Note\n---\n# Note\n", "utf8");
   const vault = testVault(rootPath, "unexpected-initial-observation");
   await writeConfig(cwd, appDataDir, { vaults: [vault] });
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   let noteReads = 0;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === notePath) {
       noteReads += 1;
       throw new Error("unexpected watcher invariant failure");
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const response = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
 

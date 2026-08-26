@@ -56,6 +56,13 @@ export type MachineIndexResult = {
 };
 
 export type MachineIndexInstrumentation = {
+  afterSourcePathValidated?: (path: string) => void | Promise<void>;
+  onSourceHandleOpened?: (path: string) => void;
+  onSourceHandleStat?: (path: string) => void;
+  afterSourceIdentityVerified?: (path: string) => void | Promise<void>;
+  beforeSourceBodyRead?: (path: string) => void | Promise<void>;
+  afterSourceBodyRead?: (path: string) => void | Promise<void>;
+  onSourceHandleClosed?: (path: string) => void;
   onMarkdownBodyRead?: (path: string) => void;
   onMarkdownBodyReadComplete?: (path: string, bytes: number) => void;
   onMarkdownBodyReadSettled?: (path: string) => void;
@@ -129,6 +136,13 @@ async function runMachineIndexOperation(
     const instrumentation = options.instrumentation;
     const captureInstrumentation = {
       maxConcurrentMarkdownReads: options.maxConcurrentMarkdownReads,
+      afterSourcePathValidated: instrumentation?.afterSourcePathValidated,
+      onSourceHandleOpened: instrumentation?.onSourceHandleOpened,
+      onSourceHandleStat: instrumentation?.onSourceHandleStat,
+      afterSourceIdentityVerified: instrumentation?.afterSourceIdentityVerified,
+      beforeSourceBodyRead: instrumentation?.beforeSourceBodyRead,
+      afterSourceBodyRead: instrumentation?.afterSourceBodyRead,
+      onSourceHandleClosed: instrumentation?.onSourceHandleClosed,
       onMarkdownBodyRead: instrumentation?.onMarkdownBodyRead,
       onMarkdownBodyReadComplete: instrumentation?.onMarkdownBodyReadComplete,
       onMarkdownBodyReadSettled: instrumentation?.onMarkdownBodyReadSettled,

@@ -3,14 +3,17 @@ import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import crypto from "node:crypto";
 import { makeTestTempDir } from "./testTemp.js";
 import {
   atomicWriteFile,
   buildVaultIndex,
+  buildVaultIndexFromInputs,
   captureStructuralIndexInputs,
   createVaultFile,
   DEFAULT_MAX_CONCURRENT_MARKDOWN_READS,
   discoverStructuralIndexSources,
+  hashContent,
   deleteVaultFile,
   listSupportedTextFiles,
   processStructuralIndexSources,
@@ -322,47 +325,366 @@ test("structural source reads preserve ordering under a configured concurrency b
     await createVaultFile(vault, `source-${String(index).padStart(2, "0")}.md`, `# ${index}\n`);
   }
 
-  const originalReadFile = fs.readFile;
-  let active = 0;
-  let highWater = 0;
-  fs.readFile = (async (file, ...args) => {
-    if (typeof file === "string" && file.endsWith(".md")) {
-      active += 1;
-      highWater = Math.max(highWater, active);
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      try {
-        return await originalReadFile(file, ...args);
-      } finally {
+  const captureAtConcurrency = async (expectedConcurrency: number) => {
+    let active = 0;
+    let highWater = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const inputs = await captureStructuralIndexInputs(vault, {
+      maxConcurrentMarkdownReads: expectedConcurrency,
+      beforeSourceBodyRead: async () => {
+        active += 1;
+        highWater = Math.max(highWater, active);
+        if (active === expectedConcurrency) release();
+        await gate;
         active -= 1;
-      }
-    }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
-  t.after(() => {
-    fs.readFile = originalReadFile;
-  });
+      },
+    });
+    return { highWater, inputs };
+  };
 
-  const defaultInputs = await captureStructuralIndexInputs(vault);
+  const defaultCapture = await captureAtConcurrency(DEFAULT_MAX_CONCURRENT_MARKDOWN_READS);
 
-  assert.equal(highWater, DEFAULT_MAX_CONCURRENT_MARKDOWN_READS);
-  highWater = 0;
-  const configuredInputs = await captureStructuralIndexInputs(vault, {
-    maxConcurrentMarkdownReads: 3,
-  });
+  assert.equal(defaultCapture.highWater, DEFAULT_MAX_CONCURRENT_MARKDOWN_READS);
+  const configuredCapture = await captureAtConcurrency(3);
 
-  assert.equal(highWater, 3);
+  assert.equal(configuredCapture.highWater, 3);
   const expectedPaths = Array.from(
     { length: sourceCount },
     (_, index) => `source-${String(index).padStart(2, "0")}.md`,
   );
   assert.deepEqual(
-    defaultInputs.manifest.sources.map((source) => source.path),
+    defaultCapture.inputs.manifest.sources.map((source) => source.path),
     expectedPaths,
   );
   assert.deepEqual(
-    configuredInputs.manifest.sources.map((source) => source.path),
+    configuredCapture.inputs.manifest.sources.map((source) => source.path),
     expectedPaths,
   );
+});
+
+test("structural capture rejects parent replacement after validation without reading outside content", async (t) => {
+  const vault = await makeVault(t);
+  const outside = await makeTestTempDir(t, "arepo-vault-race-outside-");
+  const parent = path.join(vault.rootPath, "parent");
+  const originalParent = path.join(vault.rootPath, "parent-original");
+  await fs.mkdir(parent);
+  await fs.writeFile(path.join(parent, "note.md"), "# Safe Inside\n", "utf8");
+  await fs.writeFile(
+    path.join(outside, "note.md"),
+    "---\ntitle: Outside Race Target\ntags: [outside-marker]\n---\n# Outside\n",
+    "utf8",
+  );
+
+  let changed = false;
+  let bodyReads = 0;
+  let handlesOpened = 0;
+  let handlesClosed = 0;
+  const inputs = await captureStructuralIndexInputs(vault, {
+    afterSourcePathValidated: async (sourcePath) => {
+      if (sourcePath !== "parent/note.md" || changed) return;
+      changed = true;
+      await fs.rename(parent, originalParent);
+      try {
+        await fs.symlink(outside, parent, process.platform === "win32" ? "junction" : "dir");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EPERM") {
+          t.skip("directory symlinks unavailable");
+          return;
+        }
+        throw error;
+      }
+    },
+    onMarkdownBodyRead: () => {
+      bodyReads += 1;
+    },
+    onSourceHandleOpened: () => {
+      handlesOpened += 1;
+    },
+    onSourceHandleClosed: () => {
+      handlesClosed += 1;
+    },
+  });
+  const result = buildVaultIndexFromInputs(inputs);
+
+  assert.equal(changed, true);
+  assert.equal(bodyReads, 0);
+  assert.equal(handlesOpened, 1);
+  assert.equal(handlesClosed, 1);
+  assert.deepEqual(result.index.notes, {});
+  assert.deepEqual(inputs.manifest.sources, [{ path: "parent/note.md", state: "unavailable" }]);
+  const serialized = JSON.stringify(result);
+  for (const hidden of [outside, vault.rootPath, "Outside Race Target", "outside-marker"]) {
+    assert.equal(serialized.includes(hidden), false, hidden);
+  }
+});
+
+test("structural capture rejects leaf replacement after validation before any body read", async (t) => {
+  const vault = await makeVault(t);
+  const note = path.join(vault.rootPath, "note.md");
+  await fs.writeFile(note, "# Validated Source\n", "utf8");
+  let bodyReads = 0;
+
+  const inputs = await captureStructuralIndexInputs(vault, {
+    afterSourcePathValidated: async () => {
+      await fs.rename(note, path.join(vault.rootPath, "validated-original.md"));
+      await fs.writeFile(note, "# Substituted Body\n", "utf8");
+    },
+    onMarkdownBodyRead: () => {
+      bodyReads += 1;
+    },
+  });
+
+  assert.equal(bodyReads, 0);
+  assert.deepEqual(inputs.readableFiles, {});
+  assert.deepEqual(inputs.manifest.sources, [{ path: "note.md", state: "unavailable" }]);
+  assert.equal(JSON.stringify(inputs).includes("Substituted Body"), false);
+});
+
+test("structural capture rejects leaf replacement with a symlink", async (t) => {
+  const vault = await makeVault(t);
+  const outside = await makeTestTempDir(t, "arepo-vault-leaf-race-");
+  const note = path.join(vault.rootPath, "note.md");
+  const outsideNote = path.join(outside, "outside.md");
+  await fs.writeFile(note, "# Validated Source\n", "utf8");
+  await fs.writeFile(outsideNote, "# Outside Symlink Target\n", "utf8");
+  let bodyReads = 0;
+
+  const inputs = await captureStructuralIndexInputs(vault, {
+    afterSourcePathValidated: async () => {
+      await fs.unlink(note);
+      try {
+        await fs.symlink(outsideNote, note, "file");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EPERM") {
+          t.skip("file symlinks unavailable");
+          return;
+        }
+        throw error;
+      }
+    },
+    onMarkdownBodyRead: () => {
+      bodyReads += 1;
+    },
+  });
+
+  assert.equal(bodyReads, 0);
+  assert.deepEqual(inputs.readableFiles, {});
+  assert.equal(JSON.stringify(inputs).includes("Outside Symlink Target"), false);
+});
+
+test("structural capture rejects a leaf that becomes a directory", async (t) => {
+  const vault = await makeVault(t);
+  const note = path.join(vault.rootPath, "note.md");
+  await fs.writeFile(note, "# Validated Source\n", "utf8");
+  let bodyReads = 0;
+
+  const inputs = await captureStructuralIndexInputs(vault, {
+    afterSourcePathValidated: async () => {
+      await fs.unlink(note);
+      await fs.mkdir(note);
+    },
+    onMarkdownBodyRead: () => {
+      bodyReads += 1;
+    },
+  });
+
+  assert.equal(bodyReads, 0);
+  assert.deepEqual(inputs.readableFiles, {});
+  assert.deepEqual(inputs.manifest.sources, [{ path: "note.md", state: "unavailable" }]);
+});
+
+test("an opened and identity-verified source is not redirected by later pathname replacement", async (t) => {
+  const vault = await makeVault(t);
+  const note = path.join(vault.rootPath, "note.md");
+  await fs.writeFile(note, "# Opened Safe Source\n", "utf8");
+  let verified = 0;
+
+  const inputs = await captureStructuralIndexInputs(vault, {
+    afterSourceIdentityVerified: async () => {
+      verified += 1;
+      await fs.rename(note, path.join(vault.rootPath, "opened-original.md"));
+      await fs.writeFile(note, "# Later Path Replacement\n", "utf8");
+    },
+  });
+
+  assert.equal(verified, 1);
+  assert.equal(inputs.readableFiles["note.md"], "# Opened Safe Source\n");
+  assert.equal(JSON.stringify(inputs).includes("Later Path Replacement"), false);
+});
+
+test("normal structural reads verify identity before body read and close every handle", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(vault, "note.md", "# Note\n");
+  const events: string[] = [];
+
+  const inputs = await captureStructuralIndexInputs(vault, {
+    afterSourcePathValidated: () => {
+      events.push("validated");
+    },
+    onSourceHandleOpened: () => events.push("opened"),
+    onSourceHandleStat: () => events.push("fstat"),
+    afterSourceIdentityVerified: () => {
+      events.push("identity");
+    },
+    onMarkdownBodyRead: () => events.push("read"),
+    onSourceHandleClosed: () => events.push("closed"),
+  });
+
+  assert.equal(inputs.readableFiles["note.md"], "# Note\n");
+  assert.deepEqual(events, ["validated", "opened", "fstat", "identity", "read", "closed"]);
+});
+
+test("structural identity verification hashes the exact bytes read from the handle", async (t) => {
+  const vault = await makeVault(t);
+  const body = Buffer.from([0x23, 0x20, 0xff, 0x0a]);
+  await fs.writeFile(path.join(vault.rootPath, "note.md"), body);
+
+  const inputs = await captureStructuralIndexInputs(vault);
+  const source = inputs.manifest.sources[0];
+
+  assert.equal(source?.state, "readable");
+  assert.equal(
+    source?.state === "readable" ? source.contentHash : undefined,
+    crypto.createHash("sha256").update(body).digest("hex"),
+  );
+  assert.notEqual(
+    source?.state === "readable" ? source.contentHash : undefined,
+    hashContent(inputs.readableFiles["note.md"]!),
+  );
+});
+
+test("Markdown, plain-text, and chat reads reject leaf substitution through the shared reader", async (t) => {
+  const vault = await makeVault(t);
+  const fixtures = [
+    ["note.md", "# Original Markdown\n", "# Substituted Markdown\n"],
+    ["note.txt", "Original plain text\n", "Substituted plain text\n"],
+    [
+      "note.arepo-chat.json",
+      '{"format":"arepo-chat-export","version":1,"messages":[]}\n',
+      '{"format":"arepo-chat-export","version":1,"messages":[{"content":"substituted"}]}\n',
+    ],
+  ] as const;
+  for (const [sourcePath, original, substituted] of fixtures) {
+    await fs.writeFile(path.join(vault.rootPath, sourcePath), original, "utf8");
+    const absolutePath = path.join(vault.rootPath, sourcePath);
+    const originalOpen = fs.open;
+    let replaced = false;
+    fs.open = (async (file, ...args) => {
+      if (file === absolutePath && !replaced) {
+        replaced = true;
+        await fs.rename(absolutePath, `${absolutePath}.validated`);
+        await fs.writeFile(absolutePath, substituted, "utf8");
+      }
+      return originalOpen(file, ...args);
+    }) as typeof fs.open;
+    try {
+      await assert.rejects(
+        () => readVaultFile(vault, sourcePath),
+        (error: PublicApiError) =>
+          error.publicMessage === "Vault source changed while being read" &&
+          !error.publicMessage.includes(vault.rootPath) &&
+          !error.publicMessage.includes(substituted),
+      );
+    } finally {
+      fs.open = originalOpen;
+    }
+    assert.equal(replaced, true);
+  }
+});
+
+test("verified source handles close on fstat, body-read, and downstream failures", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(vault, "note.md", "# Note\n");
+  const discovery = await discoverStructuralIndexSources(vault);
+  const notePath = path.join(vault.rootPath, "note.md");
+  const originalOpen = fs.open;
+  t.after(() => {
+    fs.open = originalOpen;
+  });
+
+  for (const stage of ["fstat", "read"] as const) {
+    let opened = 0;
+    let closed = 0;
+    fs.open = (async (file, ...args) => {
+      const handle = await originalOpen(file, ...args);
+      if (file === notePath) {
+        if (stage === "fstat") {
+          Object.defineProperty(handle, "stat", {
+            configurable: true,
+            value: async () => {
+              throw Object.assign(new Error("injected fstat failure"), { code: "EIO" });
+            },
+          });
+        } else {
+          Object.defineProperty(handle, "readFile", {
+            configurable: true,
+            value: async () => {
+              throw Object.assign(new Error("injected body failure"), { code: "EIO" });
+            },
+          });
+        }
+      }
+      return handle;
+    }) as typeof fs.open;
+    const result = await processStructuralIndexSources(discovery, ({ content }) => content, {
+      onSourceHandleOpened: () => {
+        opened += 1;
+      },
+      onSourceHandleClosed: () => {
+        closed += 1;
+      },
+    });
+    assert.deepEqual(result.manifest.sources, [{ path: "note.md", state: "unavailable" }]);
+    assert.equal(opened, 1);
+    assert.equal(closed, 1);
+  }
+
+  fs.open = originalOpen;
+  let opened = 0;
+  let closed = 0;
+  await assert.rejects(
+    () =>
+      processStructuralIndexSources(discovery, ({ content }) => content, {
+        onSourceHandleOpened: () => {
+          opened += 1;
+        },
+        onSourceHandleClosed: () => {
+          closed += 1;
+        },
+        onHashCalculated: () => {
+          throw new Error("hash instrumentation failure");
+        },
+      }),
+    /hash instrumentation failure/,
+  );
+  assert.equal(opened, 1);
+  assert.equal(closed, 1);
+
+  opened = 0;
+  closed = 0;
+  await assert.rejects(
+    () =>
+      processStructuralIndexSources(
+        discovery,
+        () => {
+          throw new Error("downstream invariant failure");
+        },
+        {
+          onSourceHandleOpened: () => {
+            opened += 1;
+          },
+          onSourceHandleClosed: () => {
+            closed += 1;
+          },
+        },
+      ),
+    /downstream invariant failure/,
+  );
+  assert.equal(opened, 1);
+  assert.equal(closed, 1);
 });
 
 test("streamed structural processing releases bodies and normalizes adversarial completion order", async (t) => {
@@ -371,26 +693,19 @@ test("streamed structural processing releases bodies and normalizes adversarial 
     await createVaultFile(vault, `ordered-${index}.md`, `# Ordered ${index}\n`);
   }
   const discovery = await discoverStructuralIndexSources(vault);
-  const originalReadFile = fs.readFile;
   const releases = new Map<string, () => void>();
   let started = 0;
   let notifyStarted!: () => void;
   const allStarted = new Promise<void>((resolve) => {
     notifyStarted = resolve;
   });
-  fs.readFile = (async (file, ...args) => {
-    if (typeof file === "string" && file.endsWith(".md")) {
-      started += 1;
-      if (started === 4) notifyStarted();
-      await new Promise<void>((resolve) => {
-        releases.set(path.basename(file), resolve);
-      });
-    }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
-  t.after(() => {
-    fs.readFile = originalReadFile;
-  });
+  const pauseBodyRead = async (sourcePath: string) => {
+    started += 1;
+    if (started === 4) notifyStarted();
+    await new Promise<void>((resolve) => {
+      releases.set(path.basename(sourcePath), resolve);
+    });
+  };
 
   let liveBodies = 0;
   let peakBodies = 0;
@@ -399,6 +714,7 @@ test("streamed structural processing releases bodies and normalizes adversarial 
     ({ path: sourcePath }) => sourcePath,
     {
       maxConcurrentMarkdownReads: 4,
+      beforeSourceBodyRead: pauseBodyRead,
       onMarkdownBodyRetained: () => {
         liveBodies += 1;
         peakBodies = Math.max(peakBodies, liveBodies);
@@ -433,25 +749,19 @@ test("streamed structural processing balances body accounting for source-local a
     await createVaultFile(vault, sourcePath, `# ${sourcePath}\n`);
   }
   const discovery = await discoverStructuralIndexSources(vault);
-  const originalReadFile = fs.readFile;
-  const failedPath = path.join(vault.rootPath, "failure.md");
   let retained = 0;
   let released = 0;
-  fs.readFile = (async (file, ...args) => {
-    if (file === failedPath) {
-      throw Object.assign(new Error("source-local"), { code: "EIO" });
-    }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
-  t.after(() => {
-    fs.readFile = originalReadFile;
-  });
 
   const partial = await processStructuralIndexSources(
     discovery,
     ({ path: sourcePath }) => sourcePath,
     {
       maxConcurrentMarkdownReads: 2,
+      beforeSourceBodyRead: (sourcePath) => {
+        if (sourcePath === "failure.md") {
+          throw Object.assign(new Error("source-local"), { code: "EIO" });
+        }
+      },
       onMarkdownBodyRetained: () => {
         retained += 1;
       },
@@ -471,19 +781,16 @@ test("streamed structural processing balances body accounting for source-local a
   let readSettles = 0;
   retained = 0;
   released = 0;
-  fs.readFile = (async (file, ...args) => {
-    if (typeof file === "string" && file.endsWith(".md")) {
-      if (file === failedPath) {
-        throw Object.assign(new Error("global exhaustion"), { code: "EMFILE" });
-      }
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
   await assert.rejects(
     () =>
       processStructuralIndexSources(discovery, ({ path: sourcePath }) => sourcePath, {
         maxConcurrentMarkdownReads: 2,
+        beforeSourceBodyRead: async (sourcePath) => {
+          if (sourcePath === "failure.md") {
+            throw Object.assign(new Error("global exhaustion"), { code: "EMFILE" });
+          }
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        },
         onMarkdownBodyRead: () => {
           readStarts += 1;
         },
@@ -531,11 +838,11 @@ test("structural indexing isolates one path-bearing Markdown read failure", asyn
   const failedPath = path.join(vault.rootPath, "unreadable-or-failing.md");
   const sensitivePath = "/private/example/secret-vault/unreadable-or-failing.md";
   const rawMessage = `EACCES: permission denied, open '${sensitivePath}'`;
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === failedPath) {
       throw Object.assign(new Error(rawMessage), {
         code: "EACCES",
@@ -544,8 +851,8 @@ test("structural indexing isolates one path-bearing Markdown read failure", asyn
         path: sensitivePath,
       });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const result = await buildVaultIndex(vault);
 
@@ -594,18 +901,18 @@ test("structural indexing isolates a source that disappears after discovery", as
   await createVaultFile(vault, "good.md", "---\nid: good\ntitle: Good\n---\n# Good\n");
   await createVaultFile(vault, "gone.md", "---\nid: gone\ntitle: Gone\n---\n# Gone\n");
   const gonePath = path.join(vault.rootPath, "gone.md");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   let removed = false;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === gonePath && !removed) {
       removed = true;
       await fs.unlink(gonePath);
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const result = await buildVaultIndex(vault);
 
@@ -636,16 +943,16 @@ test("multiple source read failures produce stable ordered issues", async (t) =>
     path.join(vault.rootPath, "a-failed.md"),
     path.join(vault.rootPath, "z-failed.md"),
   ]);
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (typeof file === "string" && failedPaths.has(file)) {
       throw Object.assign(new Error("injected failure"), { code: "EIO" });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const result = await buildVaultIndex(vault);
 
@@ -665,17 +972,17 @@ test("a recovered source returns to the next structural index without a stale is
     "---\nid: recovered\ntitle: Recovered\ntags: [restored]\n---\n# Recovered\n\n## Returned {#returned}\n",
   );
   const recoveredPath = path.join(vault.rootPath, "recovered.md");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   let failing = true;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === recoveredPath && failing) {
       throw Object.assign(new Error("transient read failure"), { code: "EIO" });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const partial = await buildVaultIndex(vault);
   assert.equal(partial.index.notes["recovered.md"], undefined);
@@ -703,14 +1010,14 @@ test("unexpected non-filesystem source failures remain global", async (t) => {
   const vault = await makeVault(t);
   await createVaultFile(vault, "note.md", "# Note\n");
   const notePath = path.join(vault.rootPath, "note.md");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === notePath) throw new Error("unexpected invariant failure");
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   await assert.rejects(() => buildVaultIndex(vault), /unexpected invariant failure/);
 });
@@ -719,19 +1026,19 @@ test("resource-exhaustion and unknown filesystem codes remain global", async (t)
   const vault = await makeVault(t);
   await createVaultFile(vault, "note.md", "# Note\n");
   const notePath = path.join(vault.rootPath, "note.md");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   let injectedCode = "EMFILE";
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === notePath) {
       throw Object.assign(new Error(`injected ${injectedCode} failure`), {
         code: injectedCode,
       });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   for (const code of ["EBADF", "EMFILE", "ENFILE", "ENOSPC", "UNKNOWN"]) {
     injectedCode = code;
@@ -746,18 +1053,18 @@ test("unrelated public API errors are not classified as source-unreadable", asyn
   const vault = await makeVault(t);
   await createVaultFile(vault, "note.md", "# Note\n");
   const notePath = path.join(vault.rootPath, "note.md");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
   });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === notePath) {
       throw new PublicApiError(400, "Unrelated public invariant", {
         code: "invalid-vault-operation",
       });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   await assert.rejects(() => buildVaultIndex(vault), /Unrelated public invariant/);
 });

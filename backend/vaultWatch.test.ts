@@ -193,20 +193,18 @@ async function getStatusWhileSignalingEstablishedWatcher(
   sourcePath: string,
   signal: () => void,
 ): Promise<Awaited<ReturnType<typeof getVaultRuntimeStatus>>> {
-  const originalReadFile = fs.readFile;
   const readStarted = deferred();
   const releaseRead = deferred();
   let intercepted = false;
-  fs.readFile = (async (file, ...args) => {
-    if (!intercepted && file === sourcePath) {
+  const restoreOpen = interceptUtf8HandleReads(sourcePath, async (read) => {
+    const content = await read();
+    if (!intercepted) {
       intercepted = true;
-      const content = await originalReadFile(file, ...args);
       readStarted.resolve();
       await releaseRead.promise;
-      return content;
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return content;
+  });
 
   try {
     const statusPromise = getVaultRuntimeStatus(vault, cwd);
@@ -215,9 +213,30 @@ async function getStatusWhileSignalingEstablishedWatcher(
     releaseRead.resolve();
     return await statusPromise;
   } finally {
-    fs.readFile = originalReadFile;
+    restoreOpen();
     releaseRead.resolve();
   }
+}
+
+function interceptUtf8HandleReads(
+  sourcePath: string,
+  intercept: (read: () => Promise<Buffer>) => Promise<Buffer>,
+): () => void {
+  const originalOpen = fs.open;
+  fs.open = (async (file, ...args) => {
+    const handle = await originalOpen(file, ...args);
+    if (file === sourcePath) {
+      const originalHandleReadFile = handle.readFile.bind(handle);
+      Object.defineProperty(handle, "readFile", {
+        configurable: true,
+        value: () => intercept(() => originalHandleReadFile() as Promise<Buffer>),
+      });
+    }
+    return handle;
+  }) as typeof fs.open;
+  return () => {
+    fs.open = originalOpen;
+  };
 }
 
 test("watcher fingerprints detect same-size content with restored mtime", async (t) => {
@@ -428,18 +447,18 @@ test("topology-only maintenance does not hash supported content or fingerprint a
   const notePath = path.join(rootPath, "note.md");
   await fs.writeFile(notePath, "# Note\n", "utf8");
   const vault = testVault(rootPath, "topology-cheap-path-vault");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   let sourceReads = 0;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
     stopVaultWatcher(cwd, vault.id);
   });
 
   await ensureVaultWatcher(vault, cwd, { maintenanceScheduler: scheduler });
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === notePath) sourceReads += 1;
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
   const attachmentDirectory = path.join(rootPath, "assets");
   await fs.mkdir(attachmentDirectory);
   await fs.writeFile(path.join(attachmentDirectory, "image.bin"), "unsupported", "utf8");
@@ -547,28 +566,25 @@ test("overlapping reconciliations commit source snapshots in request order", asy
   const addedPath = path.join(rootPath, "added.md");
   await fs.writeFile(notePath, "# Alpha\n", "utf8");
   const vault = testVault(rootPath, "reconciliation-order-vault");
-  const originalReadFile = fs.readFile;
   const firstSnapshotCaptured = deferred();
   const releaseFirstSnapshot = deferred();
   let noteReads = 0;
+  let restoreOpen: () => void = () => undefined;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    restoreOpen();
     stopVaultWatcher(cwd, vault.id);
   });
   await ensureVaultWatcher(vault, cwd, { maintenanceScheduler: scheduler });
 
-  fs.readFile = (async (file, ...args) => {
-    if (file === notePath) {
-      const captured = await originalReadFile(file, ...args);
-      noteReads += 1;
-      if (noteReads === 1) {
-        firstSnapshotCaptured.resolve();
-        await releaseFirstSnapshot.promise;
-      }
-      return captured;
+  restoreOpen = interceptUtf8HandleReads(notePath, async (read) => {
+    const captured = await read();
+    noteReads += 1;
+    if (noteReads === 1) {
+      firstSnapshotCaptured.resolve();
+      await releaseFirstSnapshot.promise;
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return captured;
+  });
 
   const older = getVaultRuntimeStatus(vault, cwd);
   await firstSnapshotCaptured.promise;
@@ -677,27 +693,27 @@ test("explicit index completion cannot absorb a source edit made during its buil
     "utf8",
   );
   const vault = testVault(rootPath, "explicit-index-race-vault");
-  const originalReadFile = fs.readFile;
   const buildCapturedSource = deferred();
   const releaseBuild = deferred();
   let interceptBuildRead = true;
+  let restoreOpen: () => void = () => undefined;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    restoreOpen();
     stopVaultWatcher(cwd, vault.id);
   });
 
   await getVaultRuntimeStatus(vault, cwd);
   const observation = await beginVaultIndexBuild(vault, cwd);
-  fs.readFile = (async (file, ...args) => {
-    if (file === notePath && interceptBuildRead) {
+  restoreOpen = interceptUtf8HandleReads(notePath, async (read) => {
+    if (interceptBuildRead) {
       interceptBuildRead = false;
-      const captured = await originalReadFile(file, ...args);
+      const captured = await read();
       buildCapturedSource.resolve();
       await releaseBuild.promise;
       return captured;
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return read();
+  });
 
   const building = rebuildMachineIndex(vault, cwd);
   await buildCapturedSource.promise;
@@ -719,15 +735,15 @@ test("vault runtime status bounds path-bearing rescan failures", async (t) => {
   const absolutePath = path.join(rootPath, "note.md");
   await fs.writeFile(absolutePath, "# Note\n", "utf8");
   const vault = testVault(rootPath, "rescan-error-vault");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
     stopVaultWatcher(cwd, vault.id);
   });
   await getVaultRuntimeStatus(vault, cwd);
 
   const sensitivePath = "/private/example/watcher-secret.md";
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === absolutePath) {
       throw Object.assign(new Error(`EACCES: permission denied, open '${sensitivePath}'`), {
         code: "EACCES",
@@ -735,8 +751,8 @@ test("vault runtime status bounds path-bearing rescan failures", async (t) => {
         path: sensitivePath,
       });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const status = await getVaultRuntimeStatus(vault, cwd, "note.md");
   assert.equal(status.indexStatus, "error");
@@ -790,20 +806,20 @@ test("unexpected post-publication watcher bookkeeping failures are bounded and l
   const notePath = path.join(rootPath, "note.md");
   await fs.writeFile(notePath, "# Note\n", "utf8");
   const vault = testVault(rootPath, "post-publication-bookkeeping-vault");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   const originalConsoleError = console.error;
   const logged: unknown[][] = [];
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
     console.error = originalConsoleError;
     stopVaultWatcher(cwd, vault.id);
   });
 
   const observation = await beginVaultIndexBuild(vault, cwd);
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === notePath) throw new Error("unexpected bookkeeping invariant detail");
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
   console.error = (...args: unknown[]) => {
     logged.push(args);
   };
@@ -838,17 +854,17 @@ test("watcher-triggered rebuild publishes a partial index for one unreadable sou
     "utf8",
   );
   const vault = testVault(rootPath, "watcher-partial-rebuild-vault");
-  const originalReadFile = fs.readFile;
+  const originalOpen = fs.open;
   const sensitivePath = "/private/example/watcher-partial-secret.md";
   t.after(() => {
-    fs.readFile = originalReadFile;
+    fs.open = originalOpen;
     stopVaultWatcher(cwd, vault.id);
   });
 
   await getVaultRuntimeStatus(vault, cwd);
   await fs.writeFile(changedPath, "# After\n", "utf8");
   await recordVaultMutation(vault, cwd);
-  fs.readFile = (async (file, ...args) => {
+  fs.open = (async (file, ...args) => {
     if (file === failedPath) {
       throw Object.assign(new Error(`EACCES: permission denied, open '${sensitivePath}'`), {
         code: "EACCES",
@@ -856,8 +872,8 @@ test("watcher-triggered rebuild publishes a partial index for one unreadable sou
         path: sensitivePath,
       });
     }
-    return originalReadFile(file, ...args);
-  }) as typeof fs.readFile;
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
 
   const cacheFile = await machineIndexPath(vault, cwd);
   let stored:
