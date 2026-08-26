@@ -12,6 +12,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  Braces,
   ChevronUp,
   Database,
   FileText,
@@ -44,6 +45,7 @@ import { buildGraph } from "@/lib/vault/graph";
 import { contentForLocalSearch } from "@/lib/vault/contentLoading";
 import { vaultAvailabilityLabel } from "@/lib/vault/availability";
 import {
+  chatExportFallbackKind,
   chatExportSearchTextFromSource,
   parseChatExportV1,
   type ChatExportParseResult,
@@ -109,7 +111,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Local-first Markdown editor and indexer with read-only plain-text and structured chat viewing.",
+          "Local-first Markdown editor and indexer with read-only plain-text and JSON viewing.",
       },
     ],
   }),
@@ -431,14 +433,17 @@ function VaultApp() {
   }, [activePath, fileContents, fileMeta]);
 
   const activeFileKind = activePath ? fileMeta[activePath]?.kind : undefined;
+  const activeFileSize = activePath ? fileMeta[activePath]?.size : undefined;
   const activeIsPlainText = activeFileKind === "plain-text";
   const activeIsChatJson = activeFileKind === "chat-json";
-  const activeIsReadOnly = activeIsPlainText || activeIsChatJson;
+  const activeIsGenericJson = activeFileKind === "generic-json";
+  const activeIsReadOnly = activeIsPlainText || activeIsChatJson || activeIsGenericJson;
   const activeContentState = activePath ? fileContents[activePath] : undefined;
   const activeChatParse = useMemo<ChatExportParseResult | null>(() => {
     if (!activeIsChatJson || activeContentState?.status !== "loaded") return null;
-    return parseChatExportV1(activeContentState.content);
-  }, [activeContentState, activeIsChatJson]);
+    return parseChatExportV1(activeContentState.content, activeFileSize);
+  }, [activeContentState, activeFileSize, activeIsChatJson]);
+  const activeChatFallback = activeChatParse ? chatExportFallbackKind(activeChatParse) : null;
   const dirty = activeFileKind === "markdown" && buffer !== savedSnapshot;
   const dirtyPaths = useMemo(
     () => new Set(dirty && activePath ? [activePath] : []),
@@ -1000,7 +1005,7 @@ function VaultApp() {
           tags: note?.tags ?? [],
           content:
             kind === "chat-json" && loadedContent !== null
-              ? chatExportSearchTextFromSource(loadedContent)
+              ? chatExportSearchTextFromSource(loadedContent, fileMeta[path]?.size)
               : loadedContent,
         };
       }),
@@ -1278,6 +1283,8 @@ function VaultApp() {
       )}
       {activeIsChatJson ? (
         <MessagesSquare className="size-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
+      ) : activeIsGenericJson ? (
+        <Braces className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
       ) : activeIsPlainText ? (
         <FileType2 className="size-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
       ) : (
@@ -1286,6 +1293,7 @@ function VaultApp() {
       <span className="font-mono truncate min-w-0 flex-1">{activePath ?? "—"}</span>
       {activeIsPlainText && <Badge variant="outline">Plain text · Read only</Badge>}
       {activeIsChatJson && <Badge variant="outline">Chat JSON · Read only</Badge>}
+      {activeIsGenericJson && <Badge variant="outline">JSON · Read only</Badge>}
       {dirty && <span className="text-amber-500 font-medium shrink-0">●</span>}
       {suppressedActiveConflict && (
         <Button
@@ -1363,11 +1371,12 @@ function VaultApp() {
     </div>
   );
 
-  const plainTextPane = (
+  const rawTextPane = (ariaLabel: string, notice?: ReactNode) => (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {fileActionBar}
+      {notice && <div className="shrink-0 border-b px-4 py-2">{notice}</div>}
       <textarea
-        aria-label="Read-only plain-text file"
+        aria-label={ariaLabel}
         readOnly
         spellCheck={false}
         value={buffer}
@@ -1375,6 +1384,8 @@ function VaultApp() {
       />
     </div>
   );
+  const plainTextPane = rawTextPane("Read-only plain-text file");
+  const genericJsonPane = rawTextPane("Read-only raw JSON file");
 
   const chatJsonPane = (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
@@ -1416,18 +1427,21 @@ function VaultApp() {
               <StateMessage>No messages in this conversation.</StateMessage>
             )}
           </div>
-        ) : (
-          <div className="mx-auto max-w-lg">
-            <StateMessage tone="error">
-              <span className="block font-medium">Invalid AREPO chat source</span>
-              <span className="mt-1 block">
-                {activeChatParse?.error.message ?? "Chat source could not be validated."}
-              </span>
-            </StateMessage>
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
+  );
+
+  const chatFallbackPane = rawTextPane(
+    "Read-only raw chat JSON file",
+    <StateMessage>
+      <span className="block font-medium">
+        {activeChatFallback === "malformed"
+          ? "This file could not be interpreted as Chat JSON."
+          : "This chat JSON format is not currently supported."}
+      </span>
+      <span className="mt-1 block">Showing raw source.</span>
+    </StateMessage>,
   );
 
   const unavailableContentPane = (
@@ -1435,11 +1449,21 @@ function VaultApp() {
       {fileActionBar}
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-6">
         <div className="w-full max-w-lg space-y-3">
-          <StateMessage tone={activeContentState?.status === "failed" ? "error" : "loading"}>
+          <StateMessage
+            tone={
+              activeContentState?.status === "failed"
+                ? "error"
+                : activeContentState?.status === "too-large"
+                  ? "empty"
+                  : "loading"
+            }
+          >
             <span className="block font-medium">
               {activeContentState?.status === "failed"
                 ? "Source content unavailable"
-                : "Loading source content..."}
+                : activeContentState?.status === "too-large"
+                  ? "This file is too large to preview safely."
+                  : "Loading source content..."}
             </span>
             {activePath && <span className="mt-1 block break-all font-mono">{activePath}</span>}
             {activeContentState?.status === "failed" && (
@@ -1467,7 +1491,7 @@ function VaultApp() {
         <FileText className="mx-auto size-5 text-muted-foreground" />
         <div className="text-sm font-medium">No document open</div>
         <div className="text-xs text-muted-foreground">
-          Select a Markdown, plain-text, or AREPO chat file from the tree or search to open it here.
+          Select a Markdown, plain-text, or JSON file from the tree or search to open it here.
         </div>
       </div>
     </div>
@@ -1505,12 +1529,16 @@ function VaultApp() {
     ? activeContentState?.status !== "loaded"
       ? unavailableContentPane
       : activeIsChatJson
-        ? chatJsonPane
-        : activeIsPlainText
-          ? plainTextPane
-          : centerTab === "edit"
-            ? editorPane
-            : previewPane
+        ? activeChatParse?.ok
+          ? chatJsonPane
+          : chatFallbackPane
+        : activeIsGenericJson
+          ? genericJsonPane
+          : activeIsPlainText
+            ? plainTextPane
+            : centerTab === "edit"
+              ? editorPane
+              : previewPane
     : centerWorkspaceView === "tree"
       ? centerTreePane
       : centerWorkspaceView === "graph"
@@ -1525,8 +1553,12 @@ function VaultApp() {
         mtimeMs={fileMeta[activePath]?.mtimeMs ?? 0}
         parsed={activeChatParse}
       />
-    ) : activeIsPlainText && activePath ? (
-      <PlainTextInspector path={activePath} size={fileMeta[activePath]?.size ?? 0} />
+    ) : (activeIsPlainText || activeIsGenericJson) && activePath ? (
+      <RawTextInspector
+        path={activePath}
+        size={fileMeta[activePath]?.size ?? 0}
+        kind={activeIsGenericJson ? "generic-json" : "plain-text"}
+      />
     ) : (
       <IndexInspectPanel
         selectedCount={selectedNotePaths.length}
@@ -1890,10 +1922,14 @@ function VaultApp() {
                 ? activeContentState?.status !== "loaded"
                   ? unavailableContentPane
                   : activeIsChatJson
-                    ? chatJsonPane
-                    : activeIsPlainText
-                      ? plainTextPane
-                      : editorPane
+                    ? activeChatParse?.ok
+                      ? chatJsonPane
+                      : chatFallbackPane
+                    : activeIsGenericJson
+                      ? genericJsonPane
+                      : activeIsPlainText
+                        ? plainTextPane
+                        : editorPane
                 : emptyDocumentPane}
             </div>
             <div className="h-full min-w-0 overflow-hidden" hidden={mobileTab !== "preview"}>
@@ -2320,12 +2356,25 @@ function IndexInspectPanel({
   );
 }
 
-function PlainTextInspector({ path, size }: { path: string; size: number }) {
+function RawTextInspector({
+  path,
+  size,
+  kind,
+}: {
+  path: string;
+  size: number;
+  kind: "plain-text" | "generic-json";
+}) {
+  const isJson = kind === "generic-json";
   return (
     <div className="h-full min-h-0 min-w-0 overflow-auto p-4 text-xs">
       <div className="mb-4 flex items-center gap-2">
-        <FileType2 className="size-4 text-sky-600 dark:text-sky-400" />
-        <div className="font-medium">Plain-text file</div>
+        {isJson ? (
+          <Braces className="size-4 text-emerald-600 dark:text-emerald-400" />
+        ) : (
+          <FileType2 className="size-4 text-sky-600 dark:text-sky-400" />
+        )}
+        <div className="font-medium">{isJson ? "Generic JSON file" : "Plain-text file"}</div>
       </div>
       <dl className="space-y-3">
         <div>
@@ -2338,7 +2387,7 @@ function PlainTextInspector({ path, size }: { path: string; size: number }) {
         </div>
         <div>
           <dt className="text-muted-foreground">Mode</dt>
-          <dd className="mt-1">UTF-8 plain text · read only</dd>
+          <dd className="mt-1">UTF-8 {isJson ? "raw JSON" : "plain text"} · read only</dd>
         </div>
       </dl>
       <p className="mt-5 text-muted-foreground">
@@ -2360,6 +2409,7 @@ function ChatJsonInspector({
   mtimeMs: number;
   parsed: ChatExportParseResult | null;
 }) {
+  const fallback = parsed ? chatExportFallbackKind(parsed) : null;
   return (
     <div className="h-full min-h-0 min-w-0 overflow-auto p-4 text-xs">
       <div className="mb-4 flex items-center gap-2">
@@ -2381,7 +2431,15 @@ function ChatJsonInspector({
         </div>
         <div>
           <dt className="text-muted-foreground">Format</dt>
-          <dd className="mt-1">arepo-chat-export · V1 · read only</dd>
+          <dd className="mt-1">
+            {parsed?.ok
+              ? "arepo-chat-export · V1 · read only"
+              : fallback === "malformed"
+                ? "Malformed JSON · raw fallback · read only"
+                : fallback === "unsupported"
+                  ? "Unsupported chat JSON · raw fallback · read only"
+                  : "Chat JSON source · read only"}
+          </dd>
         </div>
         {parsed?.ok && (
           <>
@@ -2397,7 +2455,8 @@ function ChatJsonInspector({
         )}
       </dl>
       <p className="mt-5 text-muted-foreground">
-        Message timestamps are source event time. Filesystem mtime is operational observation time.
+        {parsed?.ok &&
+          "Message timestamps are source event time. Filesystem mtime is operational observation time. "}
         This source is excluded from Markdown metadata, links, graph, and validation.
       </p>
     </div>
@@ -2893,6 +2952,11 @@ function SearchResults({
               {r.kind === "chat-json" && (
                 <Badge variant="outline" className="shrink-0 text-[9px] py-0">
                   chat JSON
+                </Badge>
+              )}
+              {r.kind === "generic-json" && (
+                <Badge variant="outline" className="shrink-0 text-[9px] py-0">
+                  JSON
                 </Badge>
               )}
             </div>

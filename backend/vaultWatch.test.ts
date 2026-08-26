@@ -606,31 +606,36 @@ test("overlapping reconciliations commit source snapshots in request order", asy
   assert.equal(afterDelete.file?.hash, hashContent("# Bravo\n"));
 });
 
-test("plain-text and chat fingerprints remain observable without staling Markdown", async (t) => {
+test("plain-text, chat, and generic JSON fingerprints remain observable without staling Markdown", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-watch-status-");
   const rootPath = await makeTestTempDir(t, "arepo-watch-root-");
   const textPath = path.join(rootPath, "plain.txt");
   const chatPath = path.join(rootPath, "conversation.arepo-chat.json");
+  const jsonPath = path.join(rootPath, "data.json");
   const chatBefore =
     '{"format":"arepo-chat-export","version":1,"conversation":{"id":"alpha"},"messages":[]}\n';
   const chatAfter =
     '{"format":"arepo-chat-export","version":1,"conversation":{"id":"bravo"},"messages":[]}\n';
   await fs.writeFile(textPath, "alpha\n", "utf8");
   await fs.writeFile(chatPath, chatBefore, "utf8");
+  await fs.writeFile(jsonPath, '{"state":"alpha"}\n', "utf8");
   const vault = testVault(rootPath, "read-only-sources-vault");
   t.after(() => stopVaultWatcher(cwd, vault.id));
 
   await getVaultRuntimeStatus(vault, cwd);
   const textStat = await fs.stat(textPath);
   const chatStat = await fs.stat(chatPath);
+  const jsonStat = await fs.stat(jsonPath);
   await fs.writeFile(textPath, "bravo\n", "utf8");
   await fs.writeFile(chatPath, chatAfter, "utf8");
+  await fs.writeFile(jsonPath, '{"state":"bravo"}\n', "utf8");
   await fs.utimes(textPath, textStat.atime, textStat.mtime);
   await fs.utimes(chatPath, chatStat.atime, chatStat.mtime);
+  await fs.utimes(jsonPath, jsonStat.atime, jsonStat.mtime);
 
   const status = await getVaultRuntimeStatus(vault, cwd);
   assert.equal(status.indexStatus, "fresh");
-  assert.deepEqual(status.changedPaths, ["conversation.arepo-chat.json", "plain.txt"]);
+  assert.deepEqual(status.changedPaths, ["conversation.arepo-chat.json", "data.json", "plain.txt"]);
 });
 
 test("newest-source rebuild queue serializes publication and coalesces rapid generations", async (t) => {

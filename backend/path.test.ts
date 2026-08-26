@@ -18,6 +18,8 @@ test("normalizes safe vault file paths", () => {
     normalizeReadableTextFilePath("Imports/session.AREPO-CHAT.JSON"),
     "Imports/session.AREPO-CHAT.JSON",
   );
+  assert.equal(normalizeReadableTextFilePath("Notes/hello.json"), "Notes/hello.json");
+  assert.equal(normalizeReadableTextFilePath("Notes/HELLO.JSON"), "Notes/HELLO.JSON");
   assert.equal(normalizeVaultFolderPath("Notes"), "Notes");
 });
 
@@ -25,8 +27,7 @@ test("rejects path traversal and absolute paths", () => {
   assert.throws(() => normalizeReadableTextFilePath("../secret.md"), /cannot be/);
   assert.throws(() => normalizeReadableTextFilePath("/tmp/secret.md"), /Absolute/);
   assert.throws(() => normalizeReadableTextFilePath("Notes//hello.md"), /Duplicate/);
-  assert.throws(() => normalizeReadableTextFilePath("Notes/hello.json"), /\.arepo-chat\.json/);
-  assert.throws(() => normalizeReadableTextFilePath("Notes/hello.chat.json"), /\.arepo-chat\.json/);
+  assert.throws(() => normalizeReadableTextFilePath("Notes/hello.json.backup"), /\.json/);
   assert.throws(() => normalizeMarkdownFilePath("Notes/hello.txt"), /\.md/);
 });
 

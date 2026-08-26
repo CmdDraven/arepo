@@ -2,10 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  chatExportFallbackKind,
   chatExportSearchText,
   chatExportSearchTextFromSource,
   parseChatExportV1,
 } from "./chatExport.ts";
+import {
+  CHAT_JSON_MAX_AGGREGATE_TEXT_LENGTH,
+  CHAT_JSON_MAX_MESSAGES,
+  CHAT_JSON_MAX_MESSAGE_TEXT_LENGTH,
+  CHAT_JSON_STRUCTURED_MAX_BYTES,
+} from "./jsonBounds.ts";
 
 test("parses minimal, titled, empty, ordered, Unicode V1 conversations", () => {
   const minimal = parseChatExportV1(
@@ -132,14 +139,88 @@ test("ignores unknown fields without echoing or rewriting canonical source text"
   assert.equal(JSON.stringify(result).includes(secret), false);
 });
 
-test("bounded parser failures never echo the source body", () => {
+test("bounded parser failures never echo the source body and remain raw-searchable", () => {
   const secret = "PRIVATE-BODY-TOKEN";
   const result = parseChatExportV1(`{${secret}`);
 
   assert.equal(result.ok, false);
   assert.equal(JSON.stringify(result).includes(secret), false);
   if (!result.ok) assert.ok(result.error.message.length < 160);
-  assert.equal(chatExportSearchTextFromSource(`{${secret}`), null);
+  assert.equal(chatExportSearchTextFromSource(`{${secret}`), `{${secret}`);
+  assert.equal(chatExportFallbackKind(result), "malformed");
+});
+
+test("valid but unsupported chat JSON is distinguished from malformed JSON", () => {
+  const unsupported = parseChatExportV1(validSource({ version: 2 }));
+  const malformed = parseChatExportV1("{");
+
+  assert.equal(chatExportFallbackKind(unsupported), "unsupported");
+  assert.equal(chatExportFallbackKind(malformed), "malformed");
+  const rawUnsupported = validSource({ version: 2 });
+  assert.equal(chatExportSearchTextFromSource(rawUnsupported), rawUnsupported);
+});
+
+test("structured byte bound is checked before parsing and accepts the exact boundary", () => {
+  const compact = validSource();
+  const atLimit = compact + " ".repeat(CHAT_JSON_STRUCTURED_MAX_BYTES - compact.length);
+  assert.equal(new TextEncoder().encode(atLimit).byteLength, CHAT_JSON_STRUCTURED_MAX_BYTES);
+  assert.equal(parseChatExportV1(atLimit).ok, true);
+
+  const overLimitSource = `${atLimit} `;
+  const overLimit = parseChatExportV1(overLimitSource);
+  assert.equal(overLimit.ok, false);
+  if (!overLimit.ok) assert.equal(overLimit.error.code, "structured-content-too-large");
+  assert.equal(chatExportSearchTextFromSource(overLimitSource), overLimitSource);
+
+  const observedOverLimit = parseChatExportV1("{", CHAT_JSON_STRUCTURED_MAX_BYTES + 1);
+  assert.equal(observedOverLimit.ok, false);
+  if (!observedOverLimit.ok) {
+    assert.equal(observedOverLimit.error.code, "structured-content-too-large");
+  }
+});
+
+test("message-count bound accepts the exact boundary and rejects one more", () => {
+  const messages = Array.from({ length: CHAT_JSON_MAX_MESSAGES }, (_, index) =>
+    message({ id: `msg-${index}`, text: "" }),
+  );
+  assert.equal(parseChatExportV1(validSource({ messages })).ok, true);
+
+  messages.push(message({ id: `msg-${CHAT_JSON_MAX_MESSAGES}`, text: "" }));
+  const overLimitSource = validSource({ messages });
+  const overLimit = parseChatExportV1(overLimitSource);
+  assert.equal(overLimit.ok, false);
+  if (!overLimit.ok) assert.equal(overLimit.error.code, "too-many-messages");
+  assert.equal(chatExportSearchTextFromSource(overLimitSource), overLimitSource);
+});
+
+test("per-message text bound accepts the exact boundary and rejects one more", () => {
+  assert.equal(
+    parseChatExportV1(validSource({ text: "x".repeat(CHAT_JSON_MAX_MESSAGE_TEXT_LENGTH) })).ok,
+    true,
+  );
+  const overLimitSource = validSource({
+    text: "x".repeat(CHAT_JSON_MAX_MESSAGE_TEXT_LENGTH + 1),
+  });
+  const overLimit = parseChatExportV1(overLimitSource);
+  assert.equal(overLimit.ok, false);
+  if (!overLimit.ok) assert.equal(overLimit.error.code, "message-text-too-large");
+  assert.equal(chatExportSearchTextFromSource(overLimitSource), overLimitSource);
+});
+
+test("aggregate searchable-text bound accepts the exact boundary and rejects one more", () => {
+  const exactId = "x".repeat(CHAT_JSON_MAX_AGGREGATE_TEXT_LENGTH);
+  assert.equal(
+    parseChatExportV1(validSource({ conversation: { id: exactId }, messages: [] })).ok,
+    true,
+  );
+  const overLimitSource = validSource({
+    conversation: { id: `${exactId}x` },
+    messages: [],
+  });
+  const overLimit = parseChatExportV1(overLimitSource);
+  assert.equal(overLimit.ok, false);
+  if (!overLimit.ok) assert.equal(overLimit.error.code, "aggregate-text-too-large");
+  assert.equal(chatExportSearchTextFromSource(overLimitSource), overLimitSource);
 });
 
 test("reparsing externally reloaded chat content transitions valid, invalid, and valid again", () => {

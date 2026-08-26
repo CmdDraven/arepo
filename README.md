@@ -27,7 +27,9 @@ AREPO also supports one deliberately exact structured import:
 and numeric `"version": 1`. These canonical JSON files are read only and remain
 unchanged on disk. AREPO validates and displays the conversation and its ordered
 messages, preserving conversation/message IDs and source timestamp strings.
-Arbitrary `.json`, including `*.chat.json`, is not supported, and chat JSON is
+Unsupported or malformed chat exports remain inspectable as canonical raw text
+when safely bounded. Other `.json` files are also discovered, opened, searched,
+and refreshed as read-only raw UTF-8 text without schema assumptions. JSON is
 never converted to Markdown or added to Markdown graph/index semantics.
 
 Sync, history, and backups are intentionally external:
@@ -319,7 +321,8 @@ revocation, failure checks, and audit sanitization steps.
 The backend accepts only POSIX-style relative vault paths. It rejects absolute
 paths, `..`, empty segments, duplicate slashes, symlink path traversal, and paths
 that resolve outside the configured vault root. Content reads accept `.md`,
-`.txt`, and the exact case-insensitive `*.arepo-chat.json` suffix; all file
+`.txt`, and `.json`; the exact case-insensitive `*.arepo-chat.json` suffix takes
+precedence over generic JSON classification. All file
 mutation operations require `.md`.
 
 File saves write and sync a uniquely named temporary file in the same directory,
@@ -411,13 +414,15 @@ fields such as file paths, titles, frontmatter IDs, tags, headings, anchors,
 outgoing link targets, and backlinks. It is not AI search, vector search, or
 full document body search.
 
-The Tree's browser-local text search can match Markdown and plain-text bodies
+The Tree's browser-local text search can match Markdown, plain-text, and generic
+JSON bodies
 only after the frontend has fetched those files through the content-read
 endpoint. That path requires `readContent`; it does not obtain bodies from the
 structural index. Plain-text results are identified separately from Markdown
 notes. For a valid loaded chat export, file-level search text is derived only
 from the conversation title/ID and message IDs, authors, and text. It does not
-search arbitrary JSON keys or punctuation. Malformed or unreadable chat files
+search arbitrary JSON keys or punctuation. Unsupported or malformed chat files
+use their bounded raw source for body search. Unreadable or oversized sources
 remain filename/path-searchable but contribute no body search text.
 
 ### AREPO chat export V1
@@ -449,8 +454,12 @@ text fields. Timestamps must be parseable ISO-8601-style values with `Z` or an
 explicit numeric offset. Array order is canonical. Message timestamps are
 source event time; filesystem mtime remains separate operational observation
 time. Unknown fields are left untouched in the canonical file but are not part
-of the V1 view. Invalid JSON/schema produces a bounded structured-validation
-state, distinct from an unreadable source-content failure.
+of the V1 view. Structured interpretation is limited to 4 MiB, 10,000 messages,
+100,000 JavaScript string code units per message text, and 4,000,000 aggregate
+searchable-text code units. Sources outside those structured limits fall back
+to canonical raw text when they remain within the separate 8 MiB JSON open
+limit. Unsupported schemas show an unsupported-format notice; malformed JSON
+shows a malformed notice. Neither is treated as an unreadable source failure.
 
 Individual source-content reads are isolated from the vault metadata and
 structural-index load. If one supported file cannot be read, AREPO keeps the
@@ -500,8 +509,9 @@ cache. They are not user-authored Markdown content and can be rebuilt from the
 vault files.
 
 These storage categories are physical reporting buckets, not the supported
-source-kind taxonomy. Chat JSON currently remains in the broad attachment/other
-bucket; this does not make it an attachment or place it in the Markdown index.
+source-kind taxonomy. Chat and generic JSON currently remain in the broad
+attachment/other bucket; this does not make them attachments or place them in
+the Markdown index.
 
 The current indexer strips fenced code blocks and inline code before extracting
 headings and wikilinks. It is still a lightweight Markdown parser, not a full
@@ -510,23 +520,24 @@ CommonMark AST pipeline.
 ## External Changes
 
 The local backend watches configured vault roots for supported `.md`, `.txt`,
-and `*.arepo-chat.json` file changes, additions, deletions, and renames. It does
+and `.json` file changes, additions, deletions, and renames. It does
 not watch outside configured vault roots and continues to ignore symlink
 escapes. Watch events are debounced. Markdown changes mark the vault index stale
-and rebuild it after the event burst settles; plain-text-only and chat-only
+and rebuild it after the event burst settles; plain-text-only and JSON-only
 changes remain visible in watcher status without staling or rebuilding the
 Markdown machine index.
 
 The frontend polls vault status from the local backend. If the open Markdown
 file changes on disk and the editor has no unsaved changes, AREPO refreshes from
-disk. Open plain-text and chat files always reload their read-only view from disk. If the
+disk. Open plain-text and JSON files always reload their read-only view from disk. If the
 Markdown editor is dirty, AREPO keeps the browser buffer intact and shows a
 conflict warning with actions to keep edits, reload the disk version, or save
 the buffer as a new file. If an open Markdown file is deleted on disk, AREPO
 shows a warning and lets the user close the buffer or save it as a new file; a
 deleted read-only source offers only the close path. A chat edit that becomes
-malformed reloads the canonical bytes and displays structured validation; a
-later valid edit restores the structured view.
+malformed or unsupported reloads into bounded raw fallback; a later valid V1
+edit restores the structured view. A JSON file that grows beyond 8 MiB remains
+visible but shows a too-large state instead of a truncated preview.
 
 This third source is implemented directly and narrowly. AREPO does not yet have
 generic adapters, record locators, provenance, or a universal structured-source

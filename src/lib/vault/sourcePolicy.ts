@@ -18,6 +18,10 @@ const SOURCE_POLICIES = {
     mutable: false,
     contributesToMarkdownIndex: false,
   },
+  "generic-json": {
+    mutable: false,
+    contributesToMarkdownIndex: false,
+  },
 } as const satisfies Record<VaultFileKind, SourcePolicy>;
 
 export function sourcePolicy(kind: VaultFileKind): SourcePolicy {
@@ -29,5 +33,6 @@ export function sourceKindForPath(filePath: string): VaultFileKind | null {
   if (lower.endsWith(".md")) return "markdown";
   if (lower.endsWith(".txt")) return "plain-text";
   if (lower.endsWith(".arepo-chat.json")) return "chat-json";
+  if (lower.endsWith(".json")) return "generic-json";
   return null;
 }

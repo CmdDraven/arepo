@@ -4,12 +4,18 @@ import type {
   VaultFileResponse,
   VaultIndexResponse,
 } from "./contracts";
+import {
+  isJsonSourceKind,
+  JSON_RAW_CONTENT_MAX_BYTES,
+  SOURCE_TOO_LARGE_CODE,
+} from "./jsonBounds.ts";
 import { foldersFromFilePaths } from "./tree.ts";
 
 export type FileContentState =
   | { status: "unloaded" }
   | { status: "loading" }
   | { status: "loaded"; content: string }
+  | { status: "too-large" }
   | { status: "failed"; error: string };
 
 export type FileContentStateMap = Record<string, FileContentState>;
@@ -96,6 +102,9 @@ export async function settleFileContent(
   file: VaultFile,
   readFile: (file: VaultFile) => Promise<VaultFileResponse>,
 ): Promise<SettledFileContent> {
+  if (isJsonSourceKind(file.kind) && file.size > JSON_RAW_CONTENT_MAX_BYTES) {
+    return { state: { status: "too-large" } };
+  }
   try {
     const response = await readFile(file);
     return {
@@ -106,7 +115,8 @@ export async function settleFileContent(
         hash: response.hash,
       },
     };
-  } catch {
+  } catch (error) {
+    if (isSourceTooLargeError(error)) return { state: { status: "too-large" } };
     return { state: { status: "failed", error: CONTENT_LOAD_FAILURE } };
   }
 }
@@ -128,4 +138,13 @@ export function isCurrentVaultData(
   activeVaultId: string | null | undefined,
 ): boolean {
   return Boolean(activeVaultId && loadedVaultId === activeVaultId);
+}
+
+export function isSourceTooLargeError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === SOURCE_TOO_LARGE_CODE
+  );
 }

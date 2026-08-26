@@ -21,6 +21,7 @@
     "../src/lib/vault/indexer.ts",
     "../src/lib/vault/render.ts",
     "../src/lib/vault/graph.ts",
+    "../src/lib/vault/jsonBounds.ts",
     "../src/lib/vault/sourcePolicy.ts"
   ]
 }

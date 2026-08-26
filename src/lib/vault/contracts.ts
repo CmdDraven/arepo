@@ -76,7 +76,7 @@ export type DirectoryBrowserResponse = {
   directories: DirectoryBrowserEntry[];
 };
 
-export type VaultFileKind = "markdown" | "plain-text" | "chat-json";
+export type VaultFileKind = "markdown" | "plain-text" | "chat-json" | "generic-json";
 
 export type VaultFile = {
   path: string;

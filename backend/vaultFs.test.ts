@@ -16,6 +16,7 @@ import {
   hashContent,
   deleteVaultFile,
   listSupportedTextFiles,
+  observeVaultFile,
   processStructuralIndexSources,
   readVaultFile,
   renameVaultPath,
@@ -23,6 +24,7 @@ import {
 } from "./vaultFs.js";
 import { renderMarkdown } from "../src/lib/vault/render.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
+import { JSON_RAW_CONTENT_MAX_BYTES, SOURCE_TOO_LARGE_CODE } from "../src/lib/vault/jsonBounds.js";
 import { PublicApiError } from "./publicApiError.js";
 import type { VaultInfo } from "./types.js";
 
@@ -152,8 +154,10 @@ test("discovers and reads supported UTF-8 source files with explicit kinds", asy
     '{"format":"arepo-chat-export","version":1,"conversation":{"id":"upper"},"messages":[]}\n',
     "utf8",
   );
-  await fs.writeFile(path.join(vault.rootPath, "ignored.json"), "{}\n", "utf8");
-  await fs.writeFile(path.join(vault.rootPath, "ignored.chat.json"), "{}\n", "utf8");
+  const genericBody = '{\n  "mixed": [null, true, {"n": 1.00}]\n}\n';
+  const malformedBody = '{\n  "repair-me": true,\n';
+  await fs.writeFile(path.join(vault.rootPath, "generic.json"), genericBody, "utf8");
+  await fs.writeFile(path.join(vault.rootPath, "malformed.JSON"), malformedBody, "utf8");
 
   const files = await listSupportedTextFiles(vault);
   assert.deepEqual(
@@ -161,6 +165,8 @@ test("discovers and reads supported UTF-8 source files with explicit kinds", asy
     [
       { path: "A.TXT", kind: "plain-text" },
       { path: "conversation.arepo-chat.json", kind: "chat-json" },
+      { path: "generic.json", kind: "generic-json" },
+      { path: "malformed.JSON", kind: "generic-json" },
       { path: "note.md", kind: "markdown" },
       { path: "session.AREPO-CHAT.JSON", kind: "chat-json" },
       { path: "z.txt", kind: "plain-text" },
@@ -172,6 +178,10 @@ test("discovers and reads supported UTF-8 source files with explicit kinds", asy
   const chat = await readVaultFile(vault, "conversation.arepo-chat.json");
   assert.equal(chat.kind, "chat-json");
   assert.match(chat.content, /arepo-chat-export/);
+  const generic = await readVaultFile(vault, "generic.json");
+  assert.equal(generic.kind, "generic-json");
+  assert.equal(generic.content, genericBody);
+  assert.equal((await readVaultFile(vault, "malformed.JSON")).content, malformedBody);
 });
 
 test("supported discovery ignores symlinked chat sources", async (t) => {
@@ -190,6 +200,148 @@ test("supported discovery ignores symlinked chat sources", async (t) => {
   }
 
   assert.deepEqual(await listSupportedTextFiles(vault), []);
+});
+
+test("supported discovery ignores symlinked generic JSON sources", async (t) => {
+  const vault = await makeVault(t);
+  const outside = await makeTestTempDir(t, "arepo-json-outside-");
+  const outsideFile = path.join(outside, "outside.json");
+  await fs.writeFile(outsideFile, "{}\n", "utf8");
+  try {
+    await fs.symlink(outsideFile, path.join(vault.rootPath, "linked.json"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EPERM") {
+      t.skip("symlinks unavailable");
+      return;
+    }
+    throw error;
+  }
+
+  assert.deepEqual(await listSupportedTextFiles(vault), []);
+});
+
+test("generic JSON discovery includes nested files and excludes AREPO metadata subtrees", async (t) => {
+  const vault = await makeVault(t);
+  await fs.mkdir(path.join(vault.rootPath, "Nested"), { recursive: true });
+  await fs.mkdir(path.join(vault.rootPath, ".git"), { recursive: true });
+  await fs.mkdir(path.join(vault.rootPath, ".arepo"), { recursive: true });
+  await fs.writeFile(path.join(vault.rootPath, "Nested", "data.json"), "[]\n", "utf8");
+  await fs.writeFile(path.join(vault.rootPath, ".git", "hidden.json"), "{}\n", "utf8");
+  await fs.writeFile(path.join(vault.rootPath, ".arepo", "hidden.json"), "{}\n", "utf8");
+
+  assert.deepEqual(
+    (await listSupportedTextFiles(vault)).map((file) => ({ path: file.path, kind: file.kind })),
+    [{ path: "Nested/data.json", kind: "generic-json" }],
+  );
+});
+
+test("JSON canonical reads accept the raw limit and reject larger opened objects before reading", async (t) => {
+  const vault = await makeVault(t);
+  const exactPath = path.join(vault.rootPath, "exact.json");
+  const oversizedPath = path.join(vault.rootPath, "oversized.json");
+  await fs.writeFile(exactPath, "", "utf8");
+  await fs.truncate(exactPath, JSON_RAW_CONTENT_MAX_BYTES);
+  await fs.writeFile(oversizedPath, "", "utf8");
+  await fs.truncate(oversizedPath, JSON_RAW_CONTENT_MAX_BYTES + 1);
+
+  const exact = await readVaultFile(vault, "exact.json");
+  assert.equal(exact.size, JSON_RAW_CONTENT_MAX_BYTES);
+  assert.equal(Buffer.byteLength(exact.content, "utf8"), JSON_RAW_CONTENT_MAX_BYTES);
+
+  const originalOpen = fs.open;
+  let bodyReadAttempted = false;
+  fs.open = (async (file, ...args) => {
+    const handle = await originalOpen(file, ...args);
+    if (file === oversizedPath) {
+      Object.defineProperty(handle, "read", {
+        configurable: true,
+        value: async () => {
+          bodyReadAttempted = true;
+          throw new Error("oversized body must not be read");
+        },
+      });
+    }
+    return handle;
+  }) as typeof fs.open;
+  try {
+    await assert.rejects(
+      () => readVaultFile(vault, "oversized.json"),
+      (error: PublicApiError) => {
+        assert.equal(error.status, 413);
+        assert.equal(error.code, SOURCE_TOO_LARGE_CODE);
+        assert.equal(error.publicMessage, "Source is too large to preview safely.");
+        assert.equal(error.publicMessage.includes(vault.rootPath), false);
+        return true;
+      },
+    );
+  } finally {
+    fs.open = originalOpen;
+  }
+  assert.equal(bodyReadAttempted, false);
+});
+
+test("watcher observation streams canonical hashes without retaining source content", async (t) => {
+  const vault = await makeVault(t);
+  const source = '{"state":"observed"}\n';
+  const sourcePath = path.join(vault.rootPath, "observed.json");
+  await fs.writeFile(sourcePath, source, "utf8");
+  const originalOpen = fs.open;
+  fs.open = (async (file, ...args) => {
+    const handle = await originalOpen(file, ...args);
+    if (file === sourcePath) {
+      Object.defineProperty(handle, "readFile", {
+        configurable: true,
+        value: async () => {
+          throw new Error("watcher observation must stream");
+        },
+      });
+    }
+    return handle;
+  }) as typeof fs.open;
+  try {
+    const observed = await observeVaultFile(vault, "observed.json");
+    assert.equal(observed.hash, hashContent(source));
+    assert.equal(observed.size, Buffer.byteLength(source, "utf8"));
+    assert.equal(Object.hasOwn(observed, "content"), false);
+  } finally {
+    fs.open = originalOpen;
+  }
+});
+
+test("JSON canonical reads enforce actual bytes when an opened file outgrows observed size", async (t) => {
+  const vault = await makeVault(t);
+  const growingPath = path.join(vault.rootPath, "growing.arepo-chat.json");
+  await fs.writeFile(growingPath, "", "utf8");
+  await fs.truncate(growingPath, JSON_RAW_CONTENT_MAX_BYTES + 1);
+
+  const originalOpen = fs.open;
+  fs.open = (async (file, ...args) => {
+    const handle = await originalOpen(file, ...args);
+    if (file === growingPath) {
+      const originalStat = handle.stat.bind(handle);
+      Object.defineProperty(handle, "stat", {
+        configurable: true,
+        value: async (options?: { bigint?: boolean }) => {
+          const stat = await originalStat(options as { bigint: true });
+          return new Proxy(stat, {
+            get(target, property, receiver) {
+              if (property === "size") return BigInt(JSON_RAW_CONTENT_MAX_BYTES);
+              return Reflect.get(target, property, receiver);
+            },
+          });
+        },
+      });
+    }
+    return handle;
+  }) as typeof fs.open;
+  try {
+    await assert.rejects(
+      () => readVaultFile(vault, "growing.arepo-chat.json"),
+      (error: PublicApiError) => error.status === 413 && error.code === SOURCE_TOO_LARGE_CODE,
+    );
+  } finally {
+    fs.open = originalOpen;
+  }
 });
 
 test("plain-text files cannot be created, written, renamed, or deleted", async (t) => {
@@ -224,6 +376,18 @@ test("chat sources cannot be created, written, renamed, or deleted", async (t) =
   );
   await assert.rejects(() => deleteVaultFile(vault, "conversation.arepo-chat.json"), /\.md/);
   assert.equal(await fs.readFile(sourcePath, "utf8"), source);
+});
+
+test("generic JSON sources cannot be created, written, renamed, or deleted", async (t) => {
+  const vault = await makeVault(t);
+  const sourcePath = path.join(vault.rootPath, "data.json");
+  await fs.writeFile(sourcePath, '{"readOnly":true}\n', "utf8");
+
+  await assert.rejects(() => createVaultFile(vault, "new.json", "{}\n"), /\.md/);
+  await assert.rejects(() => writeVaultFile(vault, "data.json", "{}\n"), /\.md/);
+  await assert.rejects(() => renameVaultPath(vault, "data.json", "renamed.json", "file"), /\.md/);
+  await assert.rejects(() => deleteVaultFile(vault, "data.json"), /\.md/);
+  assert.equal(await fs.readFile(sourcePath, "utf8"), '{"readOnly":true}\n');
 });
 
 test("folder rename succeeds when supported descendants are all mutable Markdown", async (t) => {
@@ -273,6 +437,12 @@ test("folder rename rejects a direct plain-text descendant atomically", async (t
 test("folder rename rejects a direct chat-json descendant atomically", async (t) => {
   await assertFolderRenameRejectedAtomically(await makeVault(t), {
     "conversation.arepo-chat.json": '{"format":"arepo-chat-export"}\n',
+  });
+});
+
+test("folder rename rejects a direct generic JSON descendant atomically", async (t) => {
+  await assertFolderRenameRejectedAtomically(await makeVault(t), {
+    "data.json": "{}\n",
   });
 });
 
@@ -938,7 +1108,7 @@ test("structural identity verification hashes the exact bytes read from the hand
   );
 });
 
-test("Markdown, plain-text, and chat reads reject leaf substitution through the shared reader", async (t) => {
+test("Markdown, plain-text, chat, and generic JSON reads reject leaf substitution", async (t) => {
   const vault = await makeVault(t);
   const fixtures = [
     ["note.md", "# Original Markdown\n", "# Substituted Markdown\n"],
@@ -948,6 +1118,7 @@ test("Markdown, plain-text, and chat reads reject leaf substitution through the 
       '{"format":"arepo-chat-export","version":1,"messages":[]}\n',
       '{"format":"arepo-chat-export","version":1,"messages":[{"content":"substituted"}]}\n',
     ],
+    ["note.json", '{"original":true}\n', '{"substituted":true}\n'],
   ] as const;
   for (const [sourcePath, original, substituted] of fixtures) {
     await fs.writeFile(path.join(vault.rootPath, sourcePath), original, "utf8");
@@ -1533,6 +1704,21 @@ test("Markdown indexing ignores chat sources and message contents", async (t) =>
   assert.equal(JSON.stringify(result).includes("not-a-markdown-link"), false);
 });
 
+test("Markdown indexing ignores generic JSON schemas and raw contents", async (t) => {
+  const vault = await makeVault(t);
+  await createVaultFile(vault, "note.md", "---\nid: note\ntitle: Note\n---\n# Note\n");
+  await fs.writeFile(
+    path.join(vault.rootPath, "data.json"),
+    '{"private":"generic-json-secret [[not-a-markdown-link]]"}\n',
+    "utf8",
+  );
+
+  const result = await buildVaultIndex(vault);
+  assert.deepEqual(Object.keys(result.index.notes), ["note.md"]);
+  assert.equal(JSON.stringify(result).includes("generic-json-secret"), false);
+  assert.equal(JSON.stringify(result).includes("not-a-markdown-link"), false);
+});
+
 test("backend index ignores wikilinks in fenced and inline code", async (t) => {
   const vault = await makeVault(t);
   await createVaultFile(
@@ -1891,6 +2077,7 @@ test("explicit file operations reject symlinks inside vault paths", async (t) =>
   const outside = await makeTestTempDir(t, "arepo-outside-");
   await fs.writeFile(path.join(outside, "escape.md"), "# Escape\n", "utf8");
   await fs.writeFile(path.join(outside, "escape.txt"), "Escape\n", "utf8");
+  await fs.writeFile(path.join(outside, "escape.json"), "{}\n", "utf8");
   try {
     await fs.symlink(outside, path.join(vault.rootPath, "linked"), "dir");
   } catch (error) {
@@ -1903,6 +2090,7 @@ test("explicit file operations reject symlinks inside vault paths", async (t) =>
 
   await assert.rejects(() => readVaultFile(vault, "linked/escape.md"), /Symlinks/);
   await assert.rejects(() => readVaultFile(vault, "linked/escape.txt"), /Symlinks/);
+  await assert.rejects(() => readVaultFile(vault, "linked/escape.json"), /Symlinks/);
 });
 
 test("supported text discovery ignores symlinked plain-text files", async (t) => {

@@ -32,7 +32,7 @@ function normalizeVaultRelativePath(input: unknown): string {
 export function normalizeReadableTextFilePath(input: unknown): string {
   const normalized = normalizeVaultRelativePath(input);
   if (!sourceKindForPath(normalized)) {
-    throw invalidPath("Readable source files must use .md, .txt, or the .arepo-chat.json suffix");
+    throw invalidPath("Readable source files must use .md, .txt, or .json");
   }
   return normalized;
 }

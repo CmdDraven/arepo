@@ -6,6 +6,7 @@ import { refreshMachineIndex } from "./indexCache.js";
 import {
   discoverVaultSources,
   isExpectedVaultObservationFailure,
+  observeVaultFile,
   readVaultFile,
   vaultFileKind,
 } from "./vaultFs.js";
@@ -618,7 +619,7 @@ async function snapshotVault(
   vault: VaultInfo,
   files: VaultFile[],
 ): Promise<Map<string, SnapshotEntry>> {
-  const contents = await Promise.all(files.map((file) => readVaultFile(vault, file.path)));
+  const contents = await Promise.all(files.map((file) => observeVaultFile(vault, file.path)));
   return new Map(contents.map((file) => [file.path, { hash: file.hash }]));
 }
 

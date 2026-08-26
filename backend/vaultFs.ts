@@ -9,6 +9,11 @@ import {
   validate,
   type ValidationIssue,
 } from "../src/lib/vault/indexer.js";
+import {
+  isJsonSourceKind,
+  JSON_RAW_CONTENT_MAX_BYTES,
+  SOURCE_TOO_LARGE_CODE,
+} from "../src/lib/vault/jsonBounds.js";
 import { sourceKindForPath, sourcePolicy } from "../src/lib/vault/sourcePolicy.js";
 import { defaultVaultIndexScope, markdownPathInScope } from "./indexScope.js";
 import { PublicApiError } from "./publicApiError.js";
@@ -199,11 +204,36 @@ export async function readVaultFile(
   }
   const vaultPath = normalizeReadableTextFilePath(rawPath);
   const root = await realVaultRoot(vault);
-  const { content, contentHash, stat } = await readVerifiedVaultFileFromRoot(root, vaultPath);
+  const kind = requiredVaultFileKind(vaultPath);
+  const { content, contentHash, stat } = await readVerifiedVaultFileFromRoot(root, vaultPath, {
+    ...(isJsonSourceKind(kind) ? { maxBytes: JSON_RAW_CONTENT_MAX_BYTES } : {}),
+  });
   return {
     path: vaultPath,
-    kind: requiredVaultFileKind(vaultPath),
+    kind,
     content,
+    mtimeMs: Number(stat.mtimeNs) / 1_000_000,
+    size: Number(stat.size),
+    hash: contentHash,
+  };
+}
+
+export async function observeVaultFile(
+  vault: VaultInfo,
+  rawPath: unknown,
+): Promise<VaultFileWriteResponse> {
+  if (!vault.permissions.readContent) {
+    throw vaultObservationUnavailableError("Vault is not readable");
+  }
+  const vaultPath = normalizeReadableTextFilePath(rawPath);
+  const root = await realVaultRoot(vault);
+  const kind = requiredVaultFileKind(vaultPath);
+  const { contentHash, stat } = await readVerifiedVaultFileFromRoot(root, vaultPath, {
+    ...(isJsonSourceKind(kind) ? { retainContent: false } : {}),
+  });
+  return {
+    path: vaultPath,
+    kind,
     mtimeMs: Number(stat.mtimeNs) / 1_000_000,
     size: Number(stat.size),
     hash: contentHash,
@@ -727,7 +757,7 @@ async function resolveExistingVaultFileFromRoot(
 async function readVerifiedVaultFileFromRoot(
   root: string,
   vaultPath: string,
-  options: StructuralIndexCaptureOptions = {},
+  options: StructuralIndexCaptureOptions & { maxBytes?: number; retainContent?: boolean } = {},
 ): Promise<VerifiedVaultFileRead> {
   const maxAttempts = 2;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -741,9 +771,24 @@ async function readVerifiedVaultFileFromRoot(
       if (!openedStat.isFile() || !sameVaultFileIdentity(resolved.identity, openedStat)) {
         throw vaultSourceChangedDuringReadError();
       }
+      if (options.maxBytes !== undefined && openedStat.size > BigInt(options.maxBytes)) {
+        throw sourceTooLargeError();
+      }
       emitStructuralIndexInstrumentation(options.onMarkdownBodyRead, vaultPath);
       try {
-        const body = await handle.readFile();
+        if (options.retainContent === false) {
+          const observed = await hashFileHandle(handle);
+          return {
+            content: "",
+            contentHash: observed.contentHash,
+            bytes: observed.bytes,
+            stat: openedStat,
+          };
+        }
+        const body =
+          options.maxBytes === undefined
+            ? await handle.readFile()
+            : await readFileHandleWithinLimit(handle, options.maxBytes);
         const hashStartedAt = options.onHashCalculated ? performance.now() : 0;
         const contentHash = hashBytes(body);
         if (options.onHashCalculated) {
@@ -773,6 +818,38 @@ async function readVerifiedVaultFileFromRoot(
     }
   }
   throw new Error("Unreachable verified vault read state");
+}
+
+async function hashFileHandle(
+  handle: import("node:fs/promises").FileHandle,
+): Promise<{ contentHash: string; bytes: number }> {
+  const hash = crypto.createHash("sha256");
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let bytes = 0;
+  while (true) {
+    const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, null);
+    if (bytesRead === 0) break;
+    hash.update(buffer.subarray(0, bytesRead));
+    bytes += bytesRead;
+  }
+  return { contentHash: hash.digest("hex"), bytes };
+}
+
+async function readFileHandleWithinLimit(
+  handle: import("node:fs/promises").FileHandle,
+  maxBytes: number,
+): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  while (totalBytes <= maxBytes) {
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1 - totalBytes));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, null);
+    if (bytesRead === 0) break;
+    totalBytes += bytesRead;
+    if (totalBytes > maxBytes) throw sourceTooLargeError();
+    chunks.push(buffer.subarray(0, bytesRead));
+  }
+  return chunks.length === 1 ? chunks[0]! : Buffer.concat(chunks, totalBytes);
 }
 
 function sourceReadOpenFlags(): number {
@@ -1099,6 +1176,12 @@ function vaultPathUnavailableError(message: string): VaultPathUnavailableError {
 function vaultSourceChangedDuringReadError(): VaultSourceChangedDuringReadError {
   return new VaultSourceChangedDuringReadError(400, "Vault source changed while being read", {
     code: "invalid-vault-operation",
+  });
+}
+
+function sourceTooLargeError(): PublicApiError {
+  return new PublicApiError(413, "Source is too large to preview safely.", {
+    code: SOURCE_TOO_LARGE_CODE,
   });
 }
 

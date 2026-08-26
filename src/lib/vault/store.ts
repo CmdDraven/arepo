@@ -4,6 +4,7 @@ import {
   CONTENT_LOAD_FAILURE,
   loadedFileContents,
   isCurrentVaultData,
+  isSourceTooLargeError,
   prepareVaultLoad,
   settleFileContent,
   settleVaultContents,
@@ -614,7 +615,9 @@ export function useVault(): VaultStore {
           ) {
             setFileContents((prev) => ({
               ...prev,
-              [path]: { status: "failed", error: CONTENT_LOAD_FAILURE },
+              [path]: isSourceTooLargeError(err)
+                ? { status: "too-large" }
+                : { status: "failed", error: CONTENT_LOAD_FAILURE },
             }));
           }
           return null;
@@ -668,7 +671,7 @@ export function useVault(): VaultStore {
             [path]: { ...prev[path], ...result.metadata },
           }));
         }
-        if (result.state.status === "failed") {
+        if (result.state.status !== "loaded") {
           return false;
         }
         await refreshVaultStatus(path);
@@ -783,9 +786,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.ok === false) {
-    throw new Error(
+    const error = new Error(
       typeof data.error === "string" ? data.error : `Request failed with ${response.status}`,
     );
+    if (typeof data.code === "string") Object.assign(error, { code: data.code });
+    throw error;
   }
   return data as T;
 }

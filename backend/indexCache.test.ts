@@ -35,6 +35,7 @@ async function makeVault(t: TestContext): Promise<{ cwd: string; vault: VaultInf
     "conversation.arepo-chat.json",
     '{"format":"arepo-chat-export","version":1,"conversation":{"id":"chat-cache-secret"},"messages":[]}\n',
   );
+  await writeFile(rootPath, "data.json", '{"generic":"generic-json-cache-secret"}\n');
   return {
     cwd,
     vault: {
@@ -334,6 +335,7 @@ test("get creates a v5 cache with deterministic private validity metadata", asyn
     "body-only-cache-secret",
     "plain-text-cache-secret",
     "chat-cache-secret",
+    "generic-json-cache-secret",
     "errno",
     "syscall",
     "stack",
@@ -491,6 +493,7 @@ test("unchanged, metadata-only, and non-structural changes reuse without publica
     "conversation.arepo-chat.json",
     '{"format":"arepo-chat-export","version":1,"conversation":{"id":"changed"},"messages":[]}\n',
   );
+  await writeFile(vault.rootPath, "data.json", '{"generic":"changed"}\n');
   await writeFile(vault.rootPath, "image.bin", "changed attachment\n");
 
   const originalRename = fs.rename;

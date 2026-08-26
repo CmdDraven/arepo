@@ -12,6 +12,7 @@ import {
   type FileContentStateMap,
 } from "./contentLoading.ts";
 import { parseChatExportV1 } from "./chatExport.ts";
+import { JSON_RAW_CONTENT_MAX_BYTES, SOURCE_TOO_LARGE_CODE } from "./jsonBounds.ts";
 import { globalErrorForLoadFailure } from "./loadFailure.ts";
 import type {
   VaultFile,
@@ -196,6 +197,96 @@ test("an empty chat body is loaded content but remains distinct from a valid emp
   assert.equal(parseChatExportV1("").ok, false);
   assert.equal(validEmpty.ok, true);
   if (validEmpty.ok) assert.deepEqual(validEmpty.data.messages, []);
+});
+
+test("oversized JSON remains listed, skips body loading, and is metadata-searchable only", async () => {
+  const oversized: VaultFile = {
+    path: "large.json",
+    kind: "generic-json",
+    size: JSON_RAW_CONTENT_MAX_BYTES + 1,
+    mtimeMs: 100,
+  };
+  let reads = 0;
+  const initial = prepareVaultLoad("vault", fileList([oversized]), indexResponse({}));
+  const settled = await settleVaultContents(initial, [oversized], async (entry) => {
+    reads += 1;
+    return response(entry, "must not be read");
+  });
+
+  assert.equal(reads, 0);
+  assert.deepEqual(settled.fileContents[oversized.path], { status: "too-large" });
+  assert.equal(contentForLocalSearch(settled.fileContents[oversized.path]), null);
+  assert.equal(settled.fileMeta[oversized.path]?.size, JSON_RAW_CONTENT_MAX_BYTES + 1);
+});
+
+test("a backend byte-race rejection becomes too-large rather than unavailable", async () => {
+  const jsonFile = file("growing.json", "generic-json");
+  const error = Object.assign(new Error("Source is too large to preview safely."), {
+    code: SOURCE_TOO_LARGE_CODE,
+  });
+  const result = await settleFileContent(jsonFile, async () => {
+    throw error;
+  });
+
+  assert.deepEqual(result.state, { status: "too-large" });
+  assert.equal(JSON.stringify(result).includes(error.message), false);
+});
+
+test("generic valid and malformed JSON load as exact raw UTF-8 without parsing", async () => {
+  const valid = '{\n  "mixed": [null, true, {"n": 1.00}]\n}\n';
+  const malformed = '{\n  "repair-me": true,\n';
+  for (const [path, source] of [
+    ["valid.json", valid],
+    ["malformed.json", malformed],
+  ] as const) {
+    const result = await settleFileContent(file(path, "generic-json"), async (entry) =>
+      response(entry, source),
+    );
+    assert.deepEqual(result.state, { status: "loaded", content: source });
+  }
+});
+
+test("chat reload transitions replace stale structured semantics with current raw or V1 content", async () => {
+  const chatFile = file("transition.arepo-chat.json", "chat-json");
+  const unsupported = '{"format":"arepo-chat-export","version":2,"private":"raw-v2"}';
+  const valid =
+    '{"format":"arepo-chat-export","version":1,"conversation":{"id":"current"},"messages":[]}';
+  const malformed = '{"format":"arepo-chat-export"';
+
+  const first = await settleFileContent(chatFile, async (entry) => response(entry, unsupported));
+  assert.equal(first.state.status, "loaded");
+  if (first.state.status === "loaded")
+    assert.equal(parseChatExportV1(first.state.content).ok, false);
+  const second = await settleFileContent(chatFile, async (entry) => response(entry, valid));
+  assert.equal(second.state.status, "loaded");
+  if (second.state.status === "loaded")
+    assert.equal(parseChatExportV1(second.state.content).ok, true);
+  const third = await settleFileContent(chatFile, async (entry) => response(entry, malformed));
+  assert.deepEqual(third.state, { status: "loaded", content: malformed });
+  if (third.state.status === "loaded")
+    assert.equal(parseChatExportV1(third.state.content).ok, false);
+});
+
+test("generic JSON reload transitions from current raw content to a too-large state", async () => {
+  const initialFile = file("transition.json", "generic-json");
+  const before = await settleFileContent(initialFile, async (entry) =>
+    response(entry, '{"state":"before"}\n'),
+  );
+  assert.deepEqual(before.state, { status: "loaded", content: '{"state":"before"}\n' });
+
+  const refreshed = await settleFileContent(initialFile, async (entry) =>
+    response(entry, '{"state":"after-search-token"}\n'),
+  );
+  assert.equal(contentForLocalSearch(refreshed.state), '{"state":"after-search-token"}\n');
+
+  const grown: VaultFile = { ...initialFile, size: JSON_RAW_CONTENT_MAX_BYTES + 1 };
+  let reads = 0;
+  const after = await settleFileContent(grown, async (entry) => {
+    reads += 1;
+    return response(entry, "must not load");
+  });
+  assert.equal(reads, 0);
+  assert.deepEqual(after.state, { status: "too-large" });
 });
 
 function file(path: string, kind: VaultFile["kind"]): VaultFile {

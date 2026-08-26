@@ -1,3 +1,10 @@
+import {
+  CHAT_JSON_MAX_AGGREGATE_TEXT_LENGTH,
+  CHAT_JSON_MAX_MESSAGES,
+  CHAT_JSON_MAX_MESSAGE_TEXT_LENGTH,
+  CHAT_JSON_STRUCTURED_MAX_BYTES,
+} from "./jsonBounds.ts";
+
 export type ChatConversationV1 = {
   id: string;
   title?: string;
@@ -18,6 +25,7 @@ export type ChatExportV1 = {
 };
 
 export type ChatExportValidationCode =
+  | "structured-content-too-large"
   | "invalid-json"
   | "invalid-root"
   | "unsupported-format"
@@ -27,6 +35,9 @@ export type ChatExportValidationCode =
   | "invalid-conversation-title"
   | "invalid-messages"
   | "invalid-message"
+  | "too-many-messages"
+  | "message-text-too-large"
+  | "aggregate-text-too-large"
   | "duplicate-message-id"
   | "invalid-timestamp";
 
@@ -37,7 +48,17 @@ export type ChatExportParseResult =
 const TIMESTAMP_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
-export function parseChatExportV1(source: string): ChatExportParseResult {
+export function parseChatExportV1(source: string, observedBytes?: number): ChatExportParseResult {
+  if (
+    (observedBytes !== undefined && observedBytes > CHAT_JSON_STRUCTURED_MAX_BYTES) ||
+    utf8ByteLength(source) > CHAT_JSON_STRUCTURED_MAX_BYTES
+  ) {
+    return failure(
+      "structured-content-too-large",
+      "Chat source exceeds the structured processing limit.",
+    );
+  }
+
   let value: unknown;
   try {
     value = JSON.parse(source);
@@ -66,9 +87,21 @@ export function parseChatExportV1(source: string): ChatExportParseResult {
   if (!Array.isArray(value.messages)) {
     return failure("invalid-messages", "Chat messages must be an array.");
   }
+  if (value.messages.length > CHAT_JSON_MAX_MESSAGES) {
+    return failure("too-many-messages", "Chat source contains too many messages.");
+  }
 
   const messageIds = new Set<string>();
   const messages: ChatMessageV1[] = [];
+  let aggregateTextLength =
+    value.conversation.id.length +
+    (typeof value.conversation.title === "string" ? value.conversation.title.length : 0);
+  if (aggregateTextLength > CHAT_JSON_MAX_AGGREGATE_TEXT_LENGTH) {
+    return failure(
+      "aggregate-text-too-large",
+      "Chat source exceeds the aggregate structured text limit.",
+    );
+  }
   for (const [index, candidate] of value.messages.entries()) {
     if (!isRecord(candidate)) return invalidMessage(index, "must be an object");
     if (typeof candidate.id !== "string" || candidate.id.trim().length === 0) {
@@ -91,6 +124,19 @@ export function parseChatExportV1(source: string): ChatExportParseResult {
     }
     if (typeof candidate.text !== "string") {
       return invalidMessage(index, "text must be a string");
+    }
+    if (candidate.text.length > CHAT_JSON_MAX_MESSAGE_TEXT_LENGTH) {
+      return failure(
+        "message-text-too-large",
+        `Chat message text exceeds the structured limit at record index ${index}.`,
+      );
+    }
+    aggregateTextLength += candidate.id.length + candidate.author.length + candidate.text.length;
+    if (aggregateTextLength > CHAT_JSON_MAX_AGGREGATE_TEXT_LENGTH) {
+      return failure(
+        "aggregate-text-too-large",
+        "Chat source exceeds the aggregate structured text limit.",
+      );
     }
     messageIds.add(candidate.id);
     messages.push({
@@ -125,9 +171,16 @@ export function chatExportSearchText(chat: ChatExportV1): string {
     .join("\n");
 }
 
-export function chatExportSearchTextFromSource(source: string): string | null {
-  const parsed = parseChatExportV1(source);
-  return parsed.ok ? chatExportSearchText(parsed.data) : null;
+export function chatExportSearchTextFromSource(source: string, observedBytes?: number): string {
+  const parsed = parseChatExportV1(source, observedBytes);
+  return parsed.ok ? chatExportSearchText(parsed.data) : source;
+}
+
+export function chatExportFallbackKind(
+  parsed: ChatExportParseResult,
+): "malformed" | "unsupported" | null {
+  if (parsed.ok) return null;
+  return parsed.error.code === "invalid-json" ? "malformed" : "unsupported";
 }
 
 function isTimestampWithTimezone(value: string): boolean {
@@ -163,6 +216,10 @@ function daysInMonth(year: number, month: number): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }
 
 function invalidMessage(index: number, detail: string): ChatExportParseResult {

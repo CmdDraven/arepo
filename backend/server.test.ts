@@ -19,6 +19,7 @@ import { createTokenVerifierMetadata, TOKEN_VERIFIER_SCHEME } from "./credential
 import { machineIndexPath } from "./indexCache.js";
 import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
+import { JSON_RAW_CONTENT_MAX_BYTES } from "../src/lib/vault/jsonBounds.js";
 import type {
   IndexFilterKind,
   IndexFilterResponse,
@@ -2142,7 +2143,7 @@ test("failed mutation conflicts do not publish watcher success bookkeeping", asy
   assert.ok(status.changedPaths.includes("note.md"));
 });
 
-test("chat source metadata omits bodies while the content endpoint returns canonical JSON", async (t) => {
+test("chat and generic JSON metadata omit bodies while content endpoints return canonical source", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const appDataDir = await makeTestTempDir(t, "arepo-data-");
   const rootPath = await makeTestTempDir(t, "arepo-root-");
@@ -2161,6 +2162,10 @@ test("chat source metadata omits bodies while the content endpoint returns canon
   });
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
   await fs.writeFile(path.join(rootPath, "conversation.arepo-chat.json"), chatBody, "utf8");
+  const genericBody = '{\n  "mixed": [null, true, {"private":"generic-body-secret"}]\n}\n';
+  const malformedBody = '{\n  "repair-me": true,\n';
+  await fs.writeFile(path.join(rootPath, "data.json"), genericBody, "utf8");
+  await fs.writeFile(path.join(rootPath, "malformed.json"), malformedBody, "utf8");
   const readable = testVault(rootPath, "chat-readable");
   await writeConfig(cwd, appDataDir, { vaults: [readable] });
 
@@ -2172,10 +2177,13 @@ test("chat source metadata omits bodies while the content endpoint returns canon
     ),
     [
       { path: "conversation.arepo-chat.json", kind: "chat-json" },
+      { path: "data.json", kind: "generic-json" },
+      { path: "malformed.json", kind: "generic-json" },
       { path: "note.md", kind: "markdown" },
     ],
   );
   assert.equal(JSON.stringify(listed.body).includes("chat-body-secret"), false);
+  assert.equal(JSON.stringify(listed.body).includes("generic-body-secret"), false);
 
   const read = await routeRequest(
     request("GET", `/api/vaults/${readable.id}/file?path=conversation.arepo-chat.json`),
@@ -2184,6 +2192,18 @@ test("chat source metadata omits bodies while the content endpoint returns canon
   assert.equal(read.status, 200);
   assert.equal((read.body as { kind: string; content: string }).kind, "chat-json");
   assert.equal((read.body as { content: string }).content, chatBody);
+  for (const [sourcePath, expected] of [
+    ["data.json", genericBody],
+    ["malformed.json", malformedBody],
+  ] as const) {
+    const genericRead = await routeRequest(
+      request("GET", `/api/vaults/${readable.id}/file?path=${sourcePath}`),
+      cwd,
+    );
+    assert.equal(genericRead.status, 200);
+    assert.equal((genericRead.body as { kind: string }).kind, "generic-json");
+    assert.equal((genericRead.body as { content: string }).content, expected);
+  }
 
   const indexRoutes = [
     `/api/vaults/${readable.id}/index`,
@@ -2198,12 +2218,50 @@ test("chat source metadata omits bodies while the content endpoint returns canon
     assert.equal(serialized.includes("chat-title-secret"), false, route);
     assert.equal(serialized.includes("chat-body-secret"), false, route);
     assert.equal(serialized.includes("not-indexed"), false, route);
+    assert.equal(serialized.includes("generic-body-secret"), false, route);
   }
   const chatStructuralSearch = await routeRequest(
     request("GET", `/api/vaults/${readable.id}/index/search?q=conversation.arepo-chat.json`),
     cwd,
   );
   assert.deepEqual((chatStructuralSearch.body as IndexSearchResponse).results, []);
+});
+
+test("oversized JSON remains listed and returns a bounded content error", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-data-");
+  const rootPath = await makeTestTempDir(t, "arepo-root-");
+  const oversizedPath = path.join(rootPath, "oversized.json");
+  await fs.writeFile(oversizedPath, "", "utf8");
+  await fs.truncate(oversizedPath, JSON_RAW_CONTENT_MAX_BYTES + 1);
+  const vault = testVault(rootPath, "oversized-json");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+
+  const listed = await routeRequest(request("GET", `/api/vaults/${vault.id}/files`), cwd);
+  assert.equal(listed.status, 200);
+  assert.deepEqual(
+    (listed.body as { files: Array<{ path: string; kind: string }> }).files.map((file) => ({
+      path: file.path,
+      kind: file.kind,
+    })),
+    [{ path: "oversized.json", kind: "generic-json" }],
+  );
+
+  const index = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+  assert.equal(index.status, 200);
+  assert.deepEqual(Object.keys((index.body as VaultIndexResponse).index.notes), []);
+
+  const read = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/file?path=oversized.json`),
+    cwd,
+  );
+  assert.equal(read.status, 413);
+  assert.deepEqual(read.body, {
+    ok: false,
+    error: "Source is too large to preview safely.",
+    code: "source-too-large",
+  });
+  assert.equal(JSON.stringify(read.body).includes(rootPath), false);
 });
 
 test("file mutation endpoints reject chat-json targets", async (t) => {
@@ -3398,20 +3456,20 @@ test("plain-text watcher changes stay visible without staling or rebuilding the 
   assert.equal((await fs.stat(cachePath)).mtimeMs, cacheStatBefore.mtimeMs);
 });
 
-test("chat-only watcher changes refresh source status without rebuilding Markdown", async (t) => {
+test("chat and generic JSON watcher changes refresh status without rebuilding Markdown", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const appDataDir = await makeTestTempDir(t, "arepo-data-");
   await writeConfig(cwd, appDataDir);
   const rootPath = await makeTestTempDir(t, "arepo-root-");
   await fs.writeFile(path.join(rootPath, "note.md"), "# Note\n", "utf8");
   const chatPath = path.join(rootPath, "conversation.arepo-chat.json");
-  const ordinaryJsonPath = path.join(rootPath, "ignored.json");
+  const ordinaryJsonPath = path.join(rootPath, "data.json");
   await fs.writeFile(
     chatPath,
     '{"format":"arepo-chat-export","version":1,"conversation":{"id":"before"},"messages":[]}\n',
     "utf8",
   );
-  await fs.writeFile(ordinaryJsonPath, '{"ignored":"before"}\n', "utf8");
+  await fs.writeFile(ordinaryJsonPath, '{"state":"before"}\n', "utf8");
 
   const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
   assert.equal(created.status, 201);
@@ -3427,7 +3485,7 @@ test("chat-only watcher changes refresh source status without rebuilding Markdow
     '{"format":"arepo-chat-export","version":1,"conversation":{"id":"after"},"messages":[]}\n',
     "utf8",
   );
-  await fs.writeFile(ordinaryJsonPath, '{"ignored":"after and larger"}\n', "utf8");
+  await fs.writeFile(ordinaryJsonPath, '{"state":"after and larger"}\n', "utf8");
   const changed = await routeRequest(
     request("GET", `/api/vaults/${vault.id}/status?path=conversation.arepo-chat.json`),
     cwd,
@@ -3436,7 +3494,7 @@ test("chat-only watcher changes refresh source status without rebuilding Markdow
   const changedStatus = statusBody(changed);
   assert.equal(changedStatus.indexStatus, "fresh");
   assert.ok(changedStatus.changedPaths.includes("conversation.arepo-chat.json"));
-  assert.equal(changedStatus.changedPaths.includes("ignored.json"), false);
+  assert.equal(changedStatus.changedPaths.includes("data.json"), true);
   assert.equal(changedStatus.file?.exists, true);
 
   await new Promise((resolve) => setTimeout(resolve, 1_100));
