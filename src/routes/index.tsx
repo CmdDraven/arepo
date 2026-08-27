@@ -90,7 +90,28 @@ import {
   type VaultPermission,
 } from "@/lib/vault/store";
 import { isManagementVaultInfo } from "@/lib/vault/contracts";
-import type { DirectoryBrowserResponse } from "@/lib/vault/contracts";
+import { requestApi } from "@/lib/vault/apiTransport";
+import {
+  isDirectoryBrowserResponse,
+  isIndexFilterResponse,
+  isIndexSearchResponse,
+  isLocalNodeRuntimeStatus,
+  isVaultFileListResponse,
+  isVaultIndexResponse,
+  isVaultInspectResponse,
+  isVaultStorageSummary,
+  type IndexFilterKind,
+  type IndexFilterResponse,
+  type IndexFilterResult,
+  type IndexSearchResponse,
+  type IndexSearchResult,
+  type IndexSearchMatchType,
+  type LocalNodeRuntimeStatus,
+  type VaultInspectResponse,
+  type VaultInspectIssue,
+  type VaultInspectLink,
+  type VaultStorageSummary,
+} from "@/lib/vault/apiValidation";
 import {
   beginDirectoryNavigation,
   cancelDirectoryBrowser,
@@ -101,6 +122,7 @@ import {
   type DirectoryBrowserState,
 } from "@/lib/vault/directoryBrowser";
 import { renderMarkdown } from "@/lib/vault/render";
+import { sourcePresentation } from "@/lib/vault/sourcePresentation";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -434,10 +456,11 @@ function VaultApp() {
 
   const activeFileKind = activePath ? fileMeta[activePath]?.kind : undefined;
   const activeFileSize = activePath ? fileMeta[activePath]?.size : undefined;
-  const activeIsPlainText = activeFileKind === "plain-text";
-  const activeIsChatJson = activeFileKind === "chat-json";
-  const activeIsGenericJson = activeFileKind === "generic-json";
-  const activeIsReadOnly = activeIsPlainText || activeIsChatJson || activeIsGenericJson;
+  const activePresentation = activeFileKind ? sourcePresentation(activeFileKind) : null;
+  const activeIsPlainText = activePresentation?.mode === "plain-text";
+  const activeIsChatJson = activePresentation?.mode === "chat-json";
+  const activeIsGenericJson = activePresentation?.mode === "generic-json";
+  const activeIsReadOnly = activePresentation?.readOnly ?? false;
   const activeContentState = activePath ? fileContents[activePath] : undefined;
   const activeChatParse = useMemo<ChatExportParseResult | null>(() => {
     if (!activeIsChatJson || activeContentState?.status !== "loaded") return null;
@@ -735,8 +758,9 @@ function VaultApp() {
         indexFilterError: null,
       }));
       try {
-        const response = await settingsApi<IndexFilterResponse>(
+        const response = await requestApi(
           `/api/vaults/${encodeURIComponent(activeVault.id)}/index/filters?filter=${filter}`,
+          isIndexFilterResponse,
         );
         updateTreeState(placement, (state) => ({ ...state, indexFilterResponse: response }));
       } catch (error) {
@@ -778,8 +802,9 @@ function VaultApp() {
         indexSearchError: null,
       }));
       try {
-        const response = await settingsApi<IndexSearchResponse>(
+        const response = await requestApi(
           `/api/vaults/${encodeURIComponent(activeVault.id)}/index/search?q=${encodeURIComponent(q)}`,
+          isIndexSearchResponse,
         );
         updateTreeState(placement, (state) => ({ ...state, indexSearchResponse: response }));
       } catch (error) {
@@ -821,8 +846,9 @@ function VaultApp() {
     }
     setInspectLoading(true);
     setInspectError(null);
-    settingsApi<VaultInspectResponse>(
+    requestApi(
       `/api/vaults/${encodeURIComponent(activeVault.id)}/index/inspect?path=${encodeURIComponent(metadataPath)}`,
+      isVaultInspectResponse,
     )
       .then((data) => {
         if (!cancelled) setInspectData(data);
@@ -3434,18 +3460,6 @@ function FullFilePane({ title, text }: { title: string; text: string }) {
   );
 }
 
-type StorageBucket = {
-  fileCount: number;
-  bytes: number;
-};
-
-type VaultStorageSummary = {
-  total: StorageBucket;
-  markdownText: StorageBucket;
-  attachments: StorageBucket;
-  appDataCache: StorageBucket & { machineIndexBytes: number };
-};
-
 type VaultSummary = {
   fileCount: number;
   indexedNoteCount: number;
@@ -3453,333 +3467,6 @@ type VaultSummary = {
   storage: VaultStorageSummary | null;
   status: "ready" | "error";
   error?: string;
-};
-
-type LocalNodeRuntimeStatus = {
-  ok: true;
-  node: {
-    nodeId: string;
-    displayName: string;
-    mode: "local" | "remote";
-    apiVersion: 1;
-  };
-  runtime: {
-    host: string;
-    port: number;
-    localOnlyMode: boolean;
-    allowedOrigins: string[];
-    startupWarnings: string[];
-  };
-  auth: {
-    mode: "disabled" | "protected";
-    requestedMode: "disabled" | "protected";
-    enabled: boolean;
-    enforcement: "none" | "protected";
-    protectedModeAvailable: boolean;
-    protectedModeRequested: boolean;
-    warning: string;
-    error?: string;
-  };
-  requestPolicy: {
-    routePolicyInventoryPresent: boolean;
-    routePolicyCount: number;
-    browserSecurityPolicyPresent: boolean;
-    authorizationPlannerPresent: boolean;
-    dryRunMiddlewareConfigured: boolean;
-    dryRunMiddlewareMounted: boolean;
-    dryRunObservationOnly: true;
-    dryRunRunCount: number;
-    dryRunAuditConfigured: boolean;
-    dryRunAuditAttemptedCount: number;
-    dryRunAuditAppendCount: number;
-    lastDryRunAuditStatus?: {
-      mode: "disabled" | "append";
-      status: "skipped" | "written" | "failed";
-      eventId?: string;
-      reasonCode?: string;
-      error?: string;
-      enforcementActive: boolean;
-      networkExposureSafe: boolean;
-    };
-    lastDryRunResult?: {
-      timestamp: string;
-      method: string;
-      path: string;
-      routePattern?: string;
-      status: "wouldAllow" | "wouldDeny" | "anonymousReduced" | "failed";
-      credentialStatus?: string;
-      credentialSource?: string;
-      reasonCodes: string[];
-      plannedResponse?: {
-        kind: string;
-        httpStatus: number;
-        reasonCode: string;
-        authRequired: boolean;
-        confirmationRequired: boolean;
-        enforcementActive: false;
-        networkExposureSafe: false;
-      };
-      enforcementActive: false;
-      networkExposureSafe: false;
-      error?: string;
-    };
-    dryRun: {
-      configured: boolean;
-      mounted: boolean;
-      observed: {
-        count: number;
-        lastStatus?: "wouldAllow" | "wouldDeny" | "anonymousReduced" | "failed";
-      };
-      planned: {
-        computed: boolean;
-        lastResponse?: {
-          kind: string;
-          httpStatus: number;
-          reasonCode: string;
-          authRequired: boolean;
-          confirmationRequired: boolean;
-          enforcementActive: boolean;
-          networkExposureSafe: boolean;
-        };
-      };
-      audited: {
-        configured: boolean;
-        attemptedCount: number;
-        appendedCount: number;
-        lastStatus?: "skipped" | "written" | "failed";
-        lastReasonCode?: string;
-      };
-      enforced: boolean;
-      enforcementActive: boolean;
-      protectedModeOperational: boolean;
-      networkExposureSafe: boolean;
-    };
-    enforcementActive: boolean;
-    enforced: boolean;
-    credentialVerificationActive: boolean;
-    auditRequestLoggingActive: boolean;
-    revocationChecksActive: boolean;
-    csrfOriginEnforcementActive: boolean;
-    acceptsCredentials: boolean;
-    acceptsSessions: boolean;
-    acceptsBearerTokens: boolean;
-    networkExposureSafe: boolean;
-  };
-  protectedModeStartup: {
-    requestedAuthMode: "disabled" | "protected";
-    operationalAuthMode: "disabled" | "protected";
-    protectedModeAvailable: boolean;
-    protectedModeMayStart: boolean;
-    missingRequiredStores: {
-      store: "credentials" | "tokenVerifiers" | "sessions" | "revocations";
-      path: string;
-      error: string;
-      quarantineCandidate?: string;
-    }[];
-    corruptStores: {
-      store: "credentials" | "tokenVerifiers" | "sessions" | "revocations";
-      path: string;
-      error: string;
-      quarantineCandidate?: string;
-    }[];
-    unsafeStorePaths: string[];
-    permissionWarnings: string[];
-    nonLocalBindWithDisabledAuth: boolean;
-    enforcementActive: boolean;
-    credentialVerificationActive: boolean;
-    auditWiringActive: boolean;
-    revocationChecksActive: boolean;
-    csrfOriginEnforcementActive: boolean;
-    networkExposureSafe: boolean;
-  };
-  protectedModeReadiness: {
-    readyForEnforcement: boolean;
-    enforcementActive: boolean;
-    protectedModeOperational: boolean;
-    networkExposureSafe: boolean;
-    requestedAuthMode: "disabled" | "protected";
-    operationalAuthMode: "disabled" | "protected";
-    protectedModeAvailable: boolean;
-    protectedModeMayStart: boolean;
-    blockerCount: number;
-    blockers: string[];
-    routePolicy: {
-      inventoryPresent: boolean;
-      routePolicyCount: number;
-      expectedMinimum: number;
-      complete: boolean;
-    };
-    checks: {
-      credentialVerificationActive: boolean;
-      credentialAcceptanceActive: boolean;
-      credentialIssuanceActive: boolean;
-      sessionIssuanceActive: boolean;
-      tokenIssuanceActive: boolean;
-      auditEnforcementActive: boolean;
-      revocationChecksActive: boolean;
-      csrfOriginEnforcementActive: boolean;
-      reducedAnonymousStatusEnforced: boolean;
-      strongerConfirmationEnforced: boolean;
-      explicitEnforcementFlagEnabled: boolean;
-      protectedRequestPipelineAvailable: boolean;
-      protectedResponsePlannerAvailable: boolean;
-      reducedAnonymousStatusPlannerAvailable: boolean;
-      strongerConfirmationPlannerAvailable: boolean;
-      auditRequirementPlannerAvailable: boolean;
-      browserRequestGuardPlannerAvailable: boolean;
-      credentialSessionLifecyclePlannerAvailable: boolean;
-    };
-    startup: {
-      missingStoreCount: number;
-      corruptStoreCount: number;
-      unsafeStorePathCount: number;
-      permissionWarningCount: number;
-    };
-    credentialLifecycle?: {
-      storeAvailable: boolean;
-      activeCredentialCount: number;
-      revokedCredentialCount: number;
-      expiredCredentialCount: number;
-      totalCredentialCount: number;
-      bootstrapAvailable: boolean;
-      error?: string;
-    };
-    network: {
-      localOnlyMode: boolean;
-      nonLocalBindWithDisabledAuth: boolean;
-    };
-  };
-  credentialLifecycle: {
-    storeAvailable: boolean;
-    activeCredentialCount: number;
-    revokedCredentialCount: number;
-    expiredCredentialCount: number;
-    totalCredentialCount: number;
-    bootstrapAvailable: boolean;
-    error?: string;
-  };
-  vaultCount: number;
-  vaults: {
-    vaultId: string;
-    displayName: string;
-    indexStatus: "fresh" | "stale" | "rebuilding" | "error";
-    changedExternally: boolean;
-    watcherHealth: "ok" | "stale" | "rebuilding" | "error";
-    changedPathCount: number;
-    addedPathCount: number;
-    deletedPathCount: number;
-    lastEventAt?: number;
-    lastIndexedAt?: number;
-    storageSummaryAvailable: boolean;
-    error?: string;
-  }[];
-  capabilities: {
-    storageSummary: true;
-    remoteNodes: false;
-    authentication: false;
-    sync: false;
-    ai: false;
-    database: false;
-    migrationSupport: false;
-  };
-};
-
-type IndexFilterKind =
-  "broken-links" | "orphan-notes" | "tags" | "folders" | "duplicate-ids" | "duplicate-anchors";
-
-type IndexFilterResult = {
-  id: string;
-  filter: IndexFilterKind;
-  path: string;
-  title: string;
-  reason: string;
-  target?: string;
-  tag?: string;
-  folder?: string;
-  duplicateKey?: string;
-  headingText?: string;
-  anchor?: string;
-};
-
-type IndexFilterResponse = {
-  filter: IndexFilterKind;
-  total: number;
-  source: "machine-index";
-  results: IndexFilterResult[];
-};
-
-type IndexSearchMatchType =
-  "file" | "frontmatter-id" | "tag" | "heading" | "anchor" | "link-target" | "backlink";
-
-type IndexSearchResult = {
-  id: string;
-  matchType: IndexSearchMatchType;
-  path: string;
-  title: string;
-  matchedField: string;
-  matchedValue: string;
-  headingText?: string;
-  anchor?: string;
-  tag?: string;
-  linkTarget?: string;
-  targetPath?: string;
-  fromPath?: string;
-  fromTitle?: string;
-};
-
-type IndexSearchResponse = {
-  q: string;
-  total: number;
-  source: "machine-index";
-  results: IndexSearchResult[];
-};
-
-type VaultInspectLink = {
-  target: string;
-  targetPath?: string;
-  targetTitle?: string;
-  anchor?: string;
-  alias?: string;
-  raw: string;
-  status: string;
-  broken: boolean;
-  targetPaths?: string[];
-};
-
-type VaultInspectBacklink = {
-  fromPath: string;
-  fromTitle: string;
-  anchor?: string;
-  alias?: string;
-};
-
-type VaultInspectDuplicateAnchor = {
-  anchor: string;
-  headings: { text: string; level: number; explicit: boolean }[];
-};
-
-type VaultInspectIssue = {
-  kind: string;
-  path: string;
-  message: string;
-  severity: "warning" | "error";
-};
-
-type VaultInspectResponse = {
-  source: "machine-index";
-  path: string;
-  title: string;
-  frontmatterId?: string;
-  tags: string[];
-  headings: { level: number; text: string; anchor: string; explicit: boolean }[];
-  anchors: string[];
-  outgoingLinks: VaultInspectLink[];
-  backlinks: VaultInspectBacklink[];
-  brokenOutgoingLinks: VaultInspectLink[];
-  duplicateId?: { id: string; paths: string[] };
-  duplicateAnchors: VaultInspectDuplicateAnchor[];
-  orphan: boolean;
-  issues: VaultInspectIssue[];
 };
 
 type InspectBacklink = {
@@ -3895,7 +3582,7 @@ function VaultSettingsPanel({
     setNodeStatusLoading(true);
     setNodeStatusError(null);
     try {
-      const status = await settingsApi<LocalNodeRuntimeStatus>("/api/node/status");
+      const status = await requestApi("/api/node/status", isLocalNodeRuntimeStatus);
       setNodeStatus(status);
     } catch (error) {
       setNodeStatus(null);
@@ -3924,13 +3611,15 @@ function VaultSettingsPanel({
         }
         try {
           const [files, indexResponse, storage] = await Promise.all([
-            settingsApi<{ files: { path: string }[] }>(
+            requestApi(
               `/api/vaults/${encodeURIComponent(vault.id)}/files`,
+              isVaultFileListResponse,
             ),
-            settingsApi<{ index: { notes: Record<string, unknown> }; issues: unknown[] }>(
-              `/api/vaults/${encodeURIComponent(vault.id)}/index`,
+            requestApi(`/api/vaults/${encodeURIComponent(vault.id)}/index`, isVaultIndexResponse),
+            requestApi(
+              `/api/vaults/${encodeURIComponent(vault.id)}/storage`,
+              isVaultStorageSummary,
             ),
-            settingsApi<VaultStorageSummary>(`/api/vaults/${encodeURIComponent(vault.id)}/storage`),
           ]);
           return [
             vault.id,
@@ -5138,7 +4827,7 @@ function AddVaultCard({
     );
     try {
       const query = path === null ? "" : `?path=${encodeURIComponent(path)}`;
-      const listing = await settingsApi<DirectoryBrowserResponse>(`/api/node/directories${query}`);
+      const listing = await requestApi(`/api/node/directories${query}`, isDirectoryBrowserResponse);
       if (requestId !== directoryRequestId.current) return;
       setDirectoryBrowser((current) => finishDirectoryNavigation(current, listing));
     } catch (error) {
@@ -5461,23 +5150,6 @@ function validateVaultPermissions(permissions: VaultPermission): string | null {
 
 function isLikelyAbsolutePath(path: string): boolean {
   return path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(path);
-}
-
-async function settingsApi<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.ok === false) {
-    throw new Error(
-      typeof data.error === "string" ? data.error : `Request failed with ${response.status}`,
-    );
-  }
-  return data as T;
 }
 
 function errorMessage(error: unknown): string {

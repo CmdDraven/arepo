@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildIndex, type VaultIndex, type ValidationIssue } from "./indexer";
 import {
-  CONTENT_LOAD_FAILURE,
+  contentStateAfterPathStatusFailure,
   loadedFileContents,
   isCurrentVaultData,
-  isSourceTooLargeError,
   prepareVaultLoad,
   settleFileContent,
   settleVaultContents,
@@ -14,12 +13,31 @@ import {
 } from "./contentLoading";
 import { globalErrorForLoadFailure } from "./loadFailure";
 import { hasVisibleVaultData, isVaultAvailable, preferredVaultId } from "./availability";
+import { isApiResponseValidationError, requestApi } from "./apiTransport";
+import {
+  isAddVaultData,
+  isHealthResponse,
+  isIndexScopeUpdateData,
+  isOperationResult,
+  isPathMutationData,
+  isRebindVaultData,
+  isRemoveVaultResponse,
+  isRenameMutationData,
+  isVaultFileData,
+  isVaultFileListResponse,
+  isVaultFileResponse,
+  isVaultFileWriteResponse,
+  isVaultIndexResponse,
+  isVaultListResponse,
+  isVaultRuntimeStatus,
+  type GeneratedDataAction,
+  type HealthResponse,
+  type RemoveVaultResponse,
+  type VaultRuntimeStatus,
+} from "./apiValidation";
 import type {
   OperationResult,
-  VaultFileListResponse,
   VaultFileResponse,
-  VaultFileWriteResponse,
-  VaultIndexResponse,
   VaultIndexScope,
   VaultInfo,
   VaultListItem,
@@ -34,6 +52,12 @@ export type {
   VaultListResponse,
   VaultPermission,
 } from "./contracts";
+export type {
+  GeneratedDataAction,
+  HealthResponse,
+  RemoveVaultResponse,
+  VaultRuntimeStatus,
+} from "./apiValidation";
 
 const LAST_VAULT_KEY = "vault:lastVaultId";
 const EMPTY_FILE_CONTENTS: FileContentStateMap = {};
@@ -41,53 +65,7 @@ const EMPTY_FILE_CONTENTS: FileContentStateMap = {};
 type FilesMap = Record<string, string>;
 type FileMetaMap = FileMetadataMap;
 
-export type GeneratedDataAction = "keep" | "discard";
-
-export type RemoveVaultResponse = {
-  vault: VaultInfo;
-  remainingVaults: VaultInfo[];
-  generatedData: {
-    action: GeneratedDataAction;
-    deletedPaths: string[];
-    diagnostics: string[];
-  };
-};
-
-type FileListResponse = VaultFileListResponse;
 export type FileResponse = VaultFileResponse;
-type FileWriteResponse = VaultFileWriteResponse;
-type IndexResponse = VaultIndexResponse;
-
-export type VaultRuntimeStatus = {
-  vaultId: string;
-  indexStatus: "fresh" | "stale" | "rebuilding" | "error";
-  changedExternally: boolean;
-  changedPaths: string[];
-  addedPaths: string[];
-  deletedPaths: string[];
-  lastEventAt?: number;
-  lastIndexedAt?: number;
-  error?: string;
-  file?: {
-    path: string;
-    exists: boolean;
-    mtimeMs?: number;
-    size?: number;
-    hash?: string;
-    changedExternally: boolean;
-    deletedExternally: boolean;
-  };
-};
-
-export type HealthResponse = {
-  ok: boolean;
-  node: {
-    nodeId: string;
-    displayName: string;
-    mode: "local" | "remote";
-    apiVersion: 1;
-  };
-};
 
 export type VaultStore = {
   files: FilesMap;
@@ -210,7 +188,7 @@ export function useVault(): VaultStore {
   }, []);
 
   const loadNode = useCallback(async () => {
-    const nextNode = await api<VaultListResponse>("/api/vaults");
+    const nextNode = await requestApi("/api/vaults", isVaultListResponse);
     setNode(nextNode);
     const nextActiveVaultId = preferredVaultId(nextNode.vaults, activeVaultId);
     if (nextActiveVaultId !== activeVaultId) {
@@ -228,7 +206,7 @@ export function useVault(): VaultStore {
   const testHealth = useCallback(async () => {
     setMutationError(null);
     try {
-      const nextHealth = await api<HealthResponse>("/api/health");
+      const nextHealth = await requestApi("/api/health", isHealthResponse);
       setHealth(nextHealth);
       return true;
     } catch (err) {
@@ -253,8 +231,8 @@ export function useVault(): VaultStore {
     async (vaultId: string) => {
       const requestId = ++loadRequestId.current;
       const [fileList, indexResponse] = await Promise.all([
-        api<FileListResponse>(`/api/vaults/${encodeURIComponent(vaultId)}/files`),
-        api<IndexResponse>(`/api/vaults/${encodeURIComponent(vaultId)}/index`),
+        requestApi(`/api/vaults/${encodeURIComponent(vaultId)}/files`, isVaultFileListResponse),
+        requestApi(`/api/vaults/${encodeURIComponent(vaultId)}/index`, isVaultIndexResponse),
       ]);
       if (requestId !== loadRequestId.current) return;
       const previous =
@@ -264,14 +242,16 @@ export function useVault(): VaultStore {
       const initial = prepareVaultLoad(vaultId, fileList, indexResponse, previous);
       publishVaultLoad(initial);
       const settled = await settleVaultContents(initial, fileList.files, (file) =>
-        api<FileResponse>(
+        requestApi(
           `/api/vaults/${encodeURIComponent(vaultId)}/file?path=${encodeURIComponent(file.path)}`,
+          isVaultFileResponse,
         ),
       );
       if (requestId !== loadRequestId.current) return;
       publishVaultLoad(settled);
-      const status = await api<VaultRuntimeStatus>(
+      const status = await requestApi(
         `/api/vaults/${encodeURIComponent(vaultId)}/status`,
+        isVaultRuntimeStatus,
       );
       if (requestId !== loadRequestId.current) return;
       setVaultStatus(status);
@@ -363,8 +343,9 @@ export function useVault(): VaultStore {
     (path: string, content: string) =>
       mutate(async (vault) => {
         const meta = fileMeta[path];
-        const response = await api<OperationResult<FileWriteResponse>>(
+        const response = await requestApi(
           `/api/vaults/${encodeURIComponent(vault.id)}/file?path=${encodeURIComponent(path)}`,
+          isOperationResult(isVaultFileWriteResponse),
           {
             method: "PUT",
             body: JSON.stringify({
@@ -395,11 +376,13 @@ export function useVault(): VaultStore {
   const overwriteFile = useCallback(
     (path: string, content: string) =>
       mutate(async (vault) => {
-        const current = await api<FileResponse>(
+        const current = await requestApi(
           `/api/vaults/${encodeURIComponent(vault.id)}/file?path=${encodeURIComponent(path)}`,
+          isVaultFileResponse,
         );
-        const response = await api<OperationResult<FileWriteResponse>>(
+        const response = await requestApi(
           `/api/vaults/${encodeURIComponent(vault.id)}/file?path=${encodeURIComponent(path)}`,
+          isOperationResult(isVaultFileWriteResponse),
           {
             method: "PUT",
             body: JSON.stringify({
@@ -430,10 +413,14 @@ export function useVault(): VaultStore {
   const createFile = useCallback(
     (path: string) =>
       mutate(async (vault) => {
-        await api(`/api/vaults/${encodeURIComponent(vault.id)}/file`, {
-          method: "POST",
-          body: JSON.stringify({ path }),
-        });
+        await requestApi(
+          `/api/vaults/${encodeURIComponent(vault.id)}/file`,
+          isOperationResult(isVaultFileData),
+          {
+            method: "POST",
+            body: JSON.stringify({ path }),
+          },
+        );
       }),
     [mutate],
   );
@@ -441,10 +428,14 @@ export function useVault(): VaultStore {
   const createFileWithContent = useCallback(
     (path: string, content: string) =>
       mutate(async (vault) => {
-        await api(`/api/vaults/${encodeURIComponent(vault.id)}/file`, {
-          method: "POST",
-          body: JSON.stringify({ path, content }),
-        });
+        await requestApi(
+          `/api/vaults/${encodeURIComponent(vault.id)}/file`,
+          isOperationResult(isVaultFileData),
+          {
+            method: "POST",
+            body: JSON.stringify({ path, content }),
+          },
+        );
       }),
     [mutate],
   );
@@ -452,10 +443,14 @@ export function useVault(): VaultStore {
   const createFolder = useCallback(
     (path: string) =>
       mutate(async (vault) => {
-        await api(`/api/vaults/${encodeURIComponent(vault.id)}/folder`, {
-          method: "POST",
-          body: JSON.stringify({ path }),
-        });
+        await requestApi(
+          `/api/vaults/${encodeURIComponent(vault.id)}/folder`,
+          isOperationResult(isPathMutationData),
+          {
+            method: "POST",
+            body: JSON.stringify({ path }),
+          },
+        );
       }),
     [mutate],
   );
@@ -463,14 +458,18 @@ export function useVault(): VaultStore {
   const rename = useCallback(
     (oldPath: string, newPath: string) =>
       mutate(async (vault) => {
-        await api(`/api/vaults/${encodeURIComponent(vault.id)}/rename`, {
-          method: "POST",
-          body: JSON.stringify({
-            fromPath: oldPath,
-            toPath: newPath,
-            kind: "file",
-          }),
-        });
+        await requestApi(
+          `/api/vaults/${encodeURIComponent(vault.id)}/rename`,
+          isOperationResult(isRenameMutationData),
+          {
+            method: "POST",
+            body: JSON.stringify({
+              fromPath: oldPath,
+              toPath: newPath,
+              kind: "file",
+            }),
+          },
+        );
       }),
     [mutate],
   );
@@ -478,8 +477,9 @@ export function useVault(): VaultStore {
   const remove = useCallback(
     (path: string) =>
       mutate(async (vault) => {
-        await api(
+        await requestApi(
           `/api/vaults/${encodeURIComponent(vault.id)}/file?path=${encodeURIComponent(path)}`,
+          isOperationResult(isPathMutationData),
           {
             method: "DELETE",
           },
@@ -491,8 +491,9 @@ export function useVault(): VaultStore {
   const reindex = useCallback(
     () =>
       mutate(async (vault) => {
-        const response = await api<OperationResult<IndexResponse>>(
+        const response = await requestApi(
           `/api/vaults/${encodeURIComponent(vault.id)}/reindex`,
+          isOperationResult(isVaultIndexResponse),
           { method: "POST" },
         );
         const data = operationData(response);
@@ -506,8 +507,9 @@ export function useVault(): VaultStore {
     async (vaultId: string) => {
       setMutationError(null);
       try {
-        const response = await api<OperationResult<IndexResponse>>(
+        const response = await requestApi(
           `/api/vaults/${encodeURIComponent(vaultId)}/reindex`,
+          isOperationResult(isVaultIndexResponse),
           { method: "POST" },
         );
         const data = operationData(response);
@@ -529,8 +531,9 @@ export function useVault(): VaultStore {
     async (vaultId: string, scope: VaultIndexScope) => {
       setMutationError(null);
       try {
-        const response = await api<OperationResult<{ vault: VaultInfo; index: IndexResponse }>>(
+        const response = await requestApi(
           `/api/vaults/${encodeURIComponent(vaultId)}/index-scope`,
+          isOperationResult(isIndexScopeUpdateData),
           {
             method: "PATCH",
             body: JSON.stringify({ vaultIndexScope: scope }),
@@ -556,8 +559,9 @@ export function useVault(): VaultStore {
     async (vaultId: string, rootPath: string) => {
       setMutationError(null);
       try {
-        await api<OperationResult<{ vault: VaultInfo; indexRebuilt: boolean }>>(
+        await requestApi(
           `/api/vaults/${encodeURIComponent(vaultId)}/rebind`,
+          isOperationResult(isRebindVaultData),
           {
             method: "POST",
             body: JSON.stringify({ rootPath }),
@@ -582,8 +586,9 @@ export function useVault(): VaultStore {
       if (!meta?.hash) return false;
       setMutationError(null);
       try {
-        const current = await api<FileResponse>(
+        const current = await requestApi(
           `/api/vaults/${encodeURIComponent(activeVault.id)}/file?path=${encodeURIComponent(path)}`,
+          isVaultFileResponse,
         );
         return current.hash !== meta.hash;
       } catch {
@@ -600,25 +605,28 @@ export function useVault(): VaultStore {
       const requestId = loadRequestId.current;
       try {
         const query = path ? `?path=${encodeURIComponent(path)}` : "";
-        const status = await api<VaultRuntimeStatus>(
+        const status = await requestApi(
           `/api/vaults/${encodeURIComponent(vaultId)}/status${query}`,
+          isVaultRuntimeStatus,
         );
         setVaultStatus(status);
         return status;
       } catch (err) {
         if (path) {
+          if (isApiResponseValidationError(err)) {
+            setMutationError(errorMessage(err));
+            return null;
+          }
           // Path-scoped status computes a hash by reading that source body.
           if (
             requestId === loadRequestId.current &&
             loadedVaultIdRef.current === vaultId &&
             fileMetaRef.current[path]
           ) {
-            setFileContents((prev) => ({
-              ...prev,
-              [path]: isSourceTooLargeError(err)
-                ? { status: "too-large" }
-                : { status: "failed", error: CONTENT_LOAD_FAILURE },
-            }));
+            setFileContents((prev) => {
+              const next = contentStateAfterPathStatusFailure(prev[path], err);
+              return next ? { ...prev, [path]: next } : prev;
+            });
           }
           return null;
         }
@@ -634,8 +642,9 @@ export function useVault(): VaultStore {
       if (!activeVault) return null;
       setMutationError(null);
       try {
-        return await api<FileResponse>(
+        return await requestApi(
           `/api/vaults/${encodeURIComponent(activeVault.id)}/file?path=${encodeURIComponent(path)}`,
+          isVaultFileResponse,
         );
       } catch {
         return null;
@@ -657,8 +666,9 @@ export function useVault(): VaultStore {
         const result = await settleFileContent(
           { path, kind: listed.kind, mtimeMs: listed.mtimeMs, size: listed.size },
           () =>
-            api<FileResponse>(
+            requestApi(
               `/api/vaults/${encodeURIComponent(vaultId)}/file?path=${encodeURIComponent(path)}`,
+              isVaultFileResponse,
             ),
         );
         if (requestId !== loadRequestId.current || loadedVaultIdRef.current !== vaultId) {
@@ -688,7 +698,7 @@ export function useVault(): VaultStore {
     async (rootPath: string, displayName?: string, permissions?: Partial<VaultPermission>) => {
       setMutationError(null);
       try {
-        const response = await api<OperationResult<{ vault: VaultInfo }>>("/api/vaults", {
+        const response = await requestApi("/api/vaults", isOperationResult(isAddVaultData), {
           method: "POST",
           body: JSON.stringify({ rootPath, displayName, permissions }),
         });
@@ -708,8 +718,9 @@ export function useVault(): VaultStore {
     async (vaultId: string, generatedDataAction: GeneratedDataAction) => {
       setMutationError(null);
       try {
-        const response = await api<OperationResult<RemoveVaultResponse>>(
+        const response = await requestApi(
           `/api/vaults/${encodeURIComponent(vaultId)}`,
+          isOperationResult(isRemoveVaultResponse),
           {
             method: "DELETE",
             body: JSON.stringify({ generatedDataAction }),
@@ -774,25 +785,6 @@ export function useVault(): VaultStore {
     testHealth,
     selectVault: setActiveVaultId,
   };
-}
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.ok === false) {
-    const error = new Error(
-      typeof data.error === "string" ? data.error : `Request failed with ${response.status}`,
-    );
-    if (typeof data.code === "string") Object.assign(error, { code: data.code });
-    throw error;
-  }
-  return data as T;
 }
 
 function operationData<T>(result: OperationResult<T>): T {

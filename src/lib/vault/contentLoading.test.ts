@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   CONTENT_LOAD_FAILURE,
+  contentStateAfterPathStatusFailure,
   contentForLocalSearch,
+  isFileContentState,
   isCurrentVaultData,
   loadedFileContents,
   prepareVaultLoad,
@@ -20,6 +22,7 @@ import type {
   VaultFileResponse,
   VaultIndexResponse,
 } from "./contracts.ts";
+import { ApiResponseValidationError } from "./apiTransport.ts";
 
 const files: VaultFile[] = [
   file("a.md", "markdown"),
@@ -287,6 +290,65 @@ test("generic JSON reload transitions from current raw content to a too-large st
   });
   assert.equal(reads, 0);
   assert.deepEqual(after.state, { status: "too-large" });
+
+  const recovered = await settleFileContent(initialFile, async (entry) =>
+    response(entry, '{"state":"small-again"}\n'),
+  );
+  assert.deepEqual(recovered.state, {
+    status: "loaded",
+    content: '{"state":"small-again"}\n',
+  });
+  assert.equal(contentForLocalSearch(recovered.state), '{"state":"small-again"}\n');
+});
+
+test("file-content state validation rejects unknown and impossible discriminated states", () => {
+  for (const state of [
+    { status: "unloaded" },
+    { status: "loading" },
+    { status: "loaded", content: "" },
+    { status: "too-large" },
+    { status: "failed", error: CONTENT_LOAD_FAILURE },
+  ]) {
+    assert.equal(isFileContentState(state), true);
+  }
+
+  assert.equal(isFileContentState({ status: "future" }), false);
+  assert.equal(isFileContentState({ status: "loaded", content: 42 }), false);
+  assert.equal(
+    isFileContentState({ status: "loaded", content: "body", error: "impossible" }),
+    false,
+  );
+  assert.equal(isFileContentState({ status: "too-large", content: "must not exist" }), false);
+  assert.equal(
+    isFileContentState({ status: "failed", error: CONTENT_LOAD_FAILURE, content: "body" }),
+    false,
+  );
+});
+
+test("malformed status polling retains last good content while known failures stay typed", () => {
+  const previous = { status: "loaded", content: "last good" } as const;
+  const malformed = contentStateAfterPathStatusFailure(previous, new ApiResponseValidationError());
+  assert.equal(malformed, previous);
+
+  const tooLarge = contentStateAfterPathStatusFailure(
+    previous,
+    Object.assign(new Error("bounded"), { code: SOURCE_TOO_LARGE_CODE }),
+  );
+  assert.deepEqual(tooLarge, { status: "too-large" });
+  assert.deepEqual(contentStateAfterPathStatusFailure(previous, new Error("network")), {
+    status: "failed",
+    error: CONTENT_LOAD_FAILURE,
+  });
+});
+
+test("a malformed reload response becomes a bounded failed state, never a successful refresh", async () => {
+  const result = await settleFileContent(file("data.json", "generic-json"), async () => {
+    throw new ApiResponseValidationError();
+  });
+
+  assert.deepEqual(result.state, { status: "failed", error: CONTENT_LOAD_FAILURE });
+  assert.equal(contentForLocalSearch(result.state), null);
+  assert.equal(JSON.stringify(result).includes("invalid-api-response"), false);
 });
 
 function file(path: string, kind: VaultFile["kind"]): VaultFile {

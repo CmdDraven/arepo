@@ -10,6 +10,7 @@ import {
   SOURCE_TOO_LARGE_CODE,
 } from "./jsonBounds.ts";
 import { foldersFromFilePaths } from "./tree.ts";
+import { isApiResponseValidationError, isObjectRecord } from "./apiTransport.ts";
 
 export type FileContentState =
   | { status: "unloaded" }
@@ -45,6 +46,31 @@ export type SettledFileContent = {
 
 export const CONTENT_LOAD_FAILURE = "Content could not be loaded.";
 
+export function isFileContentState(value: unknown): value is FileContentState {
+  if (!isObjectRecord(value) || typeof value.status !== "string") return false;
+  switch (value.status) {
+    case "unloaded":
+    case "loading":
+    case "too-large":
+      return hasOnlyKeys(value, ["status"]);
+    case "loaded":
+      return typeof value.content === "string" && hasOnlyKeys(value, ["status", "content"]);
+    case "failed":
+      return typeof value.error === "string" && hasOnlyKeys(value, ["status", "error"]);
+    default:
+      return false;
+  }
+}
+
+export function contentStateAfterPathStatusFailure(
+  previous: FileContentState | undefined,
+  error: unknown,
+): FileContentState | undefined {
+  if (isApiResponseValidationError(error)) return previous;
+  if (isSourceTooLargeError(error)) return { status: "too-large" };
+  return { status: "failed", error: CONTENT_LOAD_FAILURE };
+}
+
 export function prepareVaultLoad(
   vaultId: string,
   fileList: VaultFileListResponse,
@@ -56,7 +82,9 @@ export function prepareVaultLoad(
     fileContents: Object.fromEntries(
       fileList.files.map((file) => [
         file.path,
-        previous?.fileContents[file.path] ?? ({ status: "loading" } as const),
+        isFileContentState(previous?.fileContents[file.path])
+          ? previous.fileContents[file.path]
+          : ({ status: "loading" } as const),
       ]),
     ),
     fileMeta: Object.fromEntries(
@@ -147,4 +175,9 @@ export function isSourceTooLargeError(error: unknown): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === SOURCE_TOO_LARGE_CODE
   );
+}
+
+function hasOnlyKeys(record: Record<string, unknown>, allowed: readonly string[]): boolean {
+  const allowedKeys = new Set(allowed);
+  return Object.keys(record).every((key) => allowedKeys.has(key));
 }
