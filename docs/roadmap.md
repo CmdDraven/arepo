@@ -1,11 +1,34 @@
 # AREPO Roadmap
 
-AREPO is currently focused on becoming a reliable daily-driver local node for
-user-owned Markdown vaults. The immediate path is local reliability first, then
-single-node self-host readiness, then richer mapping. AI, vector features, sync,
-and federation are deliberately deferred.
+AREPO is a local-first knowledge mapper whose canonical editable source remains
+Markdown. Source/API reliability is now mature enough for pre-alpha enrichment,
+and deterministic/statistical mapping enrichment has begun. Production
+model-based AI, semantic vectors, sync, and federation remain deferred pending
+comparative evaluation, explicit per-vault consent, and the relevant security
+work.
+
+## Current source/API foundation
+
+The source layer is closed enough for pre-alpha enrichment:
+
+- Markdown is editable canonical source with structural index, graph, search,
+  filters, and inspection.
+- Plain text is read-only raw UTF-8 with open, local search, and external
+  refresh, but no Markdown structural semantics.
+- Exact `*.arepo-chat.json` sources receive bounded recognized V1 structured
+  interpretation with raw fallback for unsupported or malformed formats. They
+  remain read-only and outside Markdown structural semantics.
+- Other JSON is read-only raw UTF-8 with open, local search, and refresh, but no
+  Markdown structural semantics.
+- Browser-facing successful responses cross runtime validation rather than
+  unchecked TypeScript casts.
+- Machine-index v5 remains disposable Markdown structural data. Other generated
+  machine data is likewise disposable and never canonical source.
 
 ## Phase 1: Daily-Driver Hardening
+
+Status: substantially complete, with ongoing daily-driver acceptance and
+hardening.
 
 - Keep open, edit, save, rename, create, reindex, conflict review, and graph
   inspection predictable under repeated real use.
@@ -17,6 +40,8 @@ and federation are deliberately deferred.
   index status, storage/cache size, file metadata, and mutation errors.
 
 ## Phase 2: Local Node Architecture
+
+Status: local node V1 substantially complete.
 
 - Treat the backend as the first concrete `local` node implementation.
 - Keep node-facing contracts explicit: `NodeInfo`, `VaultInfo`,
@@ -30,6 +55,9 @@ watcher state, local mutation safety, storage reporting, and startup diagnostics
 It does not own sync, backup, version history, or source-file custody.
 
 ## Phase 3: Single-Node Self-Host Readiness
+
+Status: late; remaining work is operational self-host hardening rather than a
+source-system redesign.
 
 - Keep the default backend bind address at `127.0.0.1`.
 - Require explicit configuration for non-local binding and print a warning when
@@ -173,22 +201,68 @@ surface built from the generated machine index:
 - backlink and outgoing-link navigation
 - graph multi-selection metadata
 - center Tree/Graph workspace views for map inspection
+- deterministic Related Notes suggestions that supplement inspection without
+  becoming explicit links, backlinks, or graph edges
 
-This phase is still non-AI and local-only. Graph, search, inspect, and index data
-remain rebuildable from Markdown files. No database, vector store, federation,
-sync layer, remote node registration, or Markdown rewrite behavior is part of
-Phase 5.
+This phase is non-AI and local-only. Structural graph, search, inspect, and
+index data remain rebuildable from Markdown files. Related Notes is separate
+disposable enrichment and never changes structural graph semantics. No vector
+store, federation, sync layer, remote node registration, or automatic Markdown
+rewrite behavior is part of Phase 5.
 
 Likely next mapping work should stay read-only and incremental: polish navigation
 between map surfaces, improve empty/error states, and broaden tests around the
 existing generated-index helpers before adding new feature areas.
 
+## Phase 6: Local Enrichment
+
+Status: in progress.
+
+Current implementation provides deterministic/statistical Markdown Related
+Notes with bounded provenance, a separate disposable cache, no source mutation,
+no inferred graph edges, a locked human-reviewed synthetic evaluation baseline,
+and durable per-vault preferences with a human-legible Basic/Advanced UI.
+Balanced preserves deterministic V1; the corpus's 0–3 judgments are evaluation
+data rather than training data or runtime settings. See
+[related-note evaluation](related-notes-evaluation.md).
+
+The enrichment policy is:
+
+1. Every producer is explicitly opt-in per vault and defaults off.
+2. Users may permanently choose first-class Markdown-only relationships.
+3. Enabling deterministic Related Notes does not grant consent for any model,
+   embedding, vector storage, download, or network provider.
+4. Each future semantic or generative producer requires independent consent;
+   external providers would additionally require explicit privacy disclosure.
+5. Enrichment is derived and disposable; Markdown remains canonical.
+6. Inferred candidates do not automatically become links, backlinks, or graph
+   edges.
+7. Only explicit user action may promote a suggestion into durable or canonical
+   state.
+8. Future accept/dismiss decisions are durable user decisions and must be
+   stored separately from disposable enrichment caches.
+
+Near-term work is to compare an optional evaluation-only local semantic
+embedding producer against the identical locked labels. It should enter
+production only if it materially improves useful recall/ranking without
+unacceptable precision loss, and only behind its own per-vault enable control.
+The tiny corpus must not automatically tune thresholds or weights. Later work
+may add explicit accept (author a Markdown link or durable declared
+relationship) and dismiss/reject actions whose decisions survive cache rebuilds.
+No such durable decision store exists yet.
+
 ## Deferred Work
 
-- AI and vector features
+- production semantic/embedding enrichment pending comparative evaluation and
+  separate explicit consent
+- generative AI/LLM enrichment and external model providers
+- durable enrichment accept/dismiss decisions
+- semantic/vector search unless separately planned
 - sync implementation
 - Git/versioning replacement
 - backup implementation
 - mdAtlas migration support
 - hosted auth, hosted databases, analytics, telemetry, or cloud storage
 - remote node registration before the node security checkpoint
+- live browser-session auth activation; bearer-token protected mode remains the
+  current live protected path

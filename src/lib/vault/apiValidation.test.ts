@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { parseChatExportV1 } from "./chatExport.ts";
 import {
   isDirectoryBrowserResponse,
+  isEnrichmentPreferencesResponse,
   isIndexFilterResponse,
   isIndexSearchResponse,
   isLocalNodeRuntimeStatus,
@@ -75,6 +76,112 @@ test("related-note response guard enforces versions, paths, scores, bounds, and 
   );
   assert.equal(
     isRelatedNotesResponse({ ...valid, candidates: Array(11).fill(valid.candidates[0]) }),
+    false,
+  );
+  assert.equal(
+    isRelatedNotesResponse({
+      status: "disabled",
+      producer: "arepo.related-notes",
+      candidates: [],
+    }),
+    true,
+  );
+  assert.equal(isRelatedNotesResponse({ status: "future", candidates: [] }), false);
+  assert.equal(
+    isRelatedNotesResponse({
+      status: "disabled",
+      producer: "arepo.related-notes",
+      candidates: [],
+      internal: true,
+    }),
+    false,
+  );
+});
+
+test("enrichment preference response guard rejects unknown producers, presets, and invalid values", () => {
+  const relatedNotes = {
+    enabled: false,
+    preset: "balanced",
+    configuration: {
+      minimumScore: 0.1,
+      lexicalOnlyMinimumScore: 0.16,
+      maximumSuggestions: 10,
+      evidence: {
+        tags: { enabled: true, weight: 20 },
+        title: { enabled: true, weight: 10 },
+        headings: { enabled: true, weight: 10 },
+        neighbours: { enabled: true, weight: 20 },
+        lexical: { enabled: true, weight: 40 },
+      },
+    },
+  };
+  const valid = {
+    status: "ready",
+    storageStatus: "default",
+    preferences: {
+      kind: "arepo.enrichmentPreferences",
+      version: 1,
+      vaultId: "notes",
+      producers: { relatedNotes },
+    },
+  };
+  assert.equal(isEnrichmentPreferencesResponse(valid), true);
+  assert.equal(
+    isEnrichmentPreferencesResponse({
+      ...valid,
+      preferences: {
+        ...valid.preferences,
+        producers: { ...valid.preferences.producers, future: {} },
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    isEnrichmentPreferencesResponse({
+      ...valid,
+      preferences: {
+        ...valid.preferences,
+        producers: { relatedNotes: { ...relatedNotes, preset: "future" } },
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    isEnrichmentPreferencesResponse({
+      ...valid,
+      preferences: {
+        ...valid.preferences,
+        producers: {
+          relatedNotes: {
+            ...relatedNotes,
+            preset: "custom",
+            configuration: { ...relatedNotes.configuration, minimumScore: Number.NaN },
+          },
+        },
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    isEnrichmentPreferencesResponse({
+      ...valid,
+      preferences: {
+        ...valid.preferences,
+        producers: {
+          relatedNotes: {
+            ...relatedNotes,
+            preset: "custom",
+            configuration: {
+              ...relatedNotes.configuration,
+              evidence: {
+                ...relatedNotes.configuration.evidence,
+                lexical: { enabled: true, weight: Number.POSITIVE_INFINITY },
+              },
+            },
+          },
+        },
+      },
+    }),
     false,
   );
 });

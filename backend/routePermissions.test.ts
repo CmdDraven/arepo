@@ -45,6 +45,8 @@ const currentBackendRoutes = [
   "GET /api/vaults/:vaultId/index/filters?filter=...",
   "GET /api/vaults/:vaultId/index/search?q=...",
   "GET /api/vaults/:vaultId/index/inspect?path=...",
+  "GET /api/vaults/:vaultId/enrichment/settings",
+  "PUT /api/vaults/:vaultId/enrichment/settings",
   "GET /api/vaults/:vaultId/enrichment/related?path=...",
 ];
 
@@ -129,6 +131,15 @@ test("related-note enrichment requires both structural and source read grants", 
   assert.equal(policy.dataAccess.generatedIndex, true);
   assert.equal(policy.dataAccess.sourceContent, true);
   assert.deepEqual(policy.requiredPermissions, ["readIndex", "readContent"]);
+});
+
+test("enrichment preferences are readable with readIndex and writable only by vault managers", () => {
+  const read = policyFor("GET /api/vaults/:vaultId/enrichment/settings");
+  assert.deepEqual(read.requiredPermissions, ["readIndex"]);
+  assert.equal(read.dataAccess.sourceContent, false);
+  const write = policyFor("PUT /api/vaults/:vaultId/enrichment/settings");
+  assert.deepEqual(write.requiredPermissions, ["manageVaults"]);
+  assert.equal(write.dataAccess.nodeManagement, true);
 });
 
 test("source mutations require writeContent", () => {

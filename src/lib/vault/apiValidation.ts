@@ -28,8 +28,13 @@ import {
   RELATED_NOTES_PRODUCER,
   RELATED_NOTES_PRODUCER_VERSION,
   type RelatedNoteEvidence,
+  type RelatedNotesEndpointResponse,
   type RelatedNotesResponse,
 } from "./enrichmentContracts.ts";
+import {
+  isEnrichmentPreferencesResponse as isSharedEnrichmentPreferencesResponse,
+  type EnrichmentPreferencesResponse,
+} from "./enrichmentPreferences.ts";
 
 const SOURCE_KINDS = {
   markdown: true,
@@ -588,36 +593,57 @@ export const isVaultInspectResponse: ApiGuard<VaultInspectResponse> = (
   );
 };
 
-export const isRelatedNotesResponse: ApiGuard<RelatedNotesResponse> = (
+export const isRelatedNotesResponse: ApiGuard<RelatedNotesEndpointResponse> = (
   value,
-): value is RelatedNotesResponse =>
-  isObjectRecord(value) &&
-  value.status === "ready" &&
-  isMarkdownPath(value.sourcePath) &&
-  isSha256(value.sourceHash) &&
-  isSha256(value.corpusHash) &&
-  value.producer === RELATED_NOTES_PRODUCER &&
-  value.producerVersion === RELATED_NOTES_PRODUCER_VERSION &&
-  value.derivationVersion === RELATED_NOTES_DERIVATION_VERSION &&
-  typeof value.generatedAt === "string" &&
-  value.generatedAt.length <= 64 &&
-  !Number.isNaN(Date.parse(value.generatedAt)) &&
-  Array.isArray(value.candidates) &&
-  value.candidates.length <= 10 &&
-  value.candidates.every(
-    (candidate) =>
-      isObjectRecord(candidate) &&
-      isMarkdownPath(candidate.targetPath) &&
-      candidate.targetPath !== value.sourcePath &&
-      isSha256(candidate.targetHash) &&
-      typeof candidate.title === "string" &&
-      candidate.title.length <= 1_024 &&
-      isUnitScore(candidate.score) &&
-      Array.isArray(candidate.evidence) &&
-      candidate.evidence.length > 0 &&
-      candidate.evidence.length <= 5 &&
-      candidate.evidence.every(isRelatedNoteEvidence),
+): value is RelatedNotesEndpointResponse =>
+  isRelatedNotesDisabledResponse(value) || isReadyRelatedNotesResponse(value);
+
+export const isEnrichmentPreferencesResponse: ApiGuard<EnrichmentPreferencesResponse> = (
+  value,
+): value is EnrichmentPreferencesResponse => isSharedEnrichmentPreferencesResponse(value);
+
+function isRelatedNotesDisabledResponse(value: unknown): boolean {
+  return (
+    isObjectRecord(value) &&
+    Object.keys(value).length === 3 &&
+    value.status === "disabled" &&
+    value.producer === RELATED_NOTES_PRODUCER &&
+    Array.isArray(value.candidates) &&
+    value.candidates.length === 0
   );
+}
+
+function isReadyRelatedNotesResponse(value: unknown): value is RelatedNotesResponse {
+  return (
+    isObjectRecord(value) &&
+    value.status === "ready" &&
+    isMarkdownPath(value.sourcePath) &&
+    isSha256(value.sourceHash) &&
+    isSha256(value.corpusHash) &&
+    value.producer === RELATED_NOTES_PRODUCER &&
+    value.producerVersion === RELATED_NOTES_PRODUCER_VERSION &&
+    value.derivationVersion === RELATED_NOTES_DERIVATION_VERSION &&
+    typeof value.generatedAt === "string" &&
+    value.generatedAt.length <= 64 &&
+    !Number.isNaN(Date.parse(value.generatedAt)) &&
+    Array.isArray(value.candidates) &&
+    value.candidates.length <= 10 &&
+    value.candidates.every(
+      (candidate) =>
+        isObjectRecord(candidate) &&
+        isMarkdownPath(candidate.targetPath) &&
+        candidate.targetPath !== value.sourcePath &&
+        isSha256(candidate.targetHash) &&
+        typeof candidate.title === "string" &&
+        candidate.title.length <= 1_024 &&
+        isUnitScore(candidate.score) &&
+        Array.isArray(candidate.evidence) &&
+        candidate.evidence.length > 0 &&
+        candidate.evidence.length <= 5 &&
+        candidate.evidence.every(isRelatedNoteEvidence),
+    )
+  );
+}
 
 function isRelatedNoteEvidence(value: unknown): value is RelatedNoteEvidence {
   if (!isObjectRecord(value) || !isUnitScore(value.score) || typeof value.kind !== "string") {

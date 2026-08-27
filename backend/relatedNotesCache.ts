@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getAppDataDir } from "./config.js";
+import { readEnrichmentPreferences, writeRelatedNotesPreference } from "./enrichmentPreferences.js";
 import {
   MARKDOWN_SOURCE_DERIVATION_VERSION,
   STRUCTURAL_INDEX_DERIVATION_VERSION,
@@ -17,17 +18,24 @@ import {
   RELATED_NOTES_DERIVATION_VERSION,
   RELATED_NOTES_PRODUCER,
   RELATED_NOTES_PRODUCER_VERSION,
+  type RelatedNotesDisabledResponse,
   type RelatedNotesResponse,
 } from "../src/lib/vault/enrichmentContracts.js";
+import {
+  BALANCED_RELATED_NOTES_SETTINGS,
+  canonicalResolvedRelatedNotesSettings,
+  resolveRelatedNotesSettings,
+  type EnrichmentPreferencesResponse,
+} from "../src/lib/vault/enrichmentPreferences.js";
 import type { GeneratedDataRemoval } from "./indexCache.js";
 
-export const RELATED_NOTES_CACHE_VERSION = 1;
+export const RELATED_NOTES_CACHE_VERSION = 2;
 const RELATED_NOTES_READ_CONCURRENCY = 8;
 const relatedNotesLocks = new Map<string, Promise<void>>();
 
 type StoredRelatedNotesCache = {
   kind: "arepo.relatedNotesEnrichment";
-  version: 1;
+  version: 2;
   producer: typeof RELATED_NOTES_PRODUCER;
   producerVersion: number;
   derivationVersion: number;
@@ -36,18 +44,18 @@ type StoredRelatedNotesCache = {
   generatedAt: string;
   vault: { id: string; rootPathHash: string };
   corpusHash: string;
+  settingsHash: string;
   results: RelatedNotesResponse[];
 };
 
-export type RelatedNotesCacheResult = {
-  data: RelatedNotesResponse;
-  cacheStatus: "hit" | "rebuilt";
-};
+export type RelatedNotesCacheResult =
+  | { data: RelatedNotesDisabledResponse; cacheStatus: "disabled" }
+  | { data: RelatedNotesResponse; cacheStatus: "hit" | "rebuilt" };
 
 export async function getRelatedNotes(
   vault: VaultInfo,
   rawPath: unknown,
-  machine: MachineIndexResult,
+  machine: MachineIndexResult | (() => Promise<MachineIndexResult>),
   cwd = process.cwd(),
 ): Promise<RelatedNotesCacheResult> {
   if (!vault.permissions.readIndex || !vault.permissions.readContent) {
@@ -55,62 +63,73 @@ export async function getRelatedNotes(
       code: "related-notes-not-permitted",
     });
   }
-  let sourcePath: string;
-  try {
-    sourcePath = normalizeMarkdownFilePath(rawPath);
-  } catch {
-    throw new PublicApiError(400, "Related notes require a valid Markdown path.", {
-      code: "invalid-related-notes-path",
-    });
-  }
-  const readable = machine.manifest.sources.filter(
-    (source): source is Extract<typeof source, { state: "readable" }> =>
-      source.state === "readable" && Boolean(machine.data.index.notes[source.path]),
-  );
-  const sourceManifest = readable.find((source) => source.path === sourcePath);
-  if (!sourceManifest || !machine.data.index.notes[sourcePath]) {
-    throw new PublicApiError(404, "Related notes are unavailable for this source.", {
-      code: "related-notes-source-unavailable",
-    });
-  }
-  const corpusHash = relatedNotesCorpusHash(readable);
   const file = await relatedNotesCachePath(vault, cwd);
   return withRelatedNotesLock(file, async () => {
+    const preferences = await readEnrichmentPreferences(vault, cwd);
+    const preference = preferences.preferences.producers.relatedNotes;
+    if (!preference.enabled) {
+      return {
+        data: { status: "disabled", producer: RELATED_NOTES_PRODUCER, candidates: [] },
+        cacheStatus: "disabled",
+      };
+    }
+    let sourcePath: string;
+    try {
+      sourcePath = normalizeMarkdownFilePath(rawPath);
+    } catch {
+      throw new PublicApiError(400, "Related notes require a valid Markdown path.", {
+        code: "invalid-related-notes-path",
+      });
+    }
+    const machineResult = typeof machine === "function" ? await machine() : machine;
+    const readable = machineResult.manifest.sources.filter(
+      (source): source is Extract<typeof source, { state: "readable" }> =>
+        source.state === "readable" && Boolean(machineResult.data.index.notes[source.path]),
+    );
+    const sourceManifest = readable.find((source) => source.path === sourcePath);
+    if (!sourceManifest || !machineResult.data.index.notes[sourcePath]) {
+      throw new PublicApiError(404, "Related notes are unavailable for this source.", {
+        code: "related-notes-source-unavailable",
+      });
+    }
+    const settings = resolveRelatedNotesSettings(preference);
+    const settingsHash = relatedNotesSettingsHash(settings);
+    const corpusHash = relatedNotesCorpusHash(readable, settings);
     const rootPathHash = await vaultRootHash(vault);
     const stored = await readStoredCache(file);
-    if (isCurrentCache(stored, vault, rootPathHash, corpusHash, readable)) {
+    if (isCurrentCache(stored, vault, rootPathHash, corpusHash, settingsHash, readable)) {
       const result = stored.results.find((entry) => entry.sourcePath === sourcePath);
       if (result && result.sourceHash === sourceManifest.contentHash) {
         return { data: result, cacheStatus: "hit" };
       }
     }
 
-    const bodies = await mapWithConcurrency(
-      readable,
-      RELATED_NOTES_READ_CONCURRENCY,
-      async (item) => {
-        const fileResponse = await readVaultFile(vault, item.path);
-        if (fileResponse.hash !== item.contentHash) {
-          throw new PublicApiError(409, "Sources changed while related notes were being derived.", {
-            code: "related-notes-source-changed",
-          });
-        }
-        return [item.path, fileResponse.content] as const;
-      },
-    );
+    const bodies = settings.evidence.lexical.enabled
+      ? await mapWithConcurrency(readable, RELATED_NOTES_READ_CONCURRENCY, async (item) => {
+          const fileResponse = await readVaultFile(vault, item.path);
+          if (fileResponse.hash !== item.contentHash) {
+            throw new PublicApiError(
+              409,
+              "Sources changed while related notes were being derived.",
+              { code: "related-notes-source-changed" },
+            );
+          }
+          return [item.path, fileResponse.content] as const;
+        })
+      : readable.map((item) => [item.path, ""] as const);
     const contentByPath = new Map(bodies);
     const sources: RelatedNotesSource[] = readable.map((item) => ({
       path: item.path,
       sourceHash: item.contentHash,
       content: contentByPath.get(item.path) ?? "",
-      note: machine.data.index.notes[item.path],
-      resolvedOutgoingPaths: (machine.data.index.outgoingLinks[item.path] ?? [])
+      note: machineResult.data.index.notes[item.path],
+      resolvedOutgoingPaths: (machineResult.data.index.outgoingLinks[item.path] ?? [])
         .filter((link) => link.status === "resolved" && typeof link.targetPath === "string")
         .map((link) => link.targetPath as string)
         .sort((a, b) => a.localeCompare(b)),
     }));
     const generatedAt = new Date().toISOString();
-    const derived = deriveRelatedNotesCorpus(sources, corpusHash, generatedAt);
+    const derived = deriveRelatedNotesCorpus(sources, corpusHash, generatedAt, settings);
     const result = derived.results.get(sourcePath);
     if (!result) {
       throw new PublicApiError(404, "Related notes are unavailable for this source.", {
@@ -128,6 +147,7 @@ export async function getRelatedNotes(
       generatedAt,
       vault: { id: vault.id, rootPathHash },
       corpusHash,
+      settingsHash,
       results: [...derived.results.values()].sort((a, b) =>
         a.sourcePath.localeCompare(b.sourcePath),
       ),
@@ -139,6 +159,7 @@ export async function getRelatedNotes(
 
 export function relatedNotesCorpusHash(
   readable: Array<{ path: string; contentHash: string }>,
+  settings = BALANCED_RELATED_NOTES_SETTINGS,
 ): string {
   const canonical = {
     producer: RELATED_NOTES_PRODUCER,
@@ -146,11 +167,50 @@ export function relatedNotesCorpusHash(
     derivationVersion: RELATED_NOTES_DERIVATION_VERSION,
     structuralDerivationVersion: STRUCTURAL_INDEX_DERIVATION_VERSION,
     markdownSourceDerivationVersion: MARKDOWN_SOURCE_DERIVATION_VERSION,
+    settings: JSON.parse(canonicalResolvedRelatedNotesSettings(settings)) as unknown,
     sources: readable
       .map(({ path: sourcePath, contentHash }) => [sourcePath, contentHash] as const)
       .sort(([a], [b]) => a.localeCompare(b)),
   };
   return crypto.createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
+}
+
+export function relatedNotesSettingsHash(
+  settings: Parameters<typeof canonicalResolvedRelatedNotesSettings>[0],
+): string {
+  return crypto
+    .createHash("sha256")
+    .update(canonicalResolvedRelatedNotesSettings(settings))
+    .digest("hex");
+}
+
+export async function updateRelatedNotesPreferencesAndCache(
+  vault: VaultInfo,
+  rawPreference: unknown,
+  cwd = process.cwd(),
+): Promise<EnrichmentPreferencesResponse> {
+  const file = await relatedNotesCachePath(vault, cwd);
+  return withRelatedNotesLock(file, async () => {
+    const response = await writeRelatedNotesPreference(vault, rawPreference, cwd);
+    if (!response.preferences.producers.relatedNotes.enabled) {
+      try {
+        const removal = await removeRelatedNotesCacheIfOwned(vault, cwd);
+        if (removal.diagnostics.length > 0) {
+          return {
+            ...response,
+            diagnostic:
+              "Related Notes is off, but its disposable cache could not be verified for removal.",
+          };
+        }
+      } catch {
+        return {
+          ...response,
+          diagnostic: "Related Notes is off, but its disposable cache could not be removed.",
+        };
+      }
+    }
+    return response;
+  });
 }
 
 export async function relatedNotesCachePath(
@@ -183,7 +243,7 @@ export async function removeRelatedNotesCacheIfOwned(
   if (
     !isRecord(parsed) ||
     parsed.kind !== "arepo.relatedNotesEnrichment" ||
-    parsed.version !== RELATED_NOTES_CACHE_VERSION ||
+    (parsed.version !== 1 && parsed.version !== RELATED_NOTES_CACHE_VERSION) ||
     !isRecord(parsed.vault) ||
     parsed.vault.id !== vault.id ||
     parsed.vault.rootPathHash !== rootPathHash
@@ -213,6 +273,7 @@ function isCurrentCache(
   vault: VaultInfo,
   rootPathHash: string,
   corpusHash: string,
+  settingsHash: string,
   readable: Array<{ path: string; contentHash: string }>,
 ): value is StoredRelatedNotesCache {
   if (!isRecord(value)) return false;
@@ -225,6 +286,7 @@ function isCurrentCache(
     value.structuralDerivationVersion !== STRUCTURAL_INDEX_DERIVATION_VERSION ||
     value.markdownSourceDerivationVersion !== MARKDOWN_SOURCE_DERIVATION_VERSION ||
     value.corpusHash !== corpusHash ||
+    value.settingsHash !== settingsHash ||
     !isRecord(value.vault) ||
     value.vault.id !== vault.id ||
     value.vault.rootPathHash !== rootPathHash ||

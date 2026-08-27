@@ -8,6 +8,8 @@ import { getVaultStorageSummary } from "./storage.js";
 import { rebuildMachineIndex } from "./indexCache.js";
 import { getMachineIndexResult } from "./indexCache.js";
 import { getRelatedNotes } from "./relatedNotesCache.js";
+import { writeRelatedNotesPreference } from "./enrichmentPreferences.js";
+import { namedRelatedNotesPreference } from "../src/lib/vault/enrichmentPreferences.js";
 import type { VaultInfo } from "./types.js";
 
 async function makeVault(t: TestContext): Promise<{ cwd: string; vault: VaultInfo }> {
@@ -131,6 +133,7 @@ test("storage summary includes generated machine index cache bytes", async (t) =
 
 test("storage summary includes the separate related-note enrichment cache", async (t) => {
   const { cwd, vault } = await makeVault(t);
+  await writeRelatedNotesPreference(vault, namedRelatedNotesPreference("balanced", true), cwd);
   await writeFile(vault.rootPath, "a.md", "# A\ncanonical stale conflict version");
   await writeFile(vault.rootPath, "b.md", "# B\ncanonical stale conflict version");
   const machine = await getMachineIndexResult(vault, cwd);

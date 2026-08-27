@@ -177,6 +177,34 @@ test("related-note enrichment requires readIndex and readContent", () => {
   assert.equal(allowed.routePattern, "/api/vaults/:vaultId/enrichment/related?path=...");
 });
 
+test("enrichment settings separate readIndex visibility from manageVaults mutation", () => {
+  const read = planRouteAwareRequestAuthorization({
+    request: bearerRequest("GET", "/api/vaults/notes/enrichment/settings"),
+    stores: storesForCredential(credential(["readIndex"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(read.wouldAllow, true);
+  assert.deepEqual(read.requiredPermissions, ["readIndex"]);
+
+  const denied = planRouteAwareRequestAuthorization({
+    request: bearerRequest("PUT", "/api/vaults/notes/enrichment/settings"),
+    stores: storesForCredential(credential(["readIndex"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(denied.wouldDeny, true);
+  assert.deepEqual(denied.missingPermissions, ["manageVaults"]);
+
+  const managed = planRouteAwareRequestAuthorization({
+    request: bearerRequest("PUT", "/api/vaults/notes/enrichment/settings"),
+    stores: storesForCredential(credential([], ["manageVaults"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(managed.wouldAllow, true);
+});
+
 test("source file read with only readIndex produces wouldDeny requiring readContent", () => {
   const plan = planRouteAwareRequestAuthorization({
     request: bearerRequest("GET", "/api/vaults/notes/file?path=Notes/note.md"),

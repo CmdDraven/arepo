@@ -19,6 +19,8 @@ import {
   type MachineIndexResult,
 } from "./indexCache.js";
 import { getRelatedNotes } from "./relatedNotesCache.js";
+import { updateRelatedNotesPreferencesAndCache } from "./relatedNotesCache.js";
+import { readEnrichmentPreferences } from "./enrichmentPreferences.js";
 import {
   getLocalNodeHealth,
   getLocalNodeInfo,
@@ -332,9 +334,26 @@ export async function routeRequest(
       }
 
       if (method === "GET" && action === "enrichment" && segments[4] === "related") {
-        const machine = await getTrackedMachineIndexResult(vault, cwd);
-        const data = await getRelatedNotes(vault, url.searchParams.get("path"), machine, cwd);
+        const data = await getRelatedNotes(
+          vault,
+          url.searchParams.get("path"),
+          () => getTrackedMachineIndexResult(vault, cwd),
+          cwd,
+        );
         return json(200, data.data, cors.headers);
+      }
+
+      if (method === "GET" && action === "enrichment" && segments[4] === "settings") {
+        return json(200, await readEnrichmentPreferences(vault, cwd), cors.headers);
+      }
+
+      if (method === "PUT" && action === "enrichment" && segments[4] === "settings") {
+        const body = asRecord(await readJson(request));
+        return json(
+          200,
+          await updateRelatedNotesPreferencesAndCache(vault, body.relatedNotes, cwd),
+          cors.headers,
+        );
       }
 
       if (method === "GET" && action === "index") {

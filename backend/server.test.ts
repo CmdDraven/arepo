@@ -17,6 +17,13 @@ import {
 } from "./credentialStore.js";
 import { createTokenVerifierMetadata, TOKEN_VERIFIER_SCHEME } from "./credentialVerifier.js";
 import { machineIndexPath } from "./indexCache.js";
+import {
+  enrichmentPreferencesPath,
+  readEnrichmentPreferences,
+  writeRelatedNotesPreference,
+} from "./enrichmentPreferences.js";
+import { relatedNotesCachePath } from "./relatedNotesCache.js";
+import { namedRelatedNotesPreference } from "../src/lib/vault/enrichmentPreferences.js";
 import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
 import { JSON_RAW_CONTENT_MAX_BYTES } from "../src/lib/vault/jsonBounds.js";
@@ -2485,6 +2492,33 @@ test("removing a vault can discard verified AREPO-generated data without deletin
   assert.deepEqual(body.data.generatedData.diagnostics, []);
 });
 
+test("discarding generated data retains durable enrichment preferences", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-server-");
+  const rootPath = await makeTestTempDir(t, "arepo-vault-");
+  await fs.writeFile(path.join(rootPath, "a.md"), "# A\ncanonical stale conflict version", "utf8");
+  await fs.writeFile(path.join(rootPath, "b.md"), "# B\ncanonical stale conflict version", "utf8");
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+  await writeRelatedNotesPreference(vault, namedRelatedNotesPreference("balanced", true), cwd);
+  await routeRequest(request("GET", `/api/vaults/${vault.id}/enrichment/related?path=a.md`), cwd);
+  const preferenceFile = await enrichmentPreferencesPath(vault, cwd);
+  const enrichmentCache = await relatedNotesCachePath(vault, cwd);
+  await fs.access(preferenceFile);
+  await fs.access(enrichmentCache);
+
+  const removed = await routeRequest(
+    request("DELETE", `/api/vaults/${vault.id}`, { generatedDataAction: "discard" }),
+    cwd,
+  );
+  assert.equal(removed.status, 200);
+  await fs.access(preferenceFile);
+  await assert.rejects(() => fs.access(enrichmentCache), { code: "ENOENT" });
+  assert.equal(
+    (await readEnrichmentPreferences(vault, cwd)).preferences.producers.relatedNotes.enabled,
+    true,
+  );
+});
+
 test("removing an inaccessible vault registration does not require the vault root to exist", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const rootPath = await makeTestTempDir(t, "arepo-vault-");
@@ -3650,6 +3684,7 @@ test("related-note endpoint is lazy, Markdown-only, bounded, and never returns s
   await fs.writeFile(path.join(rootPath, "b.md"), "# Beta\ncanonical stale conflict version");
   await fs.writeFile(path.join(rootPath, "plain.txt"), "canonical stale conflict version");
   await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  await writeRelatedNotesPreference(vault, namedRelatedNotesPreference("balanced", true), cwd);
 
   const response = await routeRequest(
     request("GET", `/api/vaults/${vault.id}/enrichment/related?path=a.md`),
@@ -3677,6 +3712,157 @@ test("related-note endpoint is lazy, Markdown-only, bounded, and never returns s
   });
 });
 
+test("enrichment settings default off, enable explicitly, fail invalid updates safely, and purge on disable", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-enrichment-server-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-enrichment-server-vault-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootPath, "enrichment-settings-vault");
+  await fs.writeFile(path.join(rootPath, "a.md"), "# Alpha\ncanonical stale conflict version");
+  await fs.writeFile(path.join(rootPath, "b.md"), "# Beta\ncanonical stale conflict version");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  const settingsUrl = `/api/vaults/${vault.id}/enrichment/settings`;
+  const relatedUrl = `/api/vaults/${vault.id}/enrichment/related?path=a.md`;
+
+  const initial = await routeRequest(request("GET", settingsUrl), cwd);
+  assert.equal(initial.status, 200);
+  assert.equal(
+    (initial.body as { preferences: { producers: { relatedNotes: { enabled: boolean } } } })
+      .preferences.producers.relatedNotes.enabled,
+    false,
+  );
+  assert.deepEqual((await routeRequest(request("GET", relatedUrl), cwd)).body, {
+    status: "disabled",
+    producer: "arepo.related-notes",
+    candidates: [],
+  });
+
+  const enabled = await routeRequest(
+    request("PUT", settingsUrl, {
+      relatedNotes: namedRelatedNotesPreference("balanced", true),
+    }),
+    cwd,
+  );
+  assert.equal(enabled.status, 200);
+  const ready = await routeRequest(request("GET", relatedUrl), cwd);
+  assert.equal(ready.status, 200);
+  assert.equal((ready.body as { status: string }).status, "ready");
+  const cache = await relatedNotesCachePath(vault, cwd);
+  await fs.access(cache);
+
+  const invalid = await routeRequest(
+    request("PUT", settingsUrl, { relatedNotes: { enabled: true, preset: "future" } }),
+    cwd,
+  );
+  assert.equal(invalid.status, 400);
+  const afterInvalid = await routeRequest(request("GET", settingsUrl), cwd);
+  assert.equal(
+    (afterInvalid.body as { preferences: { producers: { relatedNotes: { preset: string } } } })
+      .preferences.producers.relatedNotes.preset,
+    "balanced",
+  );
+
+  const disabled = await routeRequest(
+    request("PUT", settingsUrl, {
+      relatedNotes: namedRelatedNotesPreference("balanced", false),
+    }),
+    cwd,
+  );
+  assert.equal(disabled.status, 200);
+  await assert.rejects(() => fs.access(cache), { code: "ENOENT" });
+  const afterDisable = await routeRequest(request("GET", relatedUrl), cwd);
+  assert.equal((afterDisable.body as { status: string }).status, "disabled");
+});
+
+test("enrichment consent and custom settings remain isolated per vault", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-enrichment-isolation-cwd-");
+  const appDataDir = path.join(cwd, "app-data");
+  const rootA = await makeTestTempDir(t, "arepo-enrichment-a-");
+  const rootB = await makeTestTempDir(t, "arepo-enrichment-b-");
+  const vaultA = testVault(rootA, "vault-a");
+  const vaultB = testVault(rootB, "vault-b");
+  for (const root of [rootA, rootB]) {
+    await fs.writeFile(path.join(root, "a.md"), "# A\ncanonical stale conflict version");
+    await fs.writeFile(path.join(root, "b.md"), "# B\ncanonical stale conflict version");
+  }
+  await writeConfig(cwd, appDataDir, { vaults: [vaultA, vaultB] });
+  const custom = namedRelatedNotesPreference("exploratory", true);
+  await routeRequest(
+    request("PUT", `/api/vaults/${vaultA.id}/enrichment/settings`, { relatedNotes: custom }),
+    cwd,
+  );
+  const aResult = await routeRequest(
+    request("GET", `/api/vaults/${vaultA.id}/enrichment/related?path=a.md`),
+    cwd,
+  );
+  const bResult = await routeRequest(
+    request("GET", `/api/vaults/${vaultB.id}/enrichment/related?path=a.md`),
+    cwd,
+  );
+  assert.equal((aResult.body as { status: string }).status, "ready");
+  assert.equal((bResult.body as { status: string }).status, "disabled");
+  assert.equal(
+    (
+      (await routeRequest(request("GET", `/api/vaults/${vaultB.id}/enrichment/settings`), cwd))
+        .body as { preferences: { producers: { relatedNotes: { preset: string } } } }
+    ).preferences.producers.relatedNotes.preset,
+    "balanced",
+  );
+  const vaultBCache = await relatedNotesCachePath(vaultB, cwd);
+  await assert.rejects(() => fs.access(vaultBCache), {
+    code: "ENOENT",
+  });
+});
+
+test("protected enrichment settings are readable with readIndex and writable only with manageVaults", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-enrichment-protected-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-enrichment-protected-vault-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootPath, "enrichment-protected-vault");
+  await fs.writeFile(path.join(rootPath, "a.md"), "# A\n");
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
+  const url = `/api/vaults/${vault.id}/enrichment/settings`;
+  const authorization = { authorization: `Bearer ${protectedBearerToken}` };
+
+  await writeProtectedAuthStores(appDataDir, {
+    vaultId: vault.id,
+    vaultPermissions: ["readIndex"],
+  });
+  assert.equal(
+    (await routeRequest(request("GET", url, undefined, authorization), cwd)).status,
+    200,
+  );
+  assert.equal(
+    (
+      await routeRequest(
+        request(
+          "PUT",
+          url,
+          { relatedNotes: namedRelatedNotesPreference("balanced", true) },
+          authorization,
+        ),
+        cwd,
+      )
+    ).status,
+    403,
+  );
+
+  await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageVaults"] });
+  assert.equal(
+    (
+      await routeRequest(
+        request(
+          "PUT",
+          url,
+          { relatedNotes: namedRelatedNotesPreference("balanced", true) },
+          authorization,
+        ),
+        cwd,
+      )
+    ).status,
+    200,
+  );
+});
+
 test("enrichment-cache publication failure stays bounded and cannot break structural index", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-related-failure-cwd-");
   const rootPath = await makeTestTempDir(t, "arepo-related-failure-vault-");
@@ -3685,6 +3871,7 @@ test("enrichment-cache publication failure stays bounded and cannot break struct
   await fs.writeFile(path.join(rootPath, "a.md"), "# Alpha\ncanonical stale conflict version");
   await fs.writeFile(path.join(rootPath, "b.md"), "# Beta\ncanonical stale conflict version");
   await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  await writeRelatedNotesPreference(vault, namedRelatedNotesPreference("balanced", true), cwd);
 
   assert.equal(
     (await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd)).status,

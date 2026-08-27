@@ -48,7 +48,9 @@ export type RoutePolicyCategory =
   | "indexFilters"
   | "indexSearch"
   | "indexInspect"
-  | "relatedNotes";
+  | "relatedNotes"
+  | "enrichmentSettingsRead"
+  | "enrichmentSettingsWrite";
 
 export type StrongerConfirmation =
   | "delete"
@@ -109,6 +111,28 @@ export const PROTECTED_ROUTE_POLICIES = [
     dataAccess: access({}),
     networkExposureSafe: false,
     notes: "CORS preflight is origin policy only; it must not authorize the actual request.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/enrichment/settings",
+    category: "enrichmentSettingsRead",
+    requiredPermissions: ["readIndex"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true }),
+    networkExposureSafe: false,
+    notes: "Readers may inspect whether optional presentation enrichment is active.",
+  },
+  {
+    method: "PUT",
+    routePattern: "/api/vaults/:vaultId/enrichment/settings",
+    category: "enrichmentSettingsWrite",
+    requiredPermissions: ["manageVaults"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ nodeManagement: true }),
+    networkExposureSafe: false,
+    notes: "Changing durable per-vault enrichment consent is a vault-management operation.",
   },
   {
     method: "GET",

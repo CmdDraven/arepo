@@ -10,6 +10,9 @@ AREPO maps ordinary documents, tracks relationships and provenance, and enables
 optional enrichment without taking ownership of the source files. Markdown is
 the first-class V1 format: plain `.md` files are the source of truth, and the
 app index, graph inputs, and cache must be rebuildable from those files.
+Every enrichment producer is disabled by default and requires separate,
+explicit per-vault consent. A complete Markdown-only experience never requires
+enrichment.
 
 AREPO automatically builds a machine index from the Markdown files in each
 configured vault. A user-authored `index.md` file is optional; if it exists, it
@@ -217,9 +220,23 @@ Vault Settings also shows read-only local node diagnostics from
 runtime health, auth posture, protected-mode readiness, and disabled V1
 capability flags.
 
-`appDataDir` is optional. It controls where AREPO writes local generated data
-such as machine index caches. You can also set `AREPO_APP_DATA_DIR`; the
+`appDataDir` is optional. It controls where AREPO writes local app data such as
+machine-index caches and durable enrichment preferences. You can also set `AREPO_APP_DATA_DIR`; the
 environment variable takes precedence over config.
+
+Durable per-vault enrichment preferences also live under `appDataDir`, separate
+from vault sources and disposable caches:
+
+```text
+<appDataDir>/preferences/<vault-id>.enrichment.json
+```
+
+Missing, malformed, unknown-version, or unreadable preference state fails
+closed to enrichment disabled. Removing generated index/cache data retains
+these explicit user preferences.
+Preference schema versioning is independent from Related Notes producer,
+derivation, and disposable cache versions; changing a user's preference does
+not redefine the scoring algorithm.
 
 Recommended app data locations:
 
@@ -228,8 +245,8 @@ Recommended app data locations:
 - Self-hosted or enterprise deployments: a dedicated writable data volume
   outside user vault roots
 
-Do not place generated app data inside a user vault unless you explicitly want
-AREPO cache files to appear beside user notes.
+Do not place AREPO app data inside a user vault unless you explicitly want
+AREPO cache and preference files to appear beside user notes.
 
 ## Current Backend API
 
@@ -248,6 +265,8 @@ AREPO cache files to appear beside user notes.
 - `DELETE /api/vaults/:vaultId/file?path=...`
 - `POST /api/vaults/:vaultId/reindex`
 - `GET /api/vaults/:vaultId/index`
+- `GET /api/vaults/:vaultId/enrichment/settings`
+- `PUT /api/vaults/:vaultId/enrichment/settings`
 - `GET /api/vaults/:vaultId/enrichment/related?path=...`
 - `GET /api/vaults/:vaultId/storage`
 - `POST /api/node/credentials/bootstrap`
@@ -382,6 +401,16 @@ deterministic: it combines normalized tag, title-term, heading-term, and common
 resolved-neighbour overlap with sparse TF-IDF cosine similarity over visible
 Markdown body text. Direct links in either direction are omitted.
 
+Related Notes is explicitly off for every vault until a vault manager enables
+it in Enrichment settings. Off means no derivation, enrichment body rereads,
+cache generation, or cached candidate presentation. The Basic settings offer
+Conservative, Balanced, and Exploratory styles plus friendly evidence controls
+and a 1–10 result limit. Balanced is deterministic V1: minimum score `0.10`,
+text-only minimum `0.16`, ten suggestions, and relative
+tag/title/heading/common-link/text weights of `20/10/10/20/40`. Advanced
+settings expose bounded thresholds and relative importance controls; enabled
+weights normalize proportionally and any edit is explicitly Custom.
+
 Results are read-only suggestions. They do not create links, mutate Markdown,
 or add inferred edges to the structural graph. The endpoint requires both
 `readIndex` and `readContent`, returns no source bodies, and exposes bounded
@@ -395,8 +424,11 @@ Related-note results live separately from machine-index v5 at:
 
 The cache contains paths, hashes, scores, and bounded evidence but no source
 bodies. Its validity is tied to the producer/scoring versions and a SHA-256
-corpus key over sorted eligible Markdown path/hash pairs. It is rebuilt lazily
-when missing, malformed, or stale. Enrichment failure never changes structural
+corpus key over sorted eligible Markdown path/hash pairs plus the canonical
+resolved effective settings. It is rebuilt lazily when missing, malformed,
+stale, or derived under different preferences. Disabling Related Notes removes
+its verified disposable cache; disabled state never serves an old cache.
+Enrichment failure never changes structural
 index validity, and both generated files can be discarded independently of
 canonical Markdown.
 
@@ -406,6 +438,17 @@ multilingual prose, and code-heavy notes; fenced and inline code, URLs,
 frontmatter, and heading lines are excluded from lexical body scoring. Future
 semantic producers may supplement this evidence, but they must remain optional
 derived state and must not replace explicit Markdown link semantics.
+
+Enabling deterministic Related Notes never grants consent for embeddings,
+model downloads, model execution, network calls, vector storage, or generative
+processing; each future producer requires its own explicit per-vault opt-in.
+
+Developers can run the synthetic, exhaustively human-reviewed V1 baseline with
+`npm run eval:related` (or add `-- --json` for machine-readable output). The
+ratings are evaluation data, not training data, and never affect production
+scoring or preferences. See
+[Related-note evaluation](docs/related-notes-evaluation.md) for the rubric,
+metrics, privacy rules, and future-producer comparison contract.
 
 ### Index benchmark
 

@@ -1,0 +1,299 @@
+{
+  "kind": "arepo.relatedNotesEvaluation",
+  "version": 1,
+  "notes": [
+    {
+      "path": "concurrency/locking.md",
+      "content": "---\ntitle: Locking strategies\ntags: [concurrency]\n---\n# Mutual exclusion\nMutexes serialize writers by making contenders wait for ownership. Pessimistic coordination prevents simultaneous mutation.\n\n[[transactions]]\n"
+    },
+    {
+      "path": "concurrency/lost-updates.md",
+      "content": "---\ntitle: Lost updates\ntags: [concurrency, consistency]\n---\n# Overwritten work\nTwo writers can read the same old state and save conflicting changes. The later save silently erases earlier work unless stale edits are rejected.\n"
+    },
+    {
+      "path": "concurrency/optimistic-concurrency.md",
+      "content": "---\ntitle: Optimistic concurrency\ntags: [concurrency, consistency]\n---\n# Conflict detection\nOptimistic writes compare a revision before publishing. A stale version fails instead of overwriting a newer update.\n\n[[lost-updates]] [[transactions]]\n"
+    },
+    {
+      "path": "concurrency/transactions.md",
+      "content": "---\ntitle: Overview\ntags: [consistency]\n---\n# Atomic commit\nA transaction groups changes so they commit together or roll back together. Isolation prevents observers from seeing partial state.\n"
+    },
+    {
+      "path": "concurrency/version-checks.md",
+      "content": "---\ntitle: Introduction\ntags: [concurrency]\n---\n# Generation guards\nReject an old edit after another writer has already saved newer state. Generation stamps make conflicting publication conditional.\n\n[[optimistic-concurrency]]\n"
+    },
+    {
+      "path": "filesystem/atomic-rename.md",
+      "content": "---\ntitle: Atomic rename\ntags: [filesystem, workflow]\n---\n# Replace after sync\nWrite a private temporary file, flush its bytes, then rename it over the destination. Readers observe either the previous file or the complete replacement.\n"
+    },
+    {
+      "path": "filesystem/canonical-paths.md",
+      "content": "---\ntitle: Overview\ntags: [filesystem, path-security]\n---\n# Canonical location\nResolve normalized absolute paths before enforcing a configured root boundary. Canonicalization prevents aliases from escaping the allowed tree.\n"
+    },
+    {
+      "path": "filesystem/file-identity.md",
+      "content": "---\ntitle: File identity\ntags: [filesystem, path-security]\n---\n# Device and inode\nAn open handle can be checked by device and inode so pathname replacement cannot substitute a different object after validation.\n"
+    },
+    {
+      "path": "filesystem/symlink-races.md",
+      "content": "---\ntitle: Symlink races\ntags: [filesystem, path-security]\n---\n# Link replacement\nAn attacker can swap a symbolic link between validation and use, redirecting a trusted pathname outside its intended directory.\n\n[[toctou]]\n"
+    },
+    {
+      "path": "filesystem/toctou.md",
+      "content": "---\ntitle: Time-of-check to time-of-use\ntags: [filesystem, race-condition]\n---\n# Check-action gap\nSecurity assumptions can expire between inspecting an object and acting on it. Adversarial replacement exploits that timing window.\n"
+    },
+    {
+      "path": "knowledge/backlinks.md",
+      "content": "---\ntitle: Backlinks\ntags: [knowledge-management]\n---\n# Reverse references\nA backlink lists notes that point to the current note, revealing incoming context without changing the source.\n\n[[wikilinks]]\n"
+    },
+    {
+      "path": "knowledge/note-discovery.md",
+      "content": "---\ntitle: Note discovery\ntags: [knowledge-management, workflow]\n---\n# Rediscovering material\nSerendipitous browsing surfaces forgotten material at the moment it becomes useful, even when the author cannot remember a filename.\n"
+    },
+    {
+      "path": "knowledge/semantic-relationships.md",
+      "content": "---\ntitle: Notes\ntags: [knowledge-management]\n---\n# Conceptual proximity\nIdeas may belong together even when their authors use different language and record no explicit reference between them.\n"
+    },
+    {
+      "path": "knowledge/tags.md",
+      "content": "---\ntitle: Tags\ntags: [knowledge-management, reference]\n---\n# Faceted labels\nTags attach reusable labels to notes so a collection can be filtered by subject, status, or purpose.\n"
+    },
+    {
+      "path": "knowledge/wikilinks.md",
+      "content": "---\ntitle: Introduction\ntags: [knowledge-management]\n---\n# Bracket links\nA wikilink names another note inside double brackets. Resolution turns that authored reference into an explicit graph edge.\n\n[[backlinks]]\n"
+    },
+    {
+      "path": "gardening/rosemary-cuttings.md",
+      "content": "---\ntitle: Notes\ntags: [gardening, reference]\n---\n# Rooting rosemary\nTake soft green cuttings below a leaf joint, remove lower leaves, and place them in gritty soil. Gentle moisture and good drainage encourage roots.\n"
+    },
+    {
+      "path": "publishing/release-version-history.md",
+      "content": "---\ntitle: Release version history\ntags: [publishing]\n---\n# Revision catalogue\nA release log records each published software version, edition date, changelog, and document revision for readers.\n"
+    }
+  ],
+  "ratings": [
+    ["concurrency/locking.md", "concurrency/lost-updates.md", 2],
+    ["concurrency/locking.md", "concurrency/optimistic-concurrency.md", 2],
+    ["concurrency/locking.md", "concurrency/transactions.md", 2],
+    ["concurrency/locking.md", "concurrency/version-checks.md", 2],
+    ["concurrency/locking.md", "filesystem/atomic-rename.md", 1],
+    ["concurrency/locking.md", "filesystem/canonical-paths.md", 0],
+    ["concurrency/locking.md", "filesystem/file-identity.md", 1],
+    ["concurrency/locking.md", "filesystem/symlink-races.md", 1],
+    [
+      "concurrency/locking.md",
+      "filesystem/toctou.md",
+      2,
+      ["semantic-gap"],
+      "Both address race prevention, but with deliberately different vocabulary."
+    ],
+    ["concurrency/locking.md", "knowledge/backlinks.md", 0],
+    ["concurrency/locking.md", "knowledge/note-discovery.md", 0],
+    ["concurrency/locking.md", "knowledge/semantic-relationships.md", 0],
+    ["concurrency/locking.md", "knowledge/tags.md", 0],
+    ["concurrency/locking.md", "knowledge/wikilinks.md", 0],
+    ["concurrency/locking.md", "gardening/rosemary-cuttings.md", 0],
+    ["concurrency/locking.md", "publishing/release-version-history.md", 0],
+
+    ["concurrency/lost-updates.md", "concurrency/optimistic-concurrency.md", 3],
+    ["concurrency/lost-updates.md", "concurrency/transactions.md", 2],
+    [
+      "concurrency/lost-updates.md",
+      "concurrency/version-checks.md",
+      3,
+      ["semantic-gap"],
+      "The notes describe the same stale-write protection with intentionally different terms."
+    ],
+    ["concurrency/lost-updates.md", "filesystem/atomic-rename.md", 1],
+    ["concurrency/lost-updates.md", "filesystem/canonical-paths.md", 0],
+    ["concurrency/lost-updates.md", "filesystem/file-identity.md", 0],
+    ["concurrency/lost-updates.md", "filesystem/symlink-races.md", 0],
+    ["concurrency/lost-updates.md", "filesystem/toctou.md", 1],
+    ["concurrency/lost-updates.md", "knowledge/backlinks.md", 0],
+    ["concurrency/lost-updates.md", "knowledge/note-discovery.md", 0],
+    ["concurrency/lost-updates.md", "knowledge/semantic-relationships.md", 0],
+    ["concurrency/lost-updates.md", "knowledge/tags.md", 0],
+    ["concurrency/lost-updates.md", "knowledge/wikilinks.md", 0],
+    ["concurrency/lost-updates.md", "gardening/rosemary-cuttings.md", 0],
+    ["concurrency/lost-updates.md", "publishing/release-version-history.md", 0],
+
+    ["concurrency/optimistic-concurrency.md", "concurrency/transactions.md", 2],
+    ["concurrency/optimistic-concurrency.md", "concurrency/version-checks.md", 3],
+    ["concurrency/optimistic-concurrency.md", "filesystem/atomic-rename.md", 1],
+    ["concurrency/optimistic-concurrency.md", "filesystem/canonical-paths.md", 0],
+    ["concurrency/optimistic-concurrency.md", "filesystem/file-identity.md", 0],
+    ["concurrency/optimistic-concurrency.md", "filesystem/symlink-races.md", 0],
+    ["concurrency/optimistic-concurrency.md", "filesystem/toctou.md", 1],
+    ["concurrency/optimistic-concurrency.md", "knowledge/backlinks.md", 0],
+    ["concurrency/optimistic-concurrency.md", "knowledge/note-discovery.md", 0],
+    ["concurrency/optimistic-concurrency.md", "knowledge/semantic-relationships.md", 0],
+    ["concurrency/optimistic-concurrency.md", "knowledge/tags.md", 0],
+    ["concurrency/optimistic-concurrency.md", "knowledge/wikilinks.md", 0],
+    ["concurrency/optimistic-concurrency.md", "gardening/rosemary-cuttings.md", 0],
+    [
+      "concurrency/optimistic-concurrency.md",
+      "publishing/release-version-history.md",
+      0,
+      ["hard-negative"],
+      "Shared revision and version vocabulary describes unrelated concerns."
+    ],
+
+    ["concurrency/transactions.md", "concurrency/version-checks.md", 2],
+    [
+      "concurrency/transactions.md",
+      "filesystem/atomic-rename.md",
+      2,
+      ["semantic-gap"],
+      "Both preserve all-or-nothing publication despite little shared vocabulary."
+    ],
+    [
+      "concurrency/transactions.md",
+      "filesystem/canonical-paths.md",
+      0,
+      ["hard-negative"],
+      "The generic title Overview must not create relatedness."
+    ],
+    ["concurrency/transactions.md", "filesystem/file-identity.md", 1],
+    ["concurrency/transactions.md", "filesystem/symlink-races.md", 0],
+    ["concurrency/transactions.md", "filesystem/toctou.md", 1],
+    ["concurrency/transactions.md", "knowledge/backlinks.md", 0],
+    ["concurrency/transactions.md", "knowledge/note-discovery.md", 0],
+    ["concurrency/transactions.md", "knowledge/semantic-relationships.md", 0],
+    ["concurrency/transactions.md", "knowledge/tags.md", 0],
+    ["concurrency/transactions.md", "knowledge/wikilinks.md", 0],
+    ["concurrency/transactions.md", "gardening/rosemary-cuttings.md", 0],
+    ["concurrency/transactions.md", "publishing/release-version-history.md", 0],
+
+    ["concurrency/version-checks.md", "filesystem/atomic-rename.md", 0],
+    ["concurrency/version-checks.md", "filesystem/canonical-paths.md", 0],
+    ["concurrency/version-checks.md", "filesystem/file-identity.md", 1],
+    ["concurrency/version-checks.md", "filesystem/symlink-races.md", 0],
+    ["concurrency/version-checks.md", "filesystem/toctou.md", 1],
+    ["concurrency/version-checks.md", "knowledge/backlinks.md", 0],
+    ["concurrency/version-checks.md", "knowledge/note-discovery.md", 0],
+    ["concurrency/version-checks.md", "knowledge/semantic-relationships.md", 0],
+    ["concurrency/version-checks.md", "knowledge/tags.md", 0],
+    [
+      "concurrency/version-checks.md",
+      "knowledge/wikilinks.md",
+      0,
+      ["hard-negative"],
+      "Both use the generic title Introduction but concern different systems."
+    ],
+    ["concurrency/version-checks.md", "gardening/rosemary-cuttings.md", 0],
+    [
+      "concurrency/version-checks.md",
+      "publishing/release-version-history.md",
+      0,
+      ["hard-negative"],
+      "Version and revision words collide across concurrency and publishing."
+    ],
+
+    ["filesystem/atomic-rename.md", "filesystem/canonical-paths.md", 1],
+    ["filesystem/atomic-rename.md", "filesystem/file-identity.md", 2],
+    ["filesystem/atomic-rename.md", "filesystem/symlink-races.md", 1],
+    ["filesystem/atomic-rename.md", "filesystem/toctou.md", 2],
+    ["filesystem/atomic-rename.md", "knowledge/backlinks.md", 0],
+    [
+      "filesystem/atomic-rename.md",
+      "knowledge/note-discovery.md",
+      0,
+      ["hard-negative"],
+      "A shared workflow tag is too weak to imply conceptual relatedness."
+    ],
+    ["filesystem/atomic-rename.md", "knowledge/semantic-relationships.md", 0],
+    ["filesystem/atomic-rename.md", "knowledge/tags.md", 0],
+    ["filesystem/atomic-rename.md", "knowledge/wikilinks.md", 0],
+    ["filesystem/atomic-rename.md", "gardening/rosemary-cuttings.md", 0],
+    ["filesystem/atomic-rename.md", "publishing/release-version-history.md", 0],
+
+    ["filesystem/canonical-paths.md", "filesystem/file-identity.md", 2],
+    ["filesystem/canonical-paths.md", "filesystem/symlink-races.md", 2],
+    ["filesystem/canonical-paths.md", "filesystem/toctou.md", 2],
+    ["filesystem/canonical-paths.md", "knowledge/backlinks.md", 0],
+    ["filesystem/canonical-paths.md", "knowledge/note-discovery.md", 0],
+    ["filesystem/canonical-paths.md", "knowledge/semantic-relationships.md", 0],
+    ["filesystem/canonical-paths.md", "knowledge/tags.md", 0],
+    ["filesystem/canonical-paths.md", "knowledge/wikilinks.md", 0],
+    ["filesystem/canonical-paths.md", "gardening/rosemary-cuttings.md", 0],
+    ["filesystem/canonical-paths.md", "publishing/release-version-history.md", 0],
+
+    ["filesystem/file-identity.md", "filesystem/symlink-races.md", 3],
+    [
+      "filesystem/file-identity.md",
+      "filesystem/toctou.md",
+      3,
+      ["semantic-gap"],
+      "Stable object identity closes the check-action substitution gap."
+    ],
+    ["filesystem/file-identity.md", "knowledge/backlinks.md", 0],
+    ["filesystem/file-identity.md", "knowledge/note-discovery.md", 0],
+    ["filesystem/file-identity.md", "knowledge/semantic-relationships.md", 0],
+    ["filesystem/file-identity.md", "knowledge/tags.md", 0],
+    ["filesystem/file-identity.md", "knowledge/wikilinks.md", 0],
+    ["filesystem/file-identity.md", "gardening/rosemary-cuttings.md", 0],
+    ["filesystem/file-identity.md", "publishing/release-version-history.md", 0],
+
+    ["filesystem/symlink-races.md", "filesystem/toctou.md", 3],
+    ["filesystem/symlink-races.md", "knowledge/backlinks.md", 0],
+    ["filesystem/symlink-races.md", "knowledge/note-discovery.md", 0],
+    ["filesystem/symlink-races.md", "knowledge/semantic-relationships.md", 0],
+    ["filesystem/symlink-races.md", "knowledge/tags.md", 0],
+    ["filesystem/symlink-races.md", "knowledge/wikilinks.md", 0],
+    ["filesystem/symlink-races.md", "gardening/rosemary-cuttings.md", 0],
+    ["filesystem/symlink-races.md", "publishing/release-version-history.md", 0],
+
+    ["filesystem/toctou.md", "knowledge/backlinks.md", 0],
+    ["filesystem/toctou.md", "knowledge/note-discovery.md", 0],
+    ["filesystem/toctou.md", "knowledge/semantic-relationships.md", 0],
+    ["filesystem/toctou.md", "knowledge/tags.md", 0],
+    ["filesystem/toctou.md", "knowledge/wikilinks.md", 0],
+    ["filesystem/toctou.md", "gardening/rosemary-cuttings.md", 0],
+    ["filesystem/toctou.md", "publishing/release-version-history.md", 0],
+
+    ["knowledge/backlinks.md", "knowledge/note-discovery.md", 2],
+    ["knowledge/backlinks.md", "knowledge/semantic-relationships.md", 2],
+    ["knowledge/backlinks.md", "knowledge/tags.md", 1],
+    ["knowledge/backlinks.md", "knowledge/wikilinks.md", 3],
+    ["knowledge/backlinks.md", "gardening/rosemary-cuttings.md", 0],
+    ["knowledge/backlinks.md", "publishing/release-version-history.md", 0],
+
+    [
+      "knowledge/note-discovery.md",
+      "knowledge/semantic-relationships.md",
+      3,
+      ["semantic-gap"],
+      "Both concern finding conceptually useful notes despite intentionally disjoint wording."
+    ],
+    ["knowledge/note-discovery.md", "knowledge/tags.md", 2],
+    ["knowledge/note-discovery.md", "knowledge/wikilinks.md", 2],
+    ["knowledge/note-discovery.md", "gardening/rosemary-cuttings.md", 0],
+    ["knowledge/note-discovery.md", "publishing/release-version-history.md", 0],
+
+    ["knowledge/semantic-relationships.md", "knowledge/tags.md", 2],
+    ["knowledge/semantic-relationships.md", "knowledge/wikilinks.md", 2],
+    [
+      "knowledge/semantic-relationships.md",
+      "gardening/rosemary-cuttings.md",
+      0,
+      ["hard-negative"],
+      "The generic title Notes must not outweigh unrelated content."
+    ],
+    ["knowledge/semantic-relationships.md", "publishing/release-version-history.md", 0],
+
+    ["knowledge/tags.md", "knowledge/wikilinks.md", 1],
+    [
+      "knowledge/tags.md",
+      "gardening/rosemary-cuttings.md",
+      0,
+      ["hard-negative"],
+      "A shared reference tag is intentionally insufficient."
+    ],
+    ["knowledge/tags.md", "publishing/release-version-history.md", 0],
+
+    ["knowledge/wikilinks.md", "gardening/rosemary-cuttings.md", 0],
+    ["knowledge/wikilinks.md", "publishing/release-version-history.md", 0],
+
+    ["gardening/rosemary-cuttings.md", "publishing/release-version-history.md", 0]
+  ]
+}

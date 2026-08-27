@@ -28,3 +28,11 @@ export type RelatedNotesResponse = {
   generatedAt: string;
   candidates: RelatedNoteCandidate[];
 };
+
+export type RelatedNotesDisabledResponse = {
+  status: "disabled";
+  producer: typeof RELATED_NOTES_PRODUCER;
+  candidates: [];
+};
+
+export type RelatedNotesEndpointResponse = RelatedNotesResponse | RelatedNotesDisabledResponse;

@@ -93,6 +93,7 @@ import { isManagementVaultInfo } from "@/lib/vault/contracts";
 import { requestApi } from "@/lib/vault/apiTransport";
 import {
   isDirectoryBrowserResponse,
+  isEnrichmentPreferencesResponse,
   isIndexFilterResponse,
   isIndexSearchResponse,
   isLocalNodeRuntimeStatus,
@@ -113,7 +114,23 @@ import {
   type VaultInspectLink,
   type VaultStorageSummary,
 } from "@/lib/vault/apiValidation";
-import type { RelatedNoteEvidence, RelatedNotesResponse } from "@/lib/vault/enrichmentContracts";
+import type {
+  RelatedNoteEvidence,
+  RelatedNotesEndpointResponse,
+  RelatedNotesResponse,
+} from "@/lib/vault/enrichmentContracts";
+import {
+  RELATED_NOTES_EVIDENCE_KEYS,
+  RELATED_NOTES_PRESETS,
+  customRelatedNotesPreference,
+  isRelatedNotesPreference,
+  namedRelatedNotesPreference,
+  type EnrichmentPreferencesResponse,
+  type NamedRelatedNotesPreset,
+  type RelatedNotesConfiguration,
+  type RelatedNotesEvidenceKey,
+  type RelatedNotesPreference,
+} from "@/lib/vault/enrichmentPreferences";
 import {
   beginDirectoryNavigation,
   cancelDirectoryBrowser,
@@ -125,6 +142,12 @@ import {
 } from "@/lib/vault/directoryBrowser";
 import { renderMarkdown } from "@/lib/vault/render";
 import { sourcePresentation } from "@/lib/vault/sourcePresentation";
+import {
+  ENRICHMENT_ADVANCED_DEFAULT_OPEN,
+  RELATED_NOTES_DISABLED_EXPLANATION,
+  relatedNotesInspectMode,
+  showEnrichmentManageAction,
+} from "@/lib/vault/enrichmentUi";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -221,9 +244,13 @@ function VaultApp() {
   const [inspectData, setInspectData] = useState<VaultInspectResponse | null>(null);
   const [inspectLoading, setInspectLoading] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
-  const [relatedData, setRelatedData] = useState<RelatedNotesResponse | null>(null);
+  const [relatedData, setRelatedData] = useState<RelatedNotesEndpointResponse | null>(null);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [relatedError, setRelatedError] = useState<string | null>(null);
+  const [enrichmentSettings, setEnrichmentSettings] =
+    useState<EnrichmentPreferencesResponse | null>(null);
+  const [enrichmentSettingsLoading, setEnrichmentSettingsLoading] = useState(false);
+  const [enrichmentSettingsError, setEnrichmentSettingsError] = useState<string | null>(null);
   const [centerWorkspaceView, setCenterWorkspaceView] = useState<CenterWorkspaceView>("empty");
   const [lastNonDocumentCenterView, setLastNonDocumentCenterView] =
     useState<NonDocumentCenterView | null>(null);
@@ -874,6 +901,35 @@ function VaultApp() {
 
   useEffect(() => {
     let cancelled = false;
+    if (!activeVault) {
+      setEnrichmentSettings(null);
+      setEnrichmentSettingsError(null);
+      setEnrichmentSettingsLoading(false);
+      return;
+    }
+    setEnrichmentSettings(null);
+    setEnrichmentSettingsError(null);
+    setEnrichmentSettingsLoading(true);
+    requestApi(
+      `/api/vaults/${encodeURIComponent(activeVault.id)}/enrichment/settings`,
+      isEnrichmentPreferencesResponse,
+    )
+      .then((data) => {
+        if (!cancelled) setEnrichmentSettings(data);
+      })
+      .catch((error) => {
+        if (!cancelled) setEnrichmentSettingsError(errorMessage(error));
+      })
+      .finally(() => {
+        if (!cancelled) setEnrichmentSettingsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeVault]);
+
+  useEffect(() => {
+    let cancelled = false;
     if (
       !activeVault ||
       !metadataPath ||
@@ -883,6 +939,34 @@ function VaultApp() {
       setRelatedData(null);
       setRelatedError(null);
       setRelatedLoading(false);
+      return;
+    }
+    if (enrichmentSettingsLoading) {
+      setRelatedData(null);
+      setRelatedLoading(false);
+      setRelatedError(null);
+      return;
+    }
+    if (enrichmentSettingsError) {
+      setRelatedData(null);
+      setRelatedLoading(false);
+      setRelatedError(enrichmentSettingsError);
+      return;
+    }
+    if (!enrichmentSettings || enrichmentSettings.preferences.vaultId !== activeVault.id) {
+      setRelatedData(null);
+      setRelatedLoading(false);
+      setRelatedError(null);
+      return;
+    }
+    if (!enrichmentSettings.preferences.producers.relatedNotes.enabled) {
+      setRelatedData({
+        status: "disabled",
+        producer: "arepo.related-notes",
+        candidates: [],
+      });
+      setRelatedLoading(false);
+      setRelatedError(null);
       return;
     }
     setRelatedData(null);
@@ -907,7 +991,15 @@ function VaultApp() {
     return () => {
       cancelled = true;
     };
-  }, [activeVault, index.notes, metadataPath, selectedNotePaths.length]);
+  }, [
+    activeVault,
+    enrichmentSettings,
+    enrichmentSettingsError,
+    enrichmentSettingsLoading,
+    index.notes,
+    metadataPath,
+    selectedNotePaths.length,
+  ]);
 
   const onPreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
@@ -1871,6 +1963,7 @@ function VaultApp() {
             onRebindVault={rebindVault}
             onRefreshVaults={refreshNode}
             onTestHealth={testHealth}
+            onEnrichmentChanged={setEnrichmentSettings}
           />
         </main>
       )}
@@ -1899,6 +1992,7 @@ function VaultApp() {
               onRebindVault={rebindVault}
               onRefreshVaults={refreshNode}
               onTestHealth={testHealth}
+              onEnrichmentChanged={setEnrichmentSettings}
             />
           ) : (
             <div className="flex min-h-[60vh] items-center justify-center p-6">
@@ -2320,6 +2414,7 @@ function IndexInspectPanel({
   onOpenSettings,
 }: IndexInspectPanelProps) {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const relatedMode = relatedNotesInspectMode(relatedData, relatedLoading, relatedError);
   const sectionCollapsed = (key: string) => Boolean(collapsedSections[key]);
   const toggleSection = (key: string) =>
     setCollapsedSections((current) => ({ ...current, [key]: !current[key] }));
@@ -2383,15 +2478,29 @@ function IndexInspectPanel({
         <Section
           icon={<Network className="size-3.5" />}
           title="Related notes"
-          count={relatedData?.candidates.length}
+          count={relatedData?.status === "ready" ? relatedData.candidates.length : undefined}
           collapsed={sectionCollapsed("related")}
           onToggle={() => toggleSection("related")}
         >
-          {relatedLoading ? (
+          {relatedMode === "disabled" ? (
+            <div className="space-y-2">
+              <StateMessage>{RELATED_NOTES_DISABLED_EXPLANATION}</StateMessage>
+              {showEnrichmentManageAction(relatedMode, canManageVaults) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={onOpenSettings}
+                >
+                  Open Enrichment settings
+                </Button>
+              )}
+            </div>
+          ) : relatedMode === "loading" ? (
             <StateMessage tone="loading">Finding unlinked related notes...</StateMessage>
-          ) : relatedError ? (
+          ) : relatedMode === "error" ? (
             <ErrorMessage>Related notes unavailable: {relatedError}</ErrorMessage>
-          ) : relatedData?.candidates.length ? (
+          ) : relatedMode === "ready" && relatedData?.status === "ready" ? (
             <RelatedNoteList data={relatedData} onPick={onPick} />
           ) : (
             <Empty>No unlinked related notes found.</Empty>
@@ -3629,7 +3738,7 @@ type IndexInspectPanelProps = {
   inspectData: VaultInspectResponse | null;
   inspectLoading: boolean;
   inspectError: string | null;
-  relatedData: RelatedNotesResponse | null;
+  relatedData: RelatedNotesEndpointResponse | null;
   relatedLoading: boolean;
   relatedError: string | null;
   backlinks: InspectBacklink[];
@@ -3673,6 +3782,7 @@ function VaultSettingsPanel({
   onRebindVault,
   onRefreshVaults,
   onTestHealth,
+  onEnrichmentChanged,
 }: {
   vaults: VaultInfo[];
   activeVaultId: string | null;
@@ -3695,6 +3805,7 @@ function VaultSettingsPanel({
   onRebindVault: (vaultId: string, rootPath: string) => Promise<boolean>;
   onRefreshVaults: () => Promise<boolean>;
   onTestHealth: () => Promise<boolean>;
+  onEnrichmentChanged: (response: EnrichmentPreferencesResponse) => void;
 }) {
   const [summaries, setSummaries] = useState<Record<string, VaultSummary>>({});
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -3702,6 +3813,7 @@ function VaultSettingsPanel({
   const [nodeStatusError, setNodeStatusError] = useState<string | null>(null);
   const [nodeStatusLoading, setNodeStatusLoading] = useState(false);
   const [busyVaultId, setBusyVaultId] = useState<string | null>(null);
+  const activeManagedVault = vaults.find((vault) => vault.id === activeVaultId) ?? null;
 
   const refreshNodeStatus = useCallback(async () => {
     setNodeStatusLoading(true);
@@ -3842,6 +3954,9 @@ function VaultSettingsPanel({
               loading={nodeStatusLoading}
               onRefresh={refreshNodeStatus}
             />
+            {activeManagedVault && (
+              <EnrichmentSettingsCard vault={activeManagedVault} onChanged={onEnrichmentChanged} />
+            )}
             <ConfiguredVaultsCard
               vaults={vaults}
               summaries={summaries}
@@ -3893,6 +4008,365 @@ function VaultSettingsPanel({
       </div>
     </div>
   );
+}
+
+const PRESET_COPY: Record<NamedRelatedNotesPreset, string> = {
+  conservative: "Fewer suggestions with stronger evidence.",
+  balanced: "A practical mix of precision and discovery.",
+  exploratory: "Show weaker possible relationships for more serendipitous discovery.",
+};
+
+const EVIDENCE_COPY: Array<{
+  keys: RelatedNotesEvidenceKey[];
+  label: string;
+  description: string;
+}> = [
+  {
+    keys: ["lexical"],
+    label: "Similar wording",
+    description: "Looks for uncommon words used in both notes.",
+  },
+  { keys: ["tags"], label: "Shared tags", description: "Uses tags both notes have in common." },
+  {
+    keys: ["title", "headings"],
+    label: "Similar titles and headings",
+    description: "Uses important words in note names and headings.",
+  },
+  {
+    keys: ["neighbours"],
+    label: "Common linked notes",
+    description: "Uses notes that both documents link to.",
+  },
+];
+
+function EnrichmentSettingsCard({
+  vault,
+  onChanged,
+}: {
+  vault: VaultInfo;
+  onChanged: (response: EnrichmentPreferencesResponse) => void;
+}) {
+  const descriptionId = useId();
+  const [response, setResponse] = useState<EnrichmentPreferencesResponse | null>(null);
+  const [draft, setDraft] = useState<RelatedNotesPreference | null>(null);
+  const [advanced, setAdvanced] = useState(ENRICHMENT_ADVANCED_DEFAULT_OPEN);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResponse(null);
+    setDraft(null);
+    setAdvanced(ENRICHMENT_ADVANCED_DEFAULT_OPEN);
+    setError(null);
+    setLoading(true);
+    requestApi(
+      `/api/vaults/${encodeURIComponent(vault.id)}/enrichment/settings`,
+      isEnrichmentPreferencesResponse,
+    )
+      .then((next) => {
+        if (cancelled) return;
+        setResponse(next);
+        setDraft(structuredClone(next.preferences.producers.relatedNotes));
+      })
+      .catch((failure) => {
+        if (!cancelled) setError(errorMessage(failure));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [vault.id]);
+
+  const changeConfiguration = (
+    mutate: (configuration: RelatedNotesConfiguration) => void,
+  ): void => {
+    setDraft((current) => {
+      if (!current) return current;
+      const configuration = structuredClone(current.configuration);
+      mutate(configuration);
+      return customRelatedNotesPreference(current.enabled, configuration);
+    });
+  };
+
+  const save = async (): Promise<void> => {
+    if (!draft || !isRelatedNotesPreference(draft)) {
+      setError("Choose at least one evidence source with a positive relative importance.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await requestApi(
+        `/api/vaults/${encodeURIComponent(vault.id)}/enrichment/settings`,
+        isEnrichmentPreferencesResponse,
+        { method: "PUT", body: JSON.stringify({ relatedNotes: draft }) },
+      );
+      setResponse(next);
+      setDraft(structuredClone(next.preferences.producers.relatedNotes));
+      onChanged(next);
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const dirty = Boolean(
+    draft &&
+    response &&
+    JSON.stringify(draft) !== JSON.stringify(response.preferences.producers.relatedNotes),
+  );
+  const enabled = draft?.enabled ?? false;
+
+  return (
+    <section className="rounded border">
+      <div className="flex items-center gap-2 border-b px-3 py-2">
+        <Network className="size-4 text-muted-foreground" />
+        <div>
+          <h2 className="text-sm font-semibold">Enrichment</h2>
+          <p className="text-xs text-muted-foreground">Settings for {vault.displayName}</p>
+        </div>
+      </div>
+      <div className="space-y-4 p-3">
+        {loading && <StateMessage tone="loading">Loading enrichment settings…</StateMessage>}
+        {error && <StateMessage tone="error">Settings could not be saved: {error}</StateMessage>}
+        {response?.storageStatus === "invalid" && response.diagnostic && (
+          <StateMessage tone="error">{response.diagnostic}</StateMessage>
+        )}
+        {draft && (
+          <>
+            <label className="flex items-start justify-between gap-4">
+              <span>
+                <span className="block text-sm font-medium">Related note suggestions</span>
+                <span id={descriptionId} className="block text-xs text-muted-foreground">
+                  Find notes that may discuss related ideas even when you have not linked them
+                  manually. Leave this off to use only relationships you explicitly author in
+                  Markdown.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                aria-describedby={descriptionId}
+                aria-label="Related note suggestions"
+                checked={draft.enabled}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current ? { ...current, enabled: event.target.checked } : current,
+                  )
+                }
+                className="mt-1"
+              />
+            </label>
+
+            <fieldset className="space-y-2" disabled={!enabled}>
+              <legend className="text-xs font-medium">Suggestion style</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(["conservative", "balanced", "exploratory"] as const).map((preset) => (
+                  <label key={preset} className="rounded border p-2 text-xs">
+                    <span className="flex items-center gap-2 font-medium capitalize">
+                      <input
+                        type="radio"
+                        name={`related-preset-${vault.id}`}
+                        value={preset}
+                        checked={draft.preset === preset}
+                        onChange={() =>
+                          setDraft(namedRelatedNotesPreference(preset, draft.enabled))
+                        }
+                      />
+                      {preset}
+                    </span>
+                    <span className="mt-1 block text-muted-foreground">{PRESET_COPY[preset]}</span>
+                  </label>
+                ))}
+              </div>
+              {draft.preset === "custom" && <Badge variant="secondary">Custom</Badge>}
+            </fieldset>
+
+            <fieldset className="space-y-2" disabled={!enabled}>
+              <legend className="text-xs font-medium">Evidence to use</legend>
+              {EVIDENCE_COPY.map((item) => {
+                const checked = item.keys.every((key) => draft.configuration.evidence[key].enabled);
+                return (
+                  <label key={item.label} className="flex items-start gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) =>
+                        changeConfiguration((configuration) => {
+                          for (const key of item.keys) {
+                            configuration.evidence[key].enabled = event.target.checked;
+                          }
+                        })
+                      }
+                    />
+                    <span>
+                      <span className="block font-medium">{item.label}</span>
+                      <span className="block text-muted-foreground">{item.description}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+
+            <label className="block space-y-1 text-xs">
+              <span className="font-medium">Maximum suggestions</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={draft.configuration.maximumSuggestions}
+                disabled={!enabled}
+                onChange={(event) =>
+                  changeConfiguration((configuration) => {
+                    configuration.maximumSuggestions = Number(event.target.value);
+                  })
+                }
+                className="h-8 w-24 rounded border bg-background px-2"
+              />
+              <span className="block text-muted-foreground">Choose from 1 to 10.</span>
+            </label>
+
+            <div className="rounded border">
+              <button
+                type="button"
+                aria-expanded={advanced}
+                className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium"
+                onClick={() => setAdvanced((current) => !current)}
+              >
+                Advanced
+                <span aria-hidden="true">{advanced ? "−" : "+"}</span>
+              </button>
+              {advanced && (
+                <div className="space-y-4 border-t p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Scores control how strong a possible relationship must be. Relative importance
+                    values are normalized automatically; they are not probabilities.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <PercentSetting
+                      label="Minimum relationship score"
+                      value={draft.configuration.minimumScore}
+                      disabled={!enabled}
+                      onChange={(value) =>
+                        changeConfiguration((configuration) => {
+                          configuration.minimumScore = value;
+                        })
+                      }
+                    />
+                    <PercentSetting
+                      label="Minimum score for wording alone"
+                      value={draft.configuration.lexicalOnlyMinimumScore}
+                      disabled={!enabled}
+                      onChange={(value) =>
+                        changeConfiguration((configuration) => {
+                          configuration.lexicalOnlyMinimumScore = value;
+                        })
+                      }
+                    />
+                  </div>
+                  <fieldset className="space-y-2" disabled={!enabled}>
+                    <legend className="text-xs font-medium">Relative evidence importance</legend>
+                    {RELATED_NOTES_EVIDENCE_KEYS.map((key) => (
+                      <label
+                        key={key}
+                        className="grid grid-cols-[minmax(0,1fr)_80px] items-center gap-2 text-xs"
+                      >
+                        <span>{advancedEvidenceLabel(key)}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={draft.configuration.evidence[key].weight}
+                          disabled={!draft.configuration.evidence[key].enabled}
+                          onChange={(event) =>
+                            changeConfiguration((configuration) => {
+                              configuration.evidence[key].weight = Number(event.target.value);
+                            })
+                          }
+                          className="h-8 rounded border bg-background px-2"
+                        />
+                      </label>
+                    ))}
+                  </fieldset>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDraft(namedRelatedNotesPreference("balanced", draft.enabled))}
+                  >
+                    Restore Balanced defaults
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              {dirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
+              <Button
+                type="button"
+                size="sm"
+                disabled={saving || !dirty || !isRelatedNotesPreference(draft)}
+                onClick={() => void save()}
+              >
+                {saving ? "Saving…" : "Save enrichment settings"}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PercentSetting({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  disabled: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="space-y-1 text-xs">
+      <span className="block font-medium">{label}</span>
+      <span className="flex items-center gap-2">
+        <input
+          type="number"
+          min={0}
+          max={100}
+          step={1}
+          value={Math.round(value * 100)}
+          disabled={disabled}
+          onChange={(event) => onChange(Number(event.target.value) / 100)}
+          className="h-8 w-24 rounded border bg-background px-2"
+        />
+        <span aria-hidden="true">%</span>
+      </span>
+    </label>
+  );
+}
+
+function advancedEvidenceLabel(key: RelatedNotesEvidenceKey): string {
+  switch (key) {
+    case "lexical":
+      return "Similar text";
+    case "tags":
+      return "Shared tags";
+    case "neighbours":
+      return "Common linked notes";
+    case "title":
+      return "Title terms";
+    case "headings":
+      return "Heading terms";
+  }
 }
 
 function NodeHealthCard({

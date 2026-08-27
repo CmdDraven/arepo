@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { deriveMarkdownSource } from "../src/lib/vault/indexer.js";
+import { BALANCED_RELATED_NOTES_SETTINGS } from "../src/lib/vault/enrichmentPreferences.js";
 import {
   deriveRelatedNotesCorpus,
   RELATED_NOTES_TOP_K,
@@ -162,6 +163,22 @@ test("ordering and serialized evidence are deterministic with path tie-breaking"
     first.map((entry) => entry.targetPath),
     ["a.md", "z.md"],
   );
+});
+
+test("explicit Balanced settings exactly preserve the deterministic V1 default rankings", () => {
+  const sources = [
+    source("a.md", "---\ntags: [shared]\n---\n# Alpha\ncanonical conflict version"),
+    source("b.md", "---\ntags: [shared]\n---\n# Beta\ncanonical conflict version"),
+    source("c.md", "# Garden\nrosemary soil propagation"),
+  ];
+  const implicit = deriveRelatedNotesCorpus(sources, hash("balanced"), "2026-01-01T00:00:00.000Z");
+  const explicit = deriveRelatedNotesCorpus(
+    sources,
+    hash("balanced"),
+    "2026-01-01T00:00:00.000Z",
+    BALANCED_RELATED_NOTES_SETTINGS,
+  );
+  assert.deepEqual(explicit, implicit);
 });
 
 test("top K, self exclusion, evidence bounds, and sparse complexity remain bounded", () => {

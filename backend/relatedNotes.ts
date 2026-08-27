@@ -10,6 +10,10 @@ import {
   RELATED_NOTES_PRODUCER,
   RELATED_NOTES_PRODUCER_VERSION,
 } from "../src/lib/vault/enrichmentContracts.js";
+import {
+  BALANCED_RELATED_NOTES_SETTINGS,
+  type ResolvedRelatedNotesSettings,
+} from "../src/lib/vault/enrichmentPreferences.js";
 
 export const RELATED_NOTES_TOP_K = 10;
 export const RELATED_NOTES_MIN_SCORE = 0.1;
@@ -18,14 +22,6 @@ export const RELATED_NOTES_MAX_EVIDENCE_ITEMS = 8;
 export const RELATED_NOTES_MAX_UNIQUE_TERMS = 4_000;
 export const RELATED_NOTES_MAX_POSTINGS = 128;
 export const RELATED_NOTES_MAX_CANDIDATE_POOL = 512;
-
-const WEIGHTS = {
-  tags: 0.2,
-  title: 0.1,
-  headings: 0.1,
-  neighbours: 0.2,
-  lexical: 0.4,
-} as const;
 
 const STOP_WORDS = new Set([
   "a",
@@ -132,6 +128,7 @@ export function deriveRelatedNotesCorpus(
   rawSources: RelatedNotesSource[],
   corpusHash: string,
   generatedAt = new Date().toISOString(),
+  settings: ResolvedRelatedNotesSettings = BALANCED_RELATED_NOTES_SETTINGS,
 ): RelatedNotesCorpus {
   const sources = rawSources.slice().sort((a, b) => a.path.localeCompare(b.path));
   const documentFrequency = new Map<string, number>();
@@ -215,19 +212,26 @@ export function deriveRelatedNotesCorpus(
     }
   };
 
-  accumulateSetEvidence((source) => source.tags, "tags");
-  accumulateSetEvidence((source) => source.titleTerms, "title");
-  accumulateSetEvidence((source) => source.headingTerms, "headings");
-  accumulateSetEvidence((source) => source.neighbours, "neighbours");
+  if (settings.evidence.tags.enabled) accumulateSetEvidence((source) => source.tags, "tags");
+  if (settings.evidence.title.enabled)
+    accumulateSetEvidence((source) => source.titleTerms, "title");
+  if (settings.evidence.headings.enabled) {
+    accumulateSetEvidence((source) => source.headingTerms, "headings");
+  }
+  if (settings.evidence.neighbours.enabled) {
+    accumulateSetEvidence((source) => source.neighbours, "neighbours");
+  }
 
   const lexicalPostings = new Map<string, Array<{ index: number; weight: number }>>();
-  prepared.forEach((source, index) => {
-    for (const [term, weight] of source.vector) {
-      const entries = lexicalPostings.get(term) ?? [];
-      entries.push({ index, weight });
-      lexicalPostings.set(term, entries);
-    }
-  });
+  if (settings.evidence.lexical.enabled) {
+    prepared.forEach((source, index) => {
+      for (const [term, weight] of source.vector) {
+        const entries = lexicalPostings.get(term) ?? [];
+        entries.push({ index, weight });
+        lexicalPostings.set(term, entries);
+      }
+    });
+  }
   for (const [term, postings] of [...lexicalPostings.entries()].sort(([a], [b]) =>
     a.localeCompare(b),
   )) {
@@ -255,8 +259,8 @@ export function deriveRelatedNotesCorpus(
     const left = byPath.get(leftPath);
     const right = byPath.get(rightPath);
     if (!left || !right) continue;
-    const leftCandidate = materializeCandidate(left, right, evidence);
-    const rightCandidate = materializeCandidate(right, left, evidence);
+    const leftCandidate = materializeCandidate(left, right, evidence, settings);
+    const rightCandidate = materializeCandidate(right, left, evidence, settings);
     if (leftCandidate) candidates.get(left.path)?.push(leftCandidate);
     if (rightCandidate) candidates.get(right.path)?.push(rightCandidate);
   }
@@ -265,7 +269,7 @@ export function deriveRelatedNotesCorpus(
   for (const source of prepared) {
     const ranked = (candidates.get(source.path) ?? [])
       .sort((a, b) => b.score - a.score || a.targetPath.localeCompare(b.targetPath))
-      .slice(0, RELATED_NOTES_TOP_K);
+      .slice(0, settings.maximumSuggestions);
     results.set(source.path, {
       status: "ready",
       sourcePath: source.path,
@@ -293,6 +297,7 @@ function materializeCandidate(
   source: PreparedSource,
   target: PreparedSource,
   pair: PairEvidence,
+  settings: ResolvedRelatedNotesSettings,
 ): RelatedNoteCandidate | undefined {
   const evidence: RelatedNoteEvidence[] = [];
   let total = 0;
@@ -308,21 +313,33 @@ function materializeCandidate(
     total += score * weight;
     evidence.push(create(score, [...values].sort().slice(0, RELATED_NOTES_MAX_EVIDENCE_ITEMS)));
   };
-  addSet(pair.tags, source.tags, target.tags, WEIGHTS.tags, (score, sharedTags) => ({
-    kind: "tag-overlap",
-    score,
-    sharedTags,
-  }));
-  addSet(pair.title, source.titleTerms, target.titleTerms, WEIGHTS.title, (score, sharedTerms) => ({
-    kind: "title-term-overlap",
-    score,
-    sharedTerms,
-  }));
+  addSet(
+    pair.tags,
+    source.tags,
+    target.tags,
+    settings.evidence.tags.effectiveWeight,
+    (score, sharedTags) => ({
+      kind: "tag-overlap",
+      score,
+      sharedTags,
+    }),
+  );
+  addSet(
+    pair.title,
+    source.titleTerms,
+    target.titleTerms,
+    settings.evidence.title.effectiveWeight,
+    (score, sharedTerms) => ({
+      kind: "title-term-overlap",
+      score,
+      sharedTerms,
+    }),
+  );
   addSet(
     pair.headings,
     source.headingTerms,
     target.headingTerms,
-    WEIGHTS.headings,
+    settings.evidence.headings.effectiveWeight,
     (score, sharedTerms) => ({
       kind: "heading-term-overlap",
       score,
@@ -333,7 +350,7 @@ function materializeCandidate(
     pair.neighbours,
     source.neighbours,
     target.neighbours,
-    WEIGHTS.neighbours,
+    settings.evidence.neighbours.effectiveWeight,
     (score, paths) => ({
       kind: "common-neighbours",
       score,
@@ -344,8 +361,8 @@ function materializeCandidate(
     source.norm > 0 && target.norm > 0
       ? Math.min(1, pair.lexicalDot / (source.norm * target.norm))
       : 0;
-  if (lexicalScore > 0) {
-    total += lexicalScore * WEIGHTS.lexical;
+  if (lexicalScore > 0 && settings.evidence.lexical.enabled) {
+    total += lexicalScore * settings.evidence.lexical.effectiveWeight;
     const sharedTerms = [...pair.lexicalTerms.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, RELATED_NOTES_MAX_EVIDENCE_ITEMS)
@@ -353,8 +370,8 @@ function materializeCandidate(
     evidence.push({ kind: "lexical-similarity", score: round(lexicalScore), sharedTerms });
   }
   const lexicalOnly = evidence.length === 1 && evidence[0]?.kind === "lexical-similarity";
-  if (total < RELATED_NOTES_MIN_SCORE) return undefined;
-  if (lexicalOnly && lexicalScore < RELATED_NOTES_MIN_LEXICAL_ONLY_SCORE) return undefined;
+  if (total < settings.minimumScore) return undefined;
+  if (lexicalOnly && lexicalScore < settings.lexicalOnlyMinimumScore) return undefined;
   return {
     targetPath: target.path,
     targetHash: target.sourceHash,
