@@ -52,6 +52,7 @@ export type StoredGlobalIndexData = {
 
 export type MachineIndexResult = {
   data: VaultIndexResponse;
+  manifest: StructuralIndexInputManifest;
   cacheStatus: "hit" | "rebuilt";
 };
 
@@ -217,7 +218,7 @@ async function runMachineIndexOperation(
       instrumentation?.onMemoryCheckpoint?.("after-public-response-materialization");
       instrumentation?.onCacheHit?.();
       instrumentation?.onMemoryCheckpoint?.("operation-complete");
-      return { data, cacheStatus: "hit" };
+      return { data, manifest: processed.manifest, cacheStatus: "hit" };
     }
 
     cachedByPath.clear();
@@ -240,7 +241,7 @@ async function runMachineIndexOperation(
       expectedRootHash,
     );
     instrumentation?.onMemoryCheckpoint?.("operation-complete");
-    return { data, cacheStatus: "rebuilt" };
+    return { data, manifest: processed.manifest, cacheStatus: "rebuilt" };
   });
 }
 

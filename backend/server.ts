@@ -12,7 +12,13 @@ import {
 import { buildIndexFilterResponse, parseIndexFilterKind } from "./indexFilters.js";
 import { buildVaultInspectResponse } from "./indexInspect.js";
 import { buildIndexSearchResponse } from "./indexSearch.js";
-import { getMachineIndexResult, rebuildMachineIndex, refreshMachineIndex } from "./indexCache.js";
+import {
+  getMachineIndexResult,
+  rebuildMachineIndex,
+  refreshMachineIndex,
+  type MachineIndexResult,
+} from "./indexCache.js";
+import { getRelatedNotes } from "./relatedNotesCache.js";
 import {
   getLocalNodeHealth,
   getLocalNodeInfo,
@@ -325,6 +331,12 @@ export async function routeRequest(
         );
       }
 
+      if (method === "GET" && action === "enrichment" && segments[4] === "related") {
+        const machine = await getTrackedMachineIndexResult(vault, cwd);
+        const data = await getRelatedNotes(vault, url.searchParams.get("path"), machine, cwd);
+        return json(200, data.data, cors.headers);
+      }
+
       if (method === "GET" && action === "index") {
         const data = await getTrackedMachineIndex(vault, cwd);
         return json(200, data, cors.headers);
@@ -382,12 +394,19 @@ async function rebuildTrackedMachineIndex(
 }
 
 async function getTrackedMachineIndex(vault: VaultInfo, cwd: string): Promise<VaultIndexResponse> {
+  return (await getTrackedMachineIndexResult(vault, cwd)).data;
+}
+
+async function getTrackedMachineIndexResult(
+  vault: VaultInfo,
+  cwd: string,
+): Promise<MachineIndexResult> {
   const observation = await beginVaultIndexBuildBestEffort(vault, cwd);
   const result = await getMachineIndexResult(vault, cwd);
   if (observation && result.cacheStatus === "rebuilt") {
     await recordVaultIndexedAfterPublication(vault, observation, cwd);
   }
-  return result.data;
+  return result;
 }
 
 async function refreshTrackedMachineIndex(

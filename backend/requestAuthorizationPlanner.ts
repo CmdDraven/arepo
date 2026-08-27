@@ -353,6 +353,8 @@ function matchRoutePolicy(request: RequestShapedCredentialInput): ProtectedRoute
       return policyFor(method, "/api/vaults/:vaultId/index/search?q=...");
     case "index/inspect":
       return policyFor(method, "/api/vaults/:vaultId/index/inspect?path=...");
+    case "enrichment/related":
+      return policyFor(method, "/api/vaults/:vaultId/enrichment/related?path=...");
     default:
       return undefined;
   }

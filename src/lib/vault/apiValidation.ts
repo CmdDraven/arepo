@@ -23,6 +23,13 @@ import {
   type ApiGuard,
 } from "./apiTransport.ts";
 import { sourceKindForPath } from "./sourcePolicy.ts";
+import {
+  RELATED_NOTES_DERIVATION_VERSION,
+  RELATED_NOTES_PRODUCER,
+  RELATED_NOTES_PRODUCER_VERSION,
+  type RelatedNoteEvidence,
+  type RelatedNotesResponse,
+} from "./enrichmentContracts.ts";
 
 const SOURCE_KINDS = {
   markdown: true,
@@ -119,7 +126,12 @@ export type VaultStorageSummary = {
   attachments: StorageBucket;
   appDataCache: StorageBucket & {
     machineIndexBytes: number;
-    files: { kind: "machine-index"; path: string; bytes: number }[];
+    relatedNotesEnrichmentBytes: number;
+    files: {
+      kind: "machine-index" | "related-notes-enrichment";
+      path: string;
+      bytes: number;
+    }[];
   };
 };
 
@@ -501,11 +513,12 @@ export const isVaultStorageSummary: ApiGuard<VaultStorageSummary> = (
   isObjectRecord(value.appDataCache) &&
   isStorageBucket(value.appDataCache) &&
   isNonNegativeInteger(value.appDataCache.machineIndexBytes) &&
+  isNonNegativeInteger(value.appDataCache.relatedNotesEnrichmentBytes) &&
   Array.isArray(value.appDataCache.files) &&
   value.appDataCache.files.every(
     (file) =>
       isObjectRecord(file) &&
-      file.kind === "machine-index" &&
+      (file.kind === "machine-index" || file.kind === "related-notes-enrichment") &&
       typeof file.path === "string" &&
       isNonNegativeInteger(file.bytes),
   );
@@ -574,6 +587,81 @@ export const isVaultInspectResponse: ApiGuard<VaultInspectResponse> = (
       value.duplicateId.paths.every(isRelativeVaultPath))
   );
 };
+
+export const isRelatedNotesResponse: ApiGuard<RelatedNotesResponse> = (
+  value,
+): value is RelatedNotesResponse =>
+  isObjectRecord(value) &&
+  value.status === "ready" &&
+  isMarkdownPath(value.sourcePath) &&
+  isSha256(value.sourceHash) &&
+  isSha256(value.corpusHash) &&
+  value.producer === RELATED_NOTES_PRODUCER &&
+  value.producerVersion === RELATED_NOTES_PRODUCER_VERSION &&
+  value.derivationVersion === RELATED_NOTES_DERIVATION_VERSION &&
+  typeof value.generatedAt === "string" &&
+  value.generatedAt.length <= 64 &&
+  !Number.isNaN(Date.parse(value.generatedAt)) &&
+  Array.isArray(value.candidates) &&
+  value.candidates.length <= 10 &&
+  value.candidates.every(
+    (candidate) =>
+      isObjectRecord(candidate) &&
+      isMarkdownPath(candidate.targetPath) &&
+      candidate.targetPath !== value.sourcePath &&
+      isSha256(candidate.targetHash) &&
+      typeof candidate.title === "string" &&
+      candidate.title.length <= 1_024 &&
+      isUnitScore(candidate.score) &&
+      Array.isArray(candidate.evidence) &&
+      candidate.evidence.length > 0 &&
+      candidate.evidence.length <= 5 &&
+      candidate.evidence.every(isRelatedNoteEvidence),
+  );
+
+function isRelatedNoteEvidence(value: unknown): value is RelatedNoteEvidence {
+  if (!isObjectRecord(value) || !isUnitScore(value.score) || typeof value.kind !== "string") {
+    return false;
+  }
+  switch (value.kind) {
+    case "tag-overlap":
+      return isBoundedStrings(value.sharedTags, false);
+    case "title-term-overlap":
+    case "heading-term-overlap":
+    case "lexical-similarity":
+      return isBoundedStrings(value.sharedTerms, false);
+    case "common-neighbours":
+      return (
+        Array.isArray(value.paths) &&
+        value.paths.length > 0 &&
+        value.paths.length <= 8 &&
+        value.paths.every(isMarkdownPath)
+      );
+    default:
+      return false;
+  }
+}
+
+function isBoundedStrings(value: unknown, allowEmpty: boolean): value is string[] {
+  return (
+    Array.isArray(value) &&
+    (allowEmpty || value.length > 0) &&
+    value.length <= 8 &&
+    value.every((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 128)
+  );
+}
+
+function isMarkdownPath(value: unknown): value is string {
+  return isRelativeVaultPath(value) && value.toLowerCase().endsWith(".md");
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+function isUnitScore(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
 
 export const isLocalNodeRuntimeStatus: ApiGuard<LocalNodeRuntimeStatus> = (
   value,

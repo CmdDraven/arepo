@@ -3,6 +3,7 @@ import { removeMachineIndexIfOwned, type GeneratedDataRemoval } from "./indexCac
 import { stopVaultWatcher } from "./vaultWatch.js";
 import type { VaultInfo } from "./types.js";
 import { PublicApiError } from "./publicApiError.js";
+import { removeRelatedNotesCacheIfOwned } from "./relatedNotesCache.js";
 
 export type GeneratedDataAction = "keep" | "discard";
 
@@ -37,10 +38,20 @@ export async function removeVault(
   await saveConfig(config, cwd);
   stopVaultWatcher(cwd, vault.id);
 
-  const generatedData =
-    generatedDataAction === "discard"
-      ? { action: generatedDataAction, ...(await removeMachineIndexIfOwned(vault, cwd)) }
-      : { action: generatedDataAction, deletedPaths: [], diagnostics: [] };
+  let generatedData: RemovedVaultGeneratedData;
+  if (generatedDataAction === "discard") {
+    const [machineIndex, relatedNotes] = await Promise.all([
+      removeMachineIndexIfOwned(vault, cwd),
+      removeRelatedNotesCacheIfOwned(vault, cwd),
+    ]);
+    generatedData = {
+      action: generatedDataAction,
+      deletedPaths: [...machineIndex.deletedPaths, ...relatedNotes.deletedPaths],
+      diagnostics: [...machineIndex.diagnostics, ...relatedNotes.diagnostics],
+    };
+  } else {
+    generatedData = { action: generatedDataAction, deletedPaths: [], diagnostics: [] };
+  }
 
   return {
     vault,

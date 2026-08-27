@@ -783,7 +783,12 @@ export type VaultStorageSummary = {
   attachments: StorageBucket;
   appDataCache: StorageBucket & {
     machineIndexBytes: number;
-    files: { kind: "machine-index"; path: string; bytes: number }[];
+    relatedNotesEnrichmentBytes: number;
+    files: {
+      kind: "machine-index" | "related-notes-enrichment";
+      path: string;
+      bytes: number;
+    }[];
   };
 };
 

@@ -9,6 +9,7 @@ import {
   isLocalNodeRuntimeStatus,
   isOperationResult,
   isPathMutationData,
+  isRelatedNotesResponse,
   isVaultFileListResponse,
   isVaultFileResponse,
   isVaultIndexResponse,
@@ -17,6 +18,66 @@ import {
   isVaultRuntimeStatus,
   isVaultStorageSummary,
 } from "./apiValidation.ts";
+
+test("related-note response guard enforces versions, paths, scores, bounds, and evidence kinds", () => {
+  const valid = {
+    status: "ready",
+    sourcePath: "nested/source.md",
+    sourceHash: "a".repeat(64),
+    corpusHash: "b".repeat(64),
+    producer: "arepo.related-notes",
+    producerVersion: 1,
+    derivationVersion: 1,
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    candidates: [
+      {
+        targetPath: "target.md",
+        targetHash: "c".repeat(64),
+        title: "Target",
+        score: 0.42,
+        evidence: [
+          { kind: "tag-overlap", score: 0.5, sharedTags: ["filesystem"] },
+          { kind: "common-neighbours", score: 1, paths: ["shared.md"] },
+          { kind: "lexical-similarity", score: 0.3, sharedTerms: ["canonical"] },
+        ],
+      },
+    ],
+  };
+  assert.equal(isRelatedNotesResponse(valid), true);
+  assert.equal(isRelatedNotesResponse({ ...valid, producerVersion: 2 }), false);
+  assert.equal(isRelatedNotesResponse({ ...valid, sourcePath: "/private/source.md" }), false);
+  assert.equal(isRelatedNotesResponse({ ...valid, sourceHash: "not-a-hash" }), false);
+  assert.equal(
+    isRelatedNotesResponse({
+      ...valid,
+      candidates: [{ ...valid.candidates[0], targetPath: "/private/secret.md" }],
+    }),
+    false,
+  );
+  assert.equal(
+    isRelatedNotesResponse({
+      ...valid,
+      candidates: [{ ...valid.candidates[0], score: Number.NaN }],
+    }),
+    false,
+  );
+  assert.equal(
+    isRelatedNotesResponse({
+      ...valid,
+      candidates: [
+        {
+          ...valid.candidates[0],
+          evidence: [{ kind: "future-model-explanation", score: 1, text: "secret" }],
+        },
+      ],
+    }),
+    false,
+  );
+  assert.equal(
+    isRelatedNotesResponse({ ...valid, candidates: Array(11).fill(valid.candidates[0]) }),
+    false,
+  );
+});
 
 const permissions = {
   readIndex: true,
@@ -255,6 +316,7 @@ test("directory and storage response validators cover settings API payloads", ()
       fileCount: 1,
       bytes: 50,
       machineIndexBytes: 50,
+      relatedNotesEnrichmentBytes: 0,
       files: [{ kind: "machine-index", path: "/app/cache/index.json", bytes: 50 }],
     },
   };

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { machineIndexPath } from "./indexCache.js";
+import { relatedNotesCachePath } from "./relatedNotesCache.js";
 import type { StorageBucket, VaultInfo, VaultStorageSummary } from "./types.js";
 
 const TEXT_EXTENSIONS = new Set([".md", ".markdown", ".mdown", ".mkd", ".txt"]);
@@ -56,15 +57,26 @@ async function vaultAppDataCacheStorage(
   cwd: string,
 ): Promise<VaultStorageSummary["appDataCache"]> {
   const indexPath = await machineIndexPath(vault, cwd);
+  const enrichmentPath = await relatedNotesCachePath(vault, cwd);
   const machineIndexBytes = await safeFileSize(indexPath);
+  const relatedNotesEnrichmentBytes = await safeFileSize(enrichmentPath);
+  const files: VaultStorageSummary["appDataCache"]["files"] = [];
+  if (machineIndexBytes > 0) {
+    files.push({ kind: "machine-index", path: indexPath, bytes: machineIndexBytes });
+  }
+  if (relatedNotesEnrichmentBytes > 0) {
+    files.push({
+      kind: "related-notes-enrichment",
+      path: enrichmentPath,
+      bytes: relatedNotesEnrichmentBytes,
+    });
+  }
   return {
-    fileCount: machineIndexBytes > 0 ? 1 : 0,
-    bytes: machineIndexBytes,
+    fileCount: files.length,
+    bytes: machineIndexBytes + relatedNotesEnrichmentBytes,
     machineIndexBytes,
-    files:
-      machineIndexBytes > 0
-        ? [{ kind: "machine-index", path: indexPath, bytes: machineIndexBytes }]
-        : [],
+    relatedNotesEnrichmentBytes,
+    files,
   };
 }
 

@@ -248,6 +248,7 @@ AREPO cache files to appear beside user notes.
 - `DELETE /api/vaults/:vaultId/file?path=...`
 - `POST /api/vaults/:vaultId/reindex`
 - `GET /api/vaults/:vaultId/index`
+- `GET /api/vaults/:vaultId/enrichment/related?path=...`
 - `GET /api/vaults/:vaultId/storage`
 - `POST /api/node/credentials/bootstrap`
 - `GET /api/node/credentials`
@@ -372,6 +373,39 @@ possibly stale watcher snapshot.
 
 The frontend still owns preview rendering and graph layout, but note content
 and the index now come from the local backend.
+
+### Related-note enrichment
+
+For Markdown notes, the Inspect panel can lazily request a small ranked list of
+unlinked related notes. This first enrichment producer is entirely local and
+deterministic: it combines normalized tag, title-term, heading-term, and common
+resolved-neighbour overlap with sparse TF-IDF cosine similarity over visible
+Markdown body text. Direct links in either direction are omitted.
+
+Results are read-only suggestions. They do not create links, mutate Markdown,
+or add inferred edges to the structural graph. The endpoint requires both
+`readIndex` and `readContent`, returns no source bodies, and exposes bounded
+structured evidence explaining each candidate.
+
+Related-note results live separately from machine-index v5 at:
+
+```text
+<appDataDir>/enrichments/<vault-id>-<vault-root-hash>.related-notes.json
+```
+
+The cache contains paths, hashes, scores, and bounded evidence but no source
+bodies. Its validity is tied to the producer/scoring versions and a SHA-256
+corpus key over sorted eligible Markdown path/hash pairs. It is rebuilt lazily
+when missing, malformed, or stale. Enrichment failure never changes structural
+index validity, and both generated files can be discarded independently of
+canonical Markdown.
+
+This producer uses no AI model, embedding, vector database, or external
+service. Exact token matching has expected limits for synonyms, morphology,
+multilingual prose, and code-heavy notes; fenced and inline code, URLs,
+frontmatter, and heading lines are excluded from lexical body scoring. Future
+semantic producers may supplement this evidence, but they must remain optional
+derived state and must not replace explicit Markdown link semantics.
 
 ### Index benchmark
 

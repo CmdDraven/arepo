@@ -96,6 +96,7 @@ import {
   isIndexFilterResponse,
   isIndexSearchResponse,
   isLocalNodeRuntimeStatus,
+  isRelatedNotesResponse,
   isVaultFileListResponse,
   isVaultIndexResponse,
   isVaultInspectResponse,
@@ -112,6 +113,7 @@ import {
   type VaultInspectLink,
   type VaultStorageSummary,
 } from "@/lib/vault/apiValidation";
+import type { RelatedNoteEvidence, RelatedNotesResponse } from "@/lib/vault/enrichmentContracts";
 import {
   beginDirectoryNavigation,
   cancelDirectoryBrowser,
@@ -219,6 +221,9 @@ function VaultApp() {
   const [inspectData, setInspectData] = useState<VaultInspectResponse | null>(null);
   const [inspectLoading, setInspectLoading] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
+  const [relatedData, setRelatedData] = useState<RelatedNotesResponse | null>(null);
+  const [relatedLoading, setRelatedLoading] = useState(false);
+  const [relatedError, setRelatedError] = useState<string | null>(null);
   const [centerWorkspaceView, setCenterWorkspaceView] = useState<CenterWorkspaceView>("empty");
   const [lastNonDocumentCenterView, setLastNonDocumentCenterView] =
     useState<NonDocumentCenterView | null>(null);
@@ -866,6 +871,43 @@ function VaultApp() {
       cancelled = true;
     };
   }, [activeVault, metadataPath, selectedNotePaths.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (
+      !activeVault ||
+      !metadataPath ||
+      !index.notes[metadataPath] ||
+      selectedNotePaths.length > 1
+    ) {
+      setRelatedData(null);
+      setRelatedError(null);
+      setRelatedLoading(false);
+      return;
+    }
+    setRelatedData(null);
+    setRelatedLoading(true);
+    setRelatedError(null);
+    requestApi(
+      `/api/vaults/${encodeURIComponent(activeVault.id)}/enrichment/related?path=${encodeURIComponent(metadataPath)}`,
+      isRelatedNotesResponse,
+    )
+      .then((data) => {
+        if (!cancelled) setRelatedData(data);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setRelatedData(null);
+          setRelatedError(errorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRelatedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeVault, index.notes, metadataPath, selectedNotePaths.length]);
 
   const onPreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
@@ -1599,6 +1641,9 @@ function VaultApp() {
         inspectData={inspectData}
         inspectLoading={inspectLoading}
         inspectError={inspectError}
+        relatedData={relatedData}
+        relatedLoading={relatedLoading}
+        relatedError={relatedError}
         backlinks={backlinks}
         noteTitles={index.notes}
         fileIssues={fileIssues}
@@ -2259,6 +2304,9 @@ function IndexInspectPanel({
   inspectData,
   inspectLoading,
   inspectError,
+  relatedData,
+  relatedLoading,
+  relatedError,
   backlinks,
   noteTitles,
   fileIssues,
@@ -2330,6 +2378,26 @@ function IndexInspectPanel({
           </Empty>
         )}
       </Section>
+
+      {metadataPath && metadataNote && selectedCount <= 1 && (
+        <Section
+          icon={<Network className="size-3.5" />}
+          title="Related notes"
+          count={relatedData?.candidates.length}
+          collapsed={sectionCollapsed("related")}
+          onToggle={() => toggleSection("related")}
+        >
+          {relatedLoading ? (
+            <StateMessage tone="loading">Finding unlinked related notes...</StateMessage>
+          ) : relatedError ? (
+            <ErrorMessage>Related notes unavailable: {relatedError}</ErrorMessage>
+          ) : relatedData?.candidates.length ? (
+            <RelatedNoteList data={relatedData} onPick={onPick} />
+          ) : (
+            <Empty>No unlinked related notes found.</Empty>
+          )}
+        </Section>
+      )}
 
       <Section
         icon={<Link2 className="size-3.5" />}
@@ -2711,6 +2779,60 @@ function TagBadges({ tags }: { tags: string[] }) {
       {tag}
     </Badge>
   ));
+}
+
+function RelatedNoteList({
+  data,
+  onPick,
+}: {
+  data: RelatedNotesResponse;
+  onPick: (path: string) => void;
+}) {
+  return (
+    <div className="min-w-0 space-y-2 text-xs">
+      {data.candidates.map((candidate) => (
+        <button
+          key={candidate.targetPath}
+          type="button"
+          className="w-full min-w-0 rounded border border-border/70 px-2 py-1.5 text-left hover:bg-muted"
+          onClick={() => onPick(candidate.targetPath)}
+          title={`Open ${candidate.targetPath}`}
+        >
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className="truncate font-medium">{candidate.title}</span>
+            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+              {Math.round(candidate.score * 100)}%
+            </span>
+          </div>
+          <div className="truncate font-mono text-[10px] text-muted-foreground">
+            {candidate.targetPath}
+          </div>
+          <div className="mt-1 space-y-0.5 text-[10px] text-muted-foreground">
+            {candidate.evidence.map((evidence) => (
+              <div key={evidence.kind} className="truncate">
+                {relatedEvidenceLabel(evidence)}
+              </div>
+            ))}
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function relatedEvidenceLabel(evidence: RelatedNoteEvidence): string {
+  switch (evidence.kind) {
+    case "tag-overlap":
+      return `Shared tags: ${evidence.sharedTags.join(", ")}`;
+    case "title-term-overlap":
+      return `Similar titles: ${evidence.sharedTerms.join(", ")}`;
+    case "heading-term-overlap":
+      return `Shared heading terms: ${evidence.sharedTerms.join(", ")}`;
+    case "common-neighbours":
+      return `Common links: ${evidence.paths.join(", ")}`;
+    case "lexical-similarity":
+      return `Similar text: ${evidence.sharedTerms.join(", ")}`;
+  }
 }
 
 function InspectDetails({
@@ -3507,6 +3629,9 @@ type IndexInspectPanelProps = {
   inspectData: VaultInspectResponse | null;
   inspectLoading: boolean;
   inspectError: string | null;
+  relatedData: RelatedNotesResponse | null;
+  relatedLoading: boolean;
+  relatedError: string | null;
   backlinks: InspectBacklink[];
   noteTitles: Record<string, { title: string }>;
   fileIssues: VaultInspectIssue[];

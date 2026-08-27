@@ -3636,3 +3636,105 @@ test("cors allows default local dev origins, env extras, and rejects arbitrary o
   assert.equal(rejected.status, 403);
   assert.equal((rejected.body as { ok: boolean }).ok, false);
 });
+
+test("related-note endpoint is lazy, Markdown-only, bounded, and never returns source bodies", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-related-server-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-related-server-vault-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootPath, "related-vault");
+  const sourceSecret = "private-source-body-never-returned";
+  await fs.writeFile(
+    path.join(rootPath, "a.md"),
+    `# Alpha\n${sourceSecret} canonical stale conflict version`,
+  );
+  await fs.writeFile(path.join(rootPath, "b.md"), "# Beta\ncanonical stale conflict version");
+  await fs.writeFile(path.join(rootPath, "plain.txt"), "canonical stale conflict version");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+
+  const response = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/enrichment/related?path=a.md`),
+    cwd,
+  );
+  assert.equal(response.status, 200);
+  const serialized = JSON.stringify(response.body);
+  assert.equal(serialized.includes(sourceSecret), false);
+  assert.equal(serialized.includes(rootPath), false);
+  assert.equal((response.body as { sourcePath: string }).sourcePath, "a.md");
+  assert.equal(
+    (response.body as { candidates: { targetPath: string }[] }).candidates[0]?.targetPath,
+    "b.md",
+  );
+
+  const nonMarkdown = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/enrichment/related?path=plain.txt`),
+    cwd,
+  );
+  assert.equal(nonMarkdown.status, 400);
+  assert.deepEqual(nonMarkdown.body, {
+    ok: false,
+    error: "Related notes require a valid Markdown path.",
+    code: "invalid-related-notes-path",
+  });
+});
+
+test("enrichment-cache publication failure stays bounded and cannot break structural index", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-related-failure-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-related-failure-vault-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootPath, "related-failure-vault");
+  await fs.writeFile(path.join(rootPath, "a.md"), "# Alpha\ncanonical stale conflict version");
+  await fs.writeFile(path.join(rootPath, "b.md"), "# Beta\ncanonical stale conflict version");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+
+  assert.equal(
+    (await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd)).status,
+    200,
+  );
+  await fs.mkdir(appDataDir, { recursive: true });
+  await fs.writeFile(path.join(appDataDir, "enrichments"), "blocks enrichment directory", "utf8");
+  const failed = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/enrichment/related?path=a.md`),
+    cwd,
+  );
+  assert.deepEqual(failed.body, {
+    ok: false,
+    error: "Internal server error",
+    code: "internal-error",
+  });
+  assert.equal(JSON.stringify(failed.body).includes(appDataDir), false);
+  assert.equal(
+    (await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd)).status,
+    200,
+  );
+});
+
+test("protected related-note endpoint requires both readIndex and readContent", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-related-protected-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-related-protected-vault-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootPath, "related-protected-vault");
+  await fs.writeFile(path.join(rootPath, "a.md"), "# A\ncanonical stale conflict version");
+  await fs.writeFile(path.join(rootPath, "b.md"), "# B\ncanonical stale conflict version");
+  await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
+  await writeProtectedAuthStores(appDataDir, {
+    vaultId: vault.id,
+    vaultPermissions: ["readIndex"],
+  });
+  const url = `/api/vaults/${vault.id}/enrichment/related?path=a.md`;
+  const denied = await routeRequest(
+    request("GET", url, undefined, { authorization: `Bearer ${protectedBearerToken}` }),
+    cwd,
+  );
+  assert.equal(denied.status, 403);
+
+  await writeProtectedAuthStores(appDataDir, {
+    vaultId: vault.id,
+    vaultPermissions: ["readIndex", "readContent"],
+  });
+  const allowed = await routeRequest(
+    request("GET", url, undefined, { authorization: `Bearer ${protectedBearerToken}` }),
+    cwd,
+  );
+  assert.equal(allowed.status, 200);
+  assert.equal(JSON.stringify(allowed.body).includes(rootPath), false);
+});

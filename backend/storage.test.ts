@@ -6,6 +6,8 @@ import path from "node:path";
 import { makeTestTempDir } from "./testTemp.js";
 import { getVaultStorageSummary } from "./storage.js";
 import { rebuildMachineIndex } from "./indexCache.js";
+import { getMachineIndexResult } from "./indexCache.js";
+import { getRelatedNotes } from "./relatedNotesCache.js";
 import type { VaultInfo } from "./types.js";
 
 async function makeVault(t: TestContext): Promise<{ cwd: string; vault: VaultInfo }> {
@@ -109,6 +111,7 @@ test("storage summary reports zero for missing index cache", async (t) => {
   assert.equal(summary.appDataCache.fileCount, 0);
   assert.equal(summary.appDataCache.bytes, 0);
   assert.equal(summary.appDataCache.machineIndexBytes, 0);
+  assert.equal(summary.appDataCache.relatedNotesEnrichmentBytes, 0);
   assert.deepEqual(summary.appDataCache.files, []);
 });
 
@@ -122,5 +125,26 @@ test("storage summary includes generated machine index cache bytes", async (t) =
   assert.equal(summary.appDataCache.fileCount, 1);
   assert.equal(summary.appDataCache.bytes > 0, true);
   assert.equal(summary.appDataCache.machineIndexBytes, summary.appDataCache.bytes);
+  assert.equal(summary.appDataCache.relatedNotesEnrichmentBytes, 0);
   assert.equal(summary.appDataCache.files[0]?.kind, "machine-index");
+});
+
+test("storage summary includes the separate related-note enrichment cache", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  await writeFile(vault.rootPath, "a.md", "# A\ncanonical stale conflict version");
+  await writeFile(vault.rootPath, "b.md", "# B\ncanonical stale conflict version");
+  const machine = await getMachineIndexResult(vault, cwd);
+  await getRelatedNotes(vault, "a.md", machine, cwd);
+
+  const summary = await getVaultStorageSummary(vault, cwd);
+  assert.equal(summary.appDataCache.fileCount, 2);
+  assert.equal(summary.appDataCache.relatedNotesEnrichmentBytes > 0, true);
+  assert.equal(
+    summary.appDataCache.bytes,
+    summary.appDataCache.machineIndexBytes + summary.appDataCache.relatedNotesEnrichmentBytes,
+  );
+  assert.equal(
+    summary.appDataCache.files.some((file) => file.kind === "related-notes-enrichment"),
+    true,
+  );
 });

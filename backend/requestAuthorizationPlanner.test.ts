@@ -157,6 +157,26 @@ test("generated-index route with valid readIndex credential produces wouldAllow"
   assert.equal(plan.credentialId, "api-credential-1");
 });
 
+test("related-note enrichment requires readIndex and readContent", () => {
+  const denied = planRouteAwareRequestAuthorization({
+    request: bearerRequest("GET", "/api/vaults/notes/enrichment/related?path=note.md"),
+    stores: storesForCredential(credential(["readIndex"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(denied.wouldDeny, true);
+  assert.deepEqual(denied.missingPermissions, ["readContent"]);
+
+  const allowed = planRouteAwareRequestAuthorization({
+    request: bearerRequest("GET", "/api/vaults/notes/enrichment/related?path=note.md"),
+    stores: storesForCredential(credential(["readIndex", "readContent"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(allowed.wouldAllow, true);
+  assert.equal(allowed.routePattern, "/api/vaults/:vaultId/enrichment/related?path=...");
+});
+
 test("source file read with only readIndex produces wouldDeny requiring readContent", () => {
   const plan = planRouteAwareRequestAuthorization({
     request: bearerRequest("GET", "/api/vaults/notes/file?path=Notes/note.md"),

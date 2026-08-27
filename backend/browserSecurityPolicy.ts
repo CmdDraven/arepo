@@ -98,6 +98,7 @@ const categoryRequestClasses: Record<RoutePolicyCategory, BrowserSecurityRequest
   indexFilters: "safeReadMetadata",
   indexSearch: "safeReadMetadata",
   indexInspect: "safeReadMetadata",
+  relatedNotes: "sourceContentRead",
 };
 
 export function classifyBrowserSecurityRequest(

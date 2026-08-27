@@ -47,7 +47,8 @@ export type RoutePolicyCategory =
   | "indexRead"
   | "indexFilters"
   | "indexSearch"
-  | "indexInspect";
+  | "indexInspect"
+  | "relatedNotes";
 
 export type StrongerConfirmation =
   | "delete"
@@ -515,5 +516,17 @@ export const PROTECTED_ROUTE_POLICIES = [
     networkExposureSafe: false,
     notes:
       "Inspect returns generated metadata such as headings, links, backlinks, tags, and issues.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/enrichment/related?path=...",
+    category: "relatedNotes",
+    requiredPermissions: ["readIndex", "readContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true, sourceContent: true }),
+    networkExposureSafe: false,
+    notes:
+      "Related-note enrichment reads Markdown bodies and returns bounded generated candidates without source content.",
   },
 ] as const satisfies readonly ProtectedRoutePolicy[];

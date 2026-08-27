@@ -107,6 +107,21 @@ test("readIndex credential cannot read source Markdown content", () => {
   assert.deepEqual(result.missingPermissions, ["readContent"]);
 });
 
+test("related-note enrichment requires readIndex and readContent on the same vault", () => {
+  const policy = policyFor("GET /api/vaults/:vaultId/enrichment/related?path=...");
+  const denied = planProtectedRouteAuthorization({ policy, actor: indexReader, vaultId: "notes" });
+  assert.equal(denied.decision, "deny");
+  assert.deepEqual(denied.missingPermissions, ["readContent"]);
+  const allowed = planProtectedRouteAuthorization({
+    policy,
+    actor: credential({
+      vaultGrants: [{ vaultId: "notes", permissions: ["readIndex", "readContent"] }],
+    }),
+    vaultId: "notes",
+  });
+  assert.equal(allowed.decision, "allow");
+});
+
 test("readContent credential can read source Markdown content", () => {
   const result = planProtectedRouteAuthorization({
     policy: policyFor("GET /api/vaults/:vaultId/file?path=..."),

@@ -45,6 +45,7 @@ const currentBackendRoutes = [
   "GET /api/vaults/:vaultId/index/filters?filter=...",
   "GET /api/vaults/:vaultId/index/search?q=...",
   "GET /api/vaults/:vaultId/index/inspect?path=...",
+  "GET /api/vaults/:vaultId/enrichment/related?path=...",
 ];
 
 function routeKey(policy: ProtectedRoutePolicy): string {
@@ -121,6 +122,13 @@ test("source file read requires readContent", () => {
   const policy = policyFor("GET /api/vaults/:vaultId/file?path=...");
   assert.equal(policy.dataAccess.sourceContent, true);
   assertRequires(policy, "readContent");
+});
+
+test("related-note enrichment requires both structural and source read grants", () => {
+  const policy = policyFor("GET /api/vaults/:vaultId/enrichment/related?path=...");
+  assert.equal(policy.dataAccess.generatedIndex, true);
+  assert.equal(policy.dataAccess.sourceContent, true);
+  assert.deepEqual(policy.requiredPermissions, ["readIndex", "readContent"]);
 });
 
 test("source mutations require writeContent", () => {
