@@ -221,7 +221,8 @@ Status: in progress.
 Current implementation provides deterministic/statistical Markdown Related
 Notes with bounded provenance, a separate disposable cache, no source mutation,
 no inferred graph edges, a locked human-reviewed synthetic evaluation baseline,
-and durable per-vault preferences with a human-legible Basic/Advanced UI.
+durable per-vault preferences with a human-legible Basic/Advanced UI, and
+producer-independent durable Keep/Dismiss curation outside disposable caches.
 Balanced preserves deterministic V1; the corpus's 0–3 judgments are evaluation
 data rather than training data or runtime settings. See
 [related-note evaluation](related-notes-evaluation.md).
@@ -237,26 +238,30 @@ The enrichment policy is:
 5. Enrichment is derived and disposable; Markdown remains canonical.
 6. Inferred candidates do not automatically become links, backlinks, or graph
    edges.
-7. Only explicit user action may promote a suggestion into durable or canonical
-   state.
-8. Future accept/dismiss decisions are durable user decisions and must be
-   stored separately from disposable enrichment caches.
+7. Keep and Dismiss are explicit durable user decisions stored separately from
+   disposable enrichment caches; neither decision changes producer scoring.
+8. Kept relationships remain AREPO metadata rather than Markdown links or
+   structural graph edges. Only a future explicit source-mutation action may
+   promote one into canonical Markdown.
+9. Curation decisions are not training data, telemetry, or automatic tuning
+   input, and future producers must respect the same path-pair decisions.
 
-Near-term work is to compare an optional evaluation-only local semantic
-embedding producer against the identical locked labels. It should enter
-production only if it materially improves useful recall/ranking without
-unacceptable precision loss, and only behind its own per-vault enable control.
-The tiny corpus must not automatically tune thresholds or weights. Later work
-may add explicit accept (author a Markdown link or durable declared
-relationship) and dismiss/reject actions whose decisions survive cache rebuilds.
-No such durable decision store exists yet.
+The evaluation-only local semantic experiment is deferred for runtime maturity:
+the maintained candidate's native runtime installation failed its portability
+gate and the legacy fallback failed the dependency-security gate. A later
+experiment must still compare against the identical locked labels, avoid
+automatic tuning, and require separate per-vault consent before any production
+integration. The nearer design question is whether a kept relationship can be
+promoted through an explicit, directional, conflict-safe Markdown mutation
+without confusing AREPO metadata with canonical source.
 
 ## Deferred Work
 
 - production semantic/embedding enrichment pending comparative evaluation and
   separate explicit consent
 - generative AI/LLM enrichment and external model providers
-- durable enrichment accept/dismiss decisions
+- explicit, directional promotion of a kept relationship into user-authored
+  Markdown with backend-authoritative conflict handling
 - semantic/vector search unless separately planned
 - sync implementation
 - Git/versioning replacement

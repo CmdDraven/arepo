@@ -97,6 +97,8 @@ import {
   isIndexFilterResponse,
   isIndexSearchResponse,
   isLocalNodeRuntimeStatus,
+  isRelatedNotesCurationMutationResponse,
+  isRelatedNotesCurationResponse,
   isRelatedNotesResponse,
   isVaultFileListResponse,
   isVaultIndexResponse,
@@ -116,6 +118,9 @@ import {
 } from "@/lib/vault/apiValidation";
 import type {
   RelatedNoteEvidence,
+  RelatedNotesCurationDecision,
+  RelatedNotesCurationPresentation,
+  RelatedNotesCurationResponse,
   RelatedNotesEndpointResponse,
   RelatedNotesResponse,
 } from "@/lib/vault/enrichmentContracts";
@@ -145,6 +150,9 @@ import { sourcePresentation } from "@/lib/vault/sourcePresentation";
 import {
   ENRICHMENT_ADVANCED_DEFAULT_OPEN,
   RELATED_NOTES_DISABLED_EXPLANATION,
+  RELATED_NOTES_DISMISS_EXPLANATION,
+  RELATED_NOTES_KEEP_EXPLANATION,
+  curationFreshnessLabel,
   relatedNotesInspectMode,
   showEnrichmentManageAction,
 } from "@/lib/vault/enrichmentUi";
@@ -247,6 +255,12 @@ function VaultApp() {
   const [relatedData, setRelatedData] = useState<RelatedNotesEndpointResponse | null>(null);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [relatedError, setRelatedError] = useState<string | null>(null);
+  const [curationData, setCurationData] = useState<RelatedNotesCurationResponse | null>(null);
+  const [curationLoading, setCurationLoading] = useState(false);
+  const [curationError, setCurationError] = useState<string | null>(null);
+  const [curationMutationBusy, setCurationMutationBusy] = useState(false);
+  const [curationRefresh, setCurationRefresh] = useState(0);
+  const [showCurationManager, setShowCurationManager] = useState(false);
   const [enrichmentSettings, setEnrichmentSettings] =
     useState<EnrichmentPreferencesResponse | null>(null);
   const [enrichmentSettingsLoading, setEnrichmentSettingsLoading] = useState(false);
@@ -998,8 +1012,86 @@ function VaultApp() {
     enrichmentSettingsLoading,
     index.notes,
     metadataPath,
+    curationRefresh,
     selectedNotePaths.length,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const enabled = enrichmentSettings?.preferences.producers.relatedNotes.enabled === true;
+    if (
+      !activeVault ||
+      !metadataPath ||
+      !index.notes[metadataPath] ||
+      selectedNotePaths.length > 1 ||
+      !enabled
+    ) {
+      setCurationData(null);
+      setCurationLoading(false);
+      setCurationError(null);
+      return;
+    }
+    setCurationLoading(true);
+    setCurationError(null);
+    requestApi(
+      `/api/vaults/${encodeURIComponent(activeVault.id)}/enrichment/related/curation?path=${encodeURIComponent(metadataPath)}`,
+      isRelatedNotesCurationResponse,
+    )
+      .then((data) => {
+        if (!cancelled) setCurationData(data);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setCurationData(null);
+          setCurationError(errorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCurationLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeVault,
+    curationRefresh,
+    enrichmentSettings,
+    index.notes,
+    metadataPath,
+    selectedNotePaths.length,
+  ]);
+
+  const changeCurationDecision = useCallback(
+    async (
+      leftPath: string,
+      rightPath: string,
+      decision: RelatedNotesCurationDecision | null,
+    ): Promise<void> => {
+      if (!activeVault || !curationData?.canMutate || curationMutationBusy) return;
+      setCurationMutationBusy(true);
+      setCurationError(null);
+      try {
+        await requestApi(
+          `/api/vaults/${encodeURIComponent(activeVault.id)}/enrichment/related/curation`,
+          isRelatedNotesCurationMutationResponse,
+          {
+            method: decision === null ? "DELETE" : "PUT",
+            body: JSON.stringify({
+              leftPath,
+              rightPath,
+              ...(decision === null ? {} : { decision }),
+            }),
+          },
+        );
+        setCurationRefresh((value) => value + 1);
+      } catch (error) {
+        setCurationError(errorMessage(error));
+      } finally {
+        setCurationMutationBusy(false);
+      }
+    },
+    [activeVault, curationData?.canMutate, curationMutationBusy],
+  );
 
   const onPreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
@@ -1736,6 +1828,10 @@ function VaultApp() {
         relatedData={relatedData}
         relatedLoading={relatedLoading}
         relatedError={relatedError}
+        curationData={curationData}
+        curationLoading={curationLoading}
+        curationError={curationError}
+        curationMutationBusy={curationMutationBusy}
         backlinks={backlinks}
         noteTitles={index.notes}
         fileIssues={fileIssues}
@@ -1747,6 +1843,10 @@ function VaultApp() {
         onAnchor={openAnchor}
         onReindex={() => void reindex()}
         onOpenSettings={openSettings}
+        onCurationDecision={(targetPath, decision) =>
+          metadataPath ? void changeCurationDecision(metadataPath, targetPath, decision) : undefined
+        }
+        onOpenCurationManager={() => setShowCurationManager(true)}
       />
     );
 
@@ -1966,6 +2066,19 @@ function VaultApp() {
             onEnrichmentChanged={setEnrichmentSettings}
           />
         </main>
+      )}
+
+      {activeVault && (
+        <CurationManagerDialog
+          open={showCurationManager}
+          vault={activeVault}
+          refreshKey={curationRefresh}
+          onOpenChange={setShowCurationManager}
+          onClear={(decision) =>
+            void changeCurationDecision(decision.leftPath, decision.rightPath, null)
+          }
+          busy={curationMutationBusy}
+        />
       )}
 
       {!showSettings && loading && !activeVault && (
@@ -2401,6 +2514,10 @@ function IndexInspectPanel({
   relatedData,
   relatedLoading,
   relatedError,
+  curationData,
+  curationLoading,
+  curationError,
+  curationMutationBusy,
   backlinks,
   noteTitles,
   fileIssues,
@@ -2412,6 +2529,8 @@ function IndexInspectPanel({
   onAnchor,
   onReindex,
   onOpenSettings,
+  onCurationDecision,
+  onOpenCurationManager,
 }: IndexInspectPanelProps) {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const relatedMode = relatedNotesInspectMode(relatedData, relatedLoading, relatedError);
@@ -2501,9 +2620,68 @@ function IndexInspectPanel({
           ) : relatedMode === "error" ? (
             <ErrorMessage>Related notes unavailable: {relatedError}</ErrorMessage>
           ) : relatedMode === "ready" && relatedData?.status === "ready" ? (
-            <RelatedNoteList data={relatedData} onPick={onPick} />
+            <div className="space-y-3">
+              {curationError && (
+                <StateMessage tone="error">
+                  Curation could not be updated: {curationError}
+                </StateMessage>
+              )}
+              {relatedData.curation.status === "invalid" && relatedData.curation.diagnostic && (
+                <StateMessage tone="error">{relatedData.curation.diagnostic}</StateMessage>
+              )}
+              {relatedData.curation.kept.length > 0 && (
+                <KeptRelationshipList
+                  relationships={relatedData.curation.kept}
+                  noteTitles={noteTitles}
+                  canMutate={curationData?.canMutate === true}
+                  busy={curationMutationBusy}
+                  onPick={onPick}
+                  onClear={(targetPath) => onCurationDecision(targetPath, null)}
+                />
+              )}
+              {relatedData.candidates.length > 0 ? (
+                <RelatedNoteList
+                  data={relatedData}
+                  canMutate={curationData?.canMutate === true}
+                  busy={curationMutationBusy}
+                  onPick={onPick}
+                  onDecision={onCurationDecision}
+                />
+              ) : (
+                <Empty>No undecided inferred suggestions remain for this note.</Empty>
+              )}
+              {curationLoading ? (
+                <StateMessage tone="loading">Loading curation decisions...</StateMessage>
+              ) : curationData?.status === "ready" ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={onOpenCurationManager}
+                >
+                  {curationData.canMutate ? "Manage" : "Review"} decisions (
+                  {curationData.summary.kept} kept, {curationData.summary.dismissed} dismissed)
+                </Button>
+              ) : null}
+            </div>
           ) : (
-            <Empty>No unlinked related notes found.</Empty>
+            <div className="space-y-2">
+              <Empty>No unlinked related notes found.</Empty>
+              {curationError && (
+                <StateMessage tone="error">Curation unavailable: {curationError}</StateMessage>
+              )}
+              {curationData?.status === "ready" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={onOpenCurationManager}
+                >
+                  {curationData.canMutate ? "Manage" : "Review"} decisions (
+                  {curationData.summary.kept} kept, {curationData.summary.dismissed} dismissed)
+                </Button>
+              )}
+            </div>
           )}
         </Section>
       )}
@@ -2890,32 +3068,196 @@ function TagBadges({ tags }: { tags: string[] }) {
   ));
 }
 
+function CurationManagerDialog({
+  open,
+  vault,
+  refreshKey,
+  busy,
+  onOpenChange,
+  onClear,
+}: {
+  open: boolean;
+  vault: VaultListItem;
+  refreshKey: number;
+  busy: boolean;
+  onOpenChange: (open: boolean) => void;
+  onClear: (decision: RelatedNotesCurationPresentation) => void;
+}) {
+  const [data, setData] = useState<RelatedNotesCurationResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [advanced, setAdvanced] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    requestApi(
+      `/api/vaults/${encodeURIComponent(vault.id)}/enrichment/related/curation`,
+      isRelatedNotesCurationResponse,
+    )
+      .then((response) => {
+        if (!cancelled) setData(response);
+      })
+      .catch((failure) => {
+        if (!cancelled) setError(errorMessage(failure));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, refreshKey, vault.id]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Related Notes curation</DialogTitle>
+          <DialogDescription>
+            Kept and dismissed relationships are durable AREPO metadata. They are not Markdown
+            links, graph edges, or training data.
+          </DialogDescription>
+        </DialogHeader>
+        {loading && <StateMessage tone="loading">Loading curated relationships...</StateMessage>}
+        {error && <StateMessage tone="error">Curation could not be loaded: {error}</StateMessage>}
+        {data?.status === "invalid" && data.diagnostic && (
+          <StateMessage tone="error">{data.diagnostic}</StateMessage>
+        )}
+        {data?.status === "ready" && (
+          <div className="space-y-4 text-sm">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded border p-2">
+                <div className="font-medium">Kept: {data.summary.kept}</div>
+                <p className="text-xs text-muted-foreground">
+                  AREPO remembers that you consider these notes related.
+                </p>
+              </div>
+              <div className="rounded border p-2">
+                <div className="font-medium">Dismissed: {data.summary.dismissed}</div>
+                <p className="text-xs text-muted-foreground">
+                  AREPO stops suggesting these inferred pairs.
+                </p>
+              </div>
+            </div>
+            {(["kept", "dismissed"] as const).map((kind) => {
+              const decisions = data.decisions.filter((decision) => decision.decision === kind);
+              return (
+                <section key={kind} className="space-y-2">
+                  <h3 className="text-sm font-semibold capitalize">{kind}</h3>
+                  {decisions.length === 0 ? (
+                    <Empty>No {kind} relationships.</Empty>
+                  ) : (
+                    decisions.map((decision) => (
+                      <div
+                        key={`${decision.leftPath}\0${decision.rightPath}`}
+                        className="rounded border p-2"
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-mono text-xs" title={decision.leftPath}>
+                              {decision.leftPath}
+                            </div>
+                            <div className="truncate font-mono text-xs" title={decision.rightPath}>
+                              ↔ {decision.rightPath}
+                            </div>
+                            {decision.freshness !== "current" && (
+                              <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                                {curationFreshnessLabel(decision.freshness)}
+                              </div>
+                            )}
+                            {advanced && (
+                              <div className="mt-1 space-y-0.5 text-[10px] text-muted-foreground">
+                                <div>Decided {new Date(decision.decidedAt).toLocaleString()}</div>
+                                {decision.producerAtDecision && (
+                                  <div>
+                                    Originally surfaced by {decision.producerAtDecision}
+                                    {decision.producerVersionAtDecision
+                                      ? ` v${decision.producerVersionAtDecision}`
+                                      : ""}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {data.canMutate && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 shrink-0 text-xs"
+                              disabled={busy}
+                              onClick={() => onClear(decision)}
+                              title="Clear this AREPO decision. No Markdown is changed."
+                            >
+                              Clear
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </section>
+              );
+            })}
+            <button
+              type="button"
+              className="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline"
+              aria-expanded={advanced}
+              onClick={() => setAdvanced((value) => !value)}
+            >
+              {advanced ? "Hide advanced details" : "Show advanced details"}
+            </button>
+          </div>
+        )}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RelatedNoteList({
   data,
+  canMutate,
+  busy,
   onPick,
+  onDecision,
 }: {
   data: RelatedNotesResponse;
+  canMutate: boolean;
+  busy: boolean;
   onPick: (path: string) => void;
+  onDecision: (targetPath: string, decision: RelatedNotesCurationDecision) => void;
 }) {
   return (
     <div className="min-w-0 space-y-2 text-xs">
       {data.candidates.map((candidate) => (
-        <button
+        <div
           key={candidate.targetPath}
-          type="button"
-          className="w-full min-w-0 rounded border border-border/70 px-2 py-1.5 text-left hover:bg-muted"
-          onClick={() => onPick(candidate.targetPath)}
-          title={`Open ${candidate.targetPath}`}
+          className="min-w-0 rounded border border-border/70 px-2 py-1.5"
         >
-          <div className="flex min-w-0 items-center justify-between gap-2">
-            <span className="truncate font-medium">{candidate.title}</span>
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-              {Math.round(candidate.score * 100)}%
-            </span>
-          </div>
-          <div className="truncate font-mono text-[10px] text-muted-foreground">
-            {candidate.targetPath}
-          </div>
+          <button
+            type="button"
+            className="w-full min-w-0 text-left hover:text-foreground/80"
+            onClick={() => onPick(candidate.targetPath)}
+            title={`Open ${candidate.targetPath}`}
+          >
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <span className="truncate font-medium">{candidate.title}</span>
+              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                {Math.round(candidate.score * 100)}%
+              </span>
+            </div>
+            <div className="truncate font-mono text-[10px] text-muted-foreground">
+              {candidate.targetPath}
+            </div>
+          </button>
           <div className="mt-1 space-y-0.5 text-[10px] text-muted-foreground">
             {candidate.evidence.map((evidence) => (
               <div key={evidence.kind} className="truncate">
@@ -2923,7 +3265,98 @@ function RelatedNoteList({
               </div>
             ))}
           </div>
-        </button>
+          {canMutate && (
+            <div className="mt-2 flex gap-2 border-t pt-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 text-[10px]"
+                disabled={busy}
+                title={RELATED_NOTES_KEEP_EXPLANATION}
+                onClick={() => onDecision(candidate.targetPath, "kept")}
+              >
+                Keep
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 text-[10px]"
+                disabled={busy}
+                title={RELATED_NOTES_DISMISS_EXPLANATION}
+                onClick={() => onDecision(candidate.targetPath, "dismissed")}
+              >
+                Dismiss
+              </Button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function KeptRelationshipList({
+  relationships,
+  noteTitles,
+  canMutate,
+  busy,
+  onPick,
+  onClear,
+}: {
+  relationships: RelatedNotesResponse["curation"]["kept"];
+  noteTitles: Record<string, { title: string }>;
+  canMutate: boolean;
+  busy: boolean;
+  onPick: (path: string) => void;
+  onClear: (targetPath: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5 rounded border border-emerald-500/30 bg-emerald-500/5 p-2 text-xs">
+      <div>
+        <div className="font-medium">Kept relationships</div>
+        <div className="text-[10px] text-muted-foreground">
+          Remembered by AREPO as curation metadata—not Markdown links or graph edges.
+        </div>
+      </div>
+      {relationships.map((relationship) => (
+        <div
+          key={relationship.targetPath}
+          className="flex items-center gap-2 rounded bg-background/70 p-1.5"
+        >
+          <button
+            type="button"
+            className="min-w-0 flex-1 text-left"
+            onClick={() => onPick(relationship.targetPath)}
+            title={`Open ${relationship.targetPath}`}
+          >
+            <div className="truncate font-medium">
+              {noteTitles[relationship.targetPath]?.title ?? relationship.targetPath}
+            </div>
+            <div className="truncate font-mono text-[10px] text-muted-foreground">
+              {relationship.targetPath}
+            </div>
+            {relationship.freshness !== "current" && (
+              <div className="text-[10px] text-amber-700 dark:text-amber-300">
+                {curationFreshnessLabel(relationship.freshness)}
+              </div>
+            )}
+          </button>
+          {canMutate && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 shrink-0 text-[10px]"
+              disabled={busy}
+              onClick={() => onClear(relationship.targetPath)}
+              title="Clear this AREPO curation decision. No Markdown is changed."
+            >
+              Clear
+            </Button>
+          )}
+        </div>
       ))}
     </div>
   );
@@ -3741,6 +4174,10 @@ type IndexInspectPanelProps = {
   relatedData: RelatedNotesEndpointResponse | null;
   relatedLoading: boolean;
   relatedError: string | null;
+  curationData: RelatedNotesCurationResponse | null;
+  curationLoading: boolean;
+  curationError: string | null;
+  curationMutationBusy: boolean;
   backlinks: InspectBacklink[];
   noteTitles: Record<string, { title: string }>;
   fileIssues: VaultInspectIssue[];
@@ -3752,6 +4189,8 @@ type IndexInspectPanelProps = {
   onAnchor: (path: string, anchor: string) => void;
   onReindex: () => void;
   onOpenSettings: () => void;
+  onCurationDecision: (targetPath: string, decision: RelatedNotesCurationDecision | null) => void;
+  onOpenCurationManager: () => void;
 };
 
 const INDEX_FILTER_OPTIONS: { value: IndexFilterKind; label: string; empty: string }[] = [

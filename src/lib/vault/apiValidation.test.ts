@@ -10,6 +10,9 @@ import {
   isLocalNodeRuntimeStatus,
   isOperationResult,
   isPathMutationData,
+  isRenameMutationData,
+  isRelatedNotesCurationMutationResponse,
+  isRelatedNotesCurationResponse,
   isRelatedNotesResponse,
   isVaultFileListResponse,
   isVaultFileResponse,
@@ -30,6 +33,7 @@ test("related-note response guard enforces versions, paths, scores, bounds, and 
     producerVersion: 1,
     derivationVersion: 1,
     generatedAt: "2026-01-01T00:00:00.000Z",
+    curation: { status: "ready", kept: [] },
     candidates: [
       {
         targetPath: "target.md",
@@ -96,6 +100,96 @@ test("related-note response guard enforces versions, paths, scores, bounds, and 
     }),
     false,
   );
+});
+
+test("curation guards reject unsafe paths, contradictory pairs, bad timestamps, and unknown states", () => {
+  const decision = {
+    leftPath: "a.md",
+    rightPath: "nested/b.md",
+    decision: "kept",
+    decidedAt: "2026-01-01T00:00:00.000Z",
+    freshness: "current",
+    producerAtDecision: "arepo.related-notes",
+    producerVersionAtDecision: 1,
+  };
+  const valid = {
+    status: "ready",
+    vaultId: "notes",
+    sourcePath: "a.md",
+    canMutate: true,
+    summary: { kept: 1, dismissed: 0 },
+    decisions: [decision],
+  };
+  assert.equal(isRelatedNotesCurationResponse(valid), true);
+  assert.equal(
+    isRelatedNotesCurationResponse({
+      ...valid,
+      decisions: [{ ...decision, leftPath: "/private/a.md" }],
+    }),
+    false,
+  );
+  assert.equal(
+    isRelatedNotesCurationResponse({
+      ...valid,
+      decisions: [{ ...decision, rightPath: "a.md" }],
+    }),
+    false,
+  );
+  assert.equal(
+    isRelatedNotesCurationResponse({
+      ...valid,
+      decisions: [{ ...decision, decidedAt: "yesterday" }],
+    }),
+    false,
+  );
+  assert.equal(
+    isRelatedNotesCurationResponse({
+      ...valid,
+      decisions: [{ ...decision, decision: "trained" }],
+    }),
+    false,
+  );
+  assert.equal(
+    isRelatedNotesCurationResponse({
+      ...valid,
+      decisions: [{ ...decision, freshness: "renamed-by-magic" }],
+    }),
+    false,
+  );
+  assert.equal(
+    isRelatedNotesCurationResponse({ ...valid, decisions: [decision, decision] }),
+    false,
+  );
+  assert.equal(isRelatedNotesCurationResponse({ ...valid, status: "future" }), false);
+  assert.equal(
+    isRelatedNotesCurationResponse({
+      status: "invalid",
+      vaultId: "notes",
+      canMutate: false,
+      summary: { kept: 0, dismissed: 0 },
+      decisions: [],
+      diagnostic: "Stored curation is invalid.",
+    }),
+    true,
+  );
+  assert.equal(
+    isRelatedNotesCurationResponse({
+      status: "invalid",
+      vaultId: "notes",
+      canMutate: true,
+      summary: { kept: 0, dismissed: 0 },
+      decisions: [],
+      diagnostic: "Stored curation is invalid.",
+    }),
+    false,
+  );
+  assert.equal(
+    isRelatedNotesCurationResponse({ ...valid, diagnostic: "Unexpected ready diagnostic." }),
+    false,
+  );
+  assert.equal(isRelatedNotesCurationMutationResponse({ status: "updated", decision }), true);
+  assert.equal(isRelatedNotesCurationMutationResponse({ status: "cleared" }), true);
+  assert.equal(isRelatedNotesCurationMutationResponse({ status: "cleared", decision }), false);
 });
 
 test("enrichment preference response guard rejects unknown producers, presets, and invalid values", () => {
@@ -381,6 +475,30 @@ test("mutation success and watcher-status payloads require their consumed fields
   assert.equal(mutationGuard({ ok: true, data: { path: "note.md" } }), true);
   assert.equal(mutationGuard({ ok: true, data: { path: "/absolute.md" } }), false);
   assert.equal(mutationGuard({ ok: true }), false);
+
+  const renameGuard = isOperationResult(isRenameMutationData);
+  assert.equal(
+    renameGuard({
+      ok: true,
+      data: {
+        fromPath: "old.md",
+        toPath: "new.md",
+        curationDiagnostic: "Curation bookkeeping could not be updated.",
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    renameGuard({
+      ok: true,
+      data: {
+        fromPath: "old.md",
+        toPath: "new.md",
+        curationDiagnostic: "x".repeat(513),
+      },
+    }),
+    false,
+  );
 
   const status = {
     vaultId: "notes",

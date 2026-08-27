@@ -12,6 +12,7 @@ import {
 import { normalizeMarkdownFilePath } from "./path.js";
 import { PublicApiError } from "./publicApiError.js";
 import { deriveRelatedNotesCorpus, type RelatedNotesSource } from "./relatedNotes.js";
+import { applyRelatedNotesCuration } from "./relatedNotesCuration.js";
 import type { VaultInfo } from "./types.js";
 import { readVaultFile } from "./vaultFs.js";
 import {
@@ -19,6 +20,7 @@ import {
   RELATED_NOTES_PRODUCER,
   RELATED_NOTES_PRODUCER_VERSION,
   type RelatedNotesDisabledResponse,
+  type RelatedNotesDerivedResponse,
   type RelatedNotesResponse,
 } from "../src/lib/vault/enrichmentContracts.js";
 import {
@@ -45,7 +47,7 @@ type StoredRelatedNotesCache = {
   vault: { id: string; rootPathHash: string };
   corpusHash: string;
   settingsHash: string;
-  results: RelatedNotesResponse[];
+  results: RelatedNotesDerivedResponse[];
 };
 
 export type RelatedNotesCacheResult =
@@ -100,7 +102,10 @@ export async function getRelatedNotes(
     if (isCurrentCache(stored, vault, rootPathHash, corpusHash, settingsHash, readable)) {
       const result = stored.results.find((entry) => entry.sourcePath === sourcePath);
       if (result && result.sourceHash === sourceManifest.contentHash) {
-        return { data: result, cacheStatus: "hit" };
+        return {
+          data: await applyRelatedNotesCuration(vault, machineResult, result, cwd),
+          cacheStatus: "hit",
+        };
       }
     }
 
@@ -153,7 +158,10 @@ export async function getRelatedNotes(
       ),
     };
     await writeStoredCache(file, cache);
-    return { data: result, cacheStatus: "rebuilt" };
+    return {
+      data: await applyRelatedNotesCuration(vault, machineResult, result, cwd),
+      cacheStatus: "rebuilt",
+    };
   });
 }
 
@@ -311,7 +319,7 @@ function isCurrentCache(
   );
 }
 
-function isStoredResponse(value: unknown): value is RelatedNotesResponse {
+function isStoredResponse(value: unknown): value is RelatedNotesDerivedResponse {
   return (
     isRecord(value) &&
     value.status === "ready" &&

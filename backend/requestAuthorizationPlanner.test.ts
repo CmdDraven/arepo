@@ -177,6 +177,34 @@ test("related-note enrichment requires readIndex and readContent", () => {
   assert.equal(allowed.routePattern, "/api/vaults/:vaultId/enrichment/related?path=...");
 });
 
+test("curation reads require readIndex while writes require writeContent too", () => {
+  const read = planRouteAwareRequestAuthorization({
+    request: bearerRequest("GET", "/api/vaults/notes/enrichment/related/curation?path=note.md"),
+    stores: storesForCredential(credential(["readIndex"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(read.wouldAllow, true);
+  assert.equal(read.routePattern, "/api/vaults/:vaultId/enrichment/related/curation?path=...");
+
+  const denied = planRouteAwareRequestAuthorization({
+    request: bearerRequest("PUT", "/api/vaults/notes/enrichment/related/curation"),
+    stores: storesForCredential(credential(["readIndex"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(denied.wouldDeny, true);
+  assert.deepEqual(denied.missingPermissions, ["writeContent"]);
+
+  const allowed = planRouteAwareRequestAuthorization({
+    request: bearerRequest("DELETE", "/api/vaults/notes/enrichment/related/curation"),
+    stores: storesForCredential(credential(["readIndex", "writeContent"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(allowed.wouldAllow, true);
+});
+
 test("enrichment settings separate readIndex visibility from manageVaults mutation", () => {
   const read = planRouteAwareRequestAuthorization({
     request: bearerRequest("GET", "/api/vaults/notes/enrichment/settings"),

@@ -224,16 +224,18 @@ capability flags.
 machine-index caches and durable enrichment preferences. You can also set `AREPO_APP_DATA_DIR`; the
 environment variable takes precedence over config.
 
-Durable per-vault enrichment preferences also live under `appDataDir`, separate
-from vault sources and disposable caches:
+Durable per-vault enrichment preferences and user-authored Related Notes
+curation also live under `appDataDir`, separate from vault sources and
+disposable caches:
 
 ```text
 <appDataDir>/preferences/<vault-id>.enrichment.json
+<appDataDir>/curation/<vault-id>.related-notes.json
 ```
 
 Missing, malformed, unknown-version, or unreadable preference state fails
 closed to enrichment disabled. Removing generated index/cache data retains
-these explicit user preferences.
+these explicit user preferences and kept/dismissed curation decisions.
 Preference schema versioning is independent from Related Notes producer,
 derivation, and disposable cache versions; changing a user's preference does
 not redefine the scoring algorithm.
@@ -268,6 +270,9 @@ AREPO cache and preference files to appear beside user notes.
 - `GET /api/vaults/:vaultId/enrichment/settings`
 - `PUT /api/vaults/:vaultId/enrichment/settings`
 - `GET /api/vaults/:vaultId/enrichment/related?path=...`
+- `GET /api/vaults/:vaultId/enrichment/related/curation?path=...`
+- `PUT /api/vaults/:vaultId/enrichment/related/curation`
+- `DELETE /api/vaults/:vaultId/enrichment/related/curation`
 - `GET /api/vaults/:vaultId/storage`
 - `POST /api/node/credentials/bootstrap`
 - `GET /api/node/credentials`
@@ -416,6 +421,25 @@ or add inferred edges to the structural graph. The endpoint requires both
 `readIndex` and `readContent`, returns no source bodies, and exposes bounded
 structured evidence explaining each candidate.
 
+Users with `writeContent` and `readIndex` authority can make two durable,
+symmetric decisions about a suggestion. **Keep** remembers that the two notes
+are meaningfully related and presents the pair separately from inferred
+suggestions. **Dismiss** suppresses the inferred pair across cache rebuilds and
+scoring changes. Either decision can be cleared. These decisions are stored by
+canonical vault-relative path with the source hashes observed at decision time,
+so later changes can be described without erasing user intent. Missing notes
+remain dormant records and may become current again if restored.
+
+Curation is applied after deterministic derivation and cache loading. It never
+changes TF-IDF, evidence weights, cache validity, the locked evaluation
+baseline, or producer scoring. It survives generated-data cleanup, disabling
+and re-enabling Related Notes, app restart, and a vault-root rebind that keeps
+the same vault ID. AREPO-managed file/folder renames update path references;
+external renames are deliberately not inferred from matching content hashes.
+A kept relationship is AREPO app metadata—not a wikilink, backlink, graph edge,
+or relationship visible to external Markdown editors. Decisions are not
+training data and are never sent anywhere.
+
 Related-note results live separately from machine-index v5 at:
 
 ```text
@@ -438,6 +462,12 @@ multilingual prose, and code-heavy notes; fenced and inline code, URLs,
 frontmatter, and heading lines are excluded from lexical body scoring. Future
 semantic producers may supplement this evidence, but they must remain optional
 derived state and must not replace explicit Markdown link semantics.
+
+The first evaluation-only local semantic experiment remains deferred for
+runtime maturity: the maintained candidate's native runtime installation was
+not reliable in the supported development environment, while the legacy
+fallback introduced unacceptable dependency vulnerabilities. No embedding or
+vector runtime is part of AREPO.
 
 Enabling deterministic Related Notes never grants consent for embeddings,
 model downloads, model execution, network calls, vector storage, or generative

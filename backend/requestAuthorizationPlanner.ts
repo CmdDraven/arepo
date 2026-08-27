@@ -355,6 +355,13 @@ function matchRoutePolicy(request: RequestShapedCredentialInput): ProtectedRoute
       return policyFor(method, "/api/vaults/:vaultId/index/inspect?path=...");
     case "enrichment/related":
       return policyFor(method, "/api/vaults/:vaultId/enrichment/related?path=...");
+    case "enrichment/related/curation":
+      return policyFor(
+        method,
+        method === "GET"
+          ? "/api/vaults/:vaultId/enrichment/related/curation?path=..."
+          : "/api/vaults/:vaultId/enrichment/related/curation",
+      );
     case "enrichment/settings":
       return policyFor(method, "/api/vaults/:vaultId/enrichment/settings");
     default:

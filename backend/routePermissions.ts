@@ -49,6 +49,8 @@ export type RoutePolicyCategory =
   | "indexSearch"
   | "indexInspect"
   | "relatedNotes"
+  | "relatedNotesCurationRead"
+  | "relatedNotesCurationWrite"
   | "enrichmentSettingsRead"
   | "enrichmentSettingsWrite";
 
@@ -67,6 +69,7 @@ export type RoutePolicyDataAccess = {
   nodeManagement: boolean;
   authManagement: boolean;
   audit: boolean;
+  userCuration: boolean;
 };
 
 export type ConditionalRoutePermission = {
@@ -94,6 +97,7 @@ const noAccess: RoutePolicyDataAccess = {
   nodeManagement: false,
   authManagement: false,
   audit: false,
+  userCuration: false,
 };
 
 function access(overrides: Partial<RoutePolicyDataAccess>): RoutePolicyDataAccess {
@@ -101,6 +105,39 @@ function access(overrides: Partial<RoutePolicyDataAccess>): RoutePolicyDataAcces
 }
 
 export const PROTECTED_ROUTE_POLICIES = [
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/enrichment/related/curation?path=...",
+    category: "relatedNotesCurationRead",
+    requiredPermissions: ["readIndex"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true, userCuration: true }),
+    networkExposureSafe: false,
+    notes: "Readers may inspect bounded durable Related Notes curation metadata.",
+  },
+  {
+    method: "PUT",
+    routePattern: "/api/vaults/:vaultId/enrichment/related/curation",
+    category: "relatedNotesCurationWrite",
+    requiredPermissions: ["readIndex", "writeContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true, userCuration: true }),
+    networkExposureSafe: false,
+    notes: "Writing curation changes durable AREPO relationship metadata, not source Markdown.",
+  },
+  {
+    method: "DELETE",
+    routePattern: "/api/vaults/:vaultId/enrichment/related/curation",
+    category: "relatedNotesCurationWrite",
+    requiredPermissions: ["readIndex", "writeContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true, userCuration: true }),
+    networkExposureSafe: false,
+    notes: "Clearing curation changes durable AREPO relationship metadata, not source Markdown.",
+  },
   {
     method: "OPTIONS",
     routePattern: "*",

@@ -23,6 +23,7 @@ import {
   writeRelatedNotesPreference,
 } from "./enrichmentPreferences.js";
 import { relatedNotesCachePath } from "./relatedNotesCache.js";
+import { relatedNotesCurationPath } from "./relatedNotesCuration.js";
 import { namedRelatedNotesPreference } from "../src/lib/vault/enrichmentPreferences.js";
 import { PROTECTED_ROUTE_POLICIES } from "./routePermissions.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
@@ -3924,4 +3925,232 @@ test("protected related-note endpoint requires both readIndex and readContent", 
   );
   assert.equal(allowed.status, 200);
   assert.equal(JSON.stringify(allowed.body).includes(rootPath), false);
+});
+
+test("curation API keeps, dismisses, clears, and composes after deterministic cache", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-curation-server-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-curation-server-vault-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootPath, "curation-server-vault");
+  await fs.writeFile(path.join(rootPath, "a.md"), "# A\ncanonical stale conflict version");
+  await fs.writeFile(path.join(rootPath, "b.md"), "# B\ncanonical stale conflict version");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  await writeRelatedNotesPreference(vault, namedRelatedNotesPreference("balanced", true), cwd);
+  const relatedUrl = `/api/vaults/${vault.id}/enrichment/related?path=a.md`;
+  const curationUrl = `/api/vaults/${vault.id}/enrichment/related/curation`;
+  const first = await routeRequest(request("GET", relatedUrl), cwd);
+  assert.equal(first.status, 200);
+  assert.equal((first.body as { candidates: unknown[] }).candidates.length, 1);
+  const cacheFile = await relatedNotesCachePath(vault, cwd);
+  const cached = await fs.readFile(cacheFile, "utf8");
+
+  const kept = await routeRequest(
+    request("PUT", curationUrl, { leftPath: "b.md", rightPath: "a.md", decision: "kept" }),
+    cwd,
+  );
+  assert.equal(kept.status, 200);
+  assert.equal((kept.body as { decision: { leftPath: string } }).decision.leftPath, "a.md");
+  let related = await routeRequest(request("GET", relatedUrl), cwd);
+  assert.deepEqual((related.body as { candidates: unknown[] }).candidates, []);
+  assert.equal(
+    (related.body as { curation: { kept: { targetPath: string }[] } }).curation.kept[0]?.targetPath,
+    "b.md",
+  );
+  assert.equal(await fs.readFile(cacheFile, "utf8"), cached);
+
+  const cleared = await routeRequest(
+    request("DELETE", curationUrl, { leftPath: "a.md", rightPath: "b.md" }),
+    cwd,
+  );
+  assert.equal(cleared.status, 200);
+  related = await routeRequest(request("GET", relatedUrl), cwd);
+  assert.equal((related.body as { candidates: unknown[] }).candidates.length, 1);
+
+  await routeRequest(
+    request("PUT", curationUrl, { leftPath: "a.md", rightPath: "b.md", decision: "dismissed" }),
+    cwd,
+  );
+  related = await routeRequest(request("GET", relatedUrl), cwd);
+  assert.deepEqual((related.body as { candidates: unknown[] }).candidates, []);
+  assert.deepEqual((related.body as { curation: { kept: unknown[] } }).curation.kept, []);
+  const relevant = await routeRequest(request("GET", `${curationUrl}?path=a.md`), cwd);
+  assert.equal(relevant.status, 200);
+  assert.equal((relevant.body as { canMutate: boolean }).canMutate, true);
+  assert.deepEqual((relevant.body as { summary: unknown }).summary, { kept: 0, dismissed: 1 });
+});
+
+test("generated-data discard and enrichment disable preserve durable curation", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-curation-cleanup-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-curation-cleanup-vault-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootPath, "curation-cleanup-vault");
+  await fs.writeFile(path.join(rootPath, "a.md"), "# A\ncanonical stale conflict version");
+  await fs.writeFile(path.join(rootPath, "b.md"), "# B\ncanonical stale conflict version");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  await writeRelatedNotesPreference(vault, namedRelatedNotesPreference("balanced", true), cwd);
+  const curationUrl = `/api/vaults/${vault.id}/enrichment/related/curation`;
+  await routeRequest(
+    request("PUT", curationUrl, { leftPath: "a.md", rightPath: "b.md", decision: "kept" }),
+    cwd,
+  );
+  await routeRequest(
+    request("PUT", `/api/vaults/${vault.id}/enrichment/settings`, {
+      relatedNotes: namedRelatedNotesPreference("balanced", false),
+    }),
+    cwd,
+  );
+  const curationFile = await relatedNotesCurationPath(vault, cwd);
+  await fs.access(curationFile);
+  const removed = await routeRequest(
+    request("DELETE", `/api/vaults/${vault.id}`, { generatedDataAction: "discard" }),
+    cwd,
+  );
+  assert.equal(removed.status, 200);
+  await fs.access(curationFile);
+  assert.equal((await fs.readFile(curationFile, "utf8")).includes('"decision": "kept"'), true);
+});
+
+test("vault rebind preserves same-ID curation and reconciles it against the new root", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-curation-rebind-cwd-");
+  const rootA = await makeTestTempDir(t, "arepo-curation-rebind-a-");
+  const rootB = await makeTestTempDir(t, "arepo-curation-rebind-b-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootA, "curation-rebind-vault");
+  for (const root of [rootA, rootB]) {
+    await fs.writeFile(path.join(root, "a.md"), "# A\ncanonical stale conflict version");
+    await fs.writeFile(path.join(root, "b.md"), "# B\ncanonical stale conflict version");
+  }
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  const curationUrl = `/api/vaults/${vault.id}/enrichment/related/curation`;
+  assert.equal(
+    (
+      await routeRequest(
+        request("PUT", curationUrl, {
+          leftPath: "a.md",
+          rightPath: "b.md",
+          decision: "kept",
+        }),
+        cwd,
+      )
+    ).status,
+    200,
+  );
+
+  const rebound = await routeRequest(
+    request("POST", `/api/vaults/${vault.id}/rebind`, { rootPath: rootB }),
+    cwd,
+  );
+  assert.equal(rebound.status, 200);
+  const curation = await routeRequest(request("GET", curationUrl), cwd);
+  assert.equal(curation.status, 200);
+  assert.deepEqual((curation.body as { summary: unknown }).summary, { kept: 1, dismissed: 0 });
+  assert.equal(
+    (curation.body as { decisions: { freshness: string }[] }).decisions[0]?.freshness,
+    "current",
+  );
+});
+
+test("AREPO-managed rename updates durable curation only after source rename succeeds", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-curation-rename-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-curation-rename-vault-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootPath, "curation-rename-vault");
+  await fs.writeFile(path.join(rootPath, "a.md"), "# A\ncanonical stale conflict version");
+  await fs.writeFile(path.join(rootPath, "b.md"), "# B\ncanonical stale conflict version");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  const curationUrl = `/api/vaults/${vault.id}/enrichment/related/curation`;
+  await routeRequest(
+    request("PUT", curationUrl, { leftPath: "a.md", rightPath: "b.md", decision: "kept" }),
+    cwd,
+  );
+  const renamed = await routeRequest(
+    request("POST", `/api/vaults/${vault.id}/rename`, {
+      fromPath: "a.md",
+      toPath: "renamed.md",
+      kind: "file",
+    }),
+    cwd,
+  );
+  assert.equal(renamed.status, 200);
+  const stored = await fs.readFile(await relatedNotesCurationPath(vault, cwd), "utf8");
+  assert.equal(stored.includes('"rightPath": "renamed.md"'), true);
+  assert.equal(stored.includes('"leftPath": "a.md"'), false);
+});
+
+test("managed rename stays successful when subsequent curation bookkeeping is degraded", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-curation-rename-warning-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-curation-rename-warning-vault-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootPath, "curation-rename-warning-vault");
+  await fs.writeFile(path.join(rootPath, "old.md"), "# Old\nbody");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  const curationFile = await relatedNotesCurationPath(vault, cwd);
+  await fs.mkdir(path.dirname(curationFile), { recursive: true });
+  await fs.writeFile(curationFile, "invalid curation state", "utf8");
+
+  const renamed = await routeRequest(
+    request("POST", `/api/vaults/${vault.id}/rename`, {
+      fromPath: "old.md",
+      toPath: "new.md",
+      kind: "file",
+    }),
+    cwd,
+  );
+  assert.equal(renamed.status, 200);
+  assert.equal((renamed.body as { ok: boolean }).ok, true);
+  const data = (
+    renamed.body as {
+      data: { fromPath: string; toPath: string; curationDiagnostic?: string };
+    }
+  ).data;
+  assert.deepEqual(
+    { fromPath: data.fromPath, toPath: data.toPath },
+    { fromPath: "old.md", toPath: "new.md" },
+  );
+  assert.equal(
+    data.curationDiagnostic,
+    "Stored Related Notes curation was invalid or unreadable; no decisions were applied.",
+  );
+  assert.equal(JSON.stringify(renamed.body).includes(rootPath), false);
+  await fs.access(path.join(rootPath, "new.md"));
+  await assert.rejects(() => fs.access(path.join(rootPath, "old.md")), { code: "ENOENT" });
+  assert.equal(await fs.readFile(curationFile, "utf8"), "invalid curation state");
+});
+
+test("protected curation reads require readIndex and writes require readIndex plus writeContent", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-curation-protected-cwd-");
+  const rootA = await makeTestTempDir(t, "arepo-curation-protected-a-");
+  const rootB = await makeTestTempDir(t, "arepo-curation-protected-b-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vaultA = testVault(rootA, "curation-protected-a");
+  const vaultB = testVault(rootB, "curation-protected-b");
+  for (const root of [rootA, rootB]) {
+    await fs.writeFile(path.join(root, "a.md"), "# A\ncanonical stale conflict version");
+    await fs.writeFile(path.join(root, "b.md"), "# B\ncanonical stale conflict version");
+  }
+  await writeConfig(cwd, appDataDir, {
+    auth: { mode: "protected" },
+    vaults: [vaultA, vaultB],
+  });
+  const authorization = { authorization: `Bearer ${protectedBearerToken}` };
+  const urlA = `/api/vaults/${vaultA.id}/enrichment/related/curation`;
+  const urlB = `/api/vaults/${vaultB.id}/enrichment/related/curation`;
+  await writeProtectedAuthStores(appDataDir, {
+    vaultId: vaultA.id,
+    vaultPermissions: ["readIndex"],
+  });
+  const readable = await routeRequest(request("GET", urlA, undefined, authorization), cwd);
+  assert.equal(readable.status, 200);
+  assert.equal((readable.body as { canMutate: boolean }).canMutate, false);
+  const body = { leftPath: "a.md", rightPath: "b.md", decision: "kept" };
+  assert.equal((await routeRequest(request("PUT", urlA, body, authorization), cwd)).status, 403);
+
+  await writeProtectedAuthStores(appDataDir, {
+    vaultId: vaultA.id,
+    vaultPermissions: ["readIndex", "writeContent"],
+  });
+  assert.equal((await routeRequest(request("PUT", urlA, body, authorization), cwd)).status, 200);
+  const deniedOther = await routeRequest(request("PUT", urlB, body, authorization), cwd);
+  assert.equal(deniedOther.status, 403);
+  assert.equal(JSON.stringify(deniedOther.body).includes(rootB), false);
 });

@@ -27,7 +27,13 @@ import {
   RELATED_NOTES_DERIVATION_VERSION,
   RELATED_NOTES_PRODUCER,
   RELATED_NOTES_PRODUCER_VERSION,
+  RELATED_NOTES_CURATION_MAX_DECISIONS,
+  compareRelatedNotesCurationPaths,
   type RelatedNoteEvidence,
+  type RelatedNotesCurationFreshness,
+  type RelatedNotesCurationMutationResponse,
+  type RelatedNotesCurationPresentation,
+  type RelatedNotesCurationResponse,
   type RelatedNotesEndpointResponse,
   type RelatedNotesResponse,
 } from "./enrichmentContracts.ts";
@@ -475,10 +481,22 @@ export function isOperationResult<T>(dataGuard: ApiGuard<T>): ApiGuard<Operation
 export const isPathMutationData: ApiGuard<{ path: string }> = (value): value is { path: string } =>
   isObjectRecord(value) && isRelativeVaultPath(value.path);
 
-export const isRenameMutationData: ApiGuard<{ fromPath: string; toPath: string }> = (
+export const isRenameMutationData: ApiGuard<{
+  fromPath: string;
+  toPath: string;
+  curationDiagnostic?: string;
+}> = (
   value,
-): value is { fromPath: string; toPath: string } =>
-  isObjectRecord(value) && isRelativeVaultPath(value.fromPath) && isRelativeVaultPath(value.toPath);
+): value is {
+  fromPath: string;
+  toPath: string;
+  curationDiagnostic?: string;
+} =>
+  isObjectRecord(value) &&
+  isRelativeVaultPath(value.fromPath) &&
+  isRelativeVaultPath(value.toPath) &&
+  (value.curationDiagnostic === undefined ||
+    (typeof value.curationDiagnostic === "string" && value.curationDiagnostic.length <= 512));
 
 export const isAddVaultData: ApiGuard<{ vault: VaultInfo }> = (
   value,
@@ -602,6 +620,77 @@ export const isEnrichmentPreferencesResponse: ApiGuard<EnrichmentPreferencesResp
   value,
 ): value is EnrichmentPreferencesResponse => isSharedEnrichmentPreferencesResponse(value);
 
+export const isRelatedNotesCurationResponse: ApiGuard<RelatedNotesCurationResponse> = (
+  value,
+): value is RelatedNotesCurationResponse => {
+  if (
+    !isObjectRecord(value) ||
+    (value.status !== "ready" && value.status !== "invalid") ||
+    typeof value.vaultId !== "string" ||
+    value.vaultId.length < 1 ||
+    value.vaultId.length > 128 ||
+    (value.sourcePath !== undefined && !isMarkdownPath(value.sourcePath)) ||
+    typeof value.canMutate !== "boolean" ||
+    !isObjectRecord(value.summary) ||
+    !hasOnlyKeys(value.summary, ["kept", "dismissed"]) ||
+    !isNonNegativeInteger(value.summary.kept) ||
+    !isNonNegativeInteger(value.summary.dismissed) ||
+    value.summary.kept + value.summary.dismissed > RELATED_NOTES_CURATION_MAX_DECISIONS ||
+    !Array.isArray(value.decisions) ||
+    value.decisions.length > RELATED_NOTES_CURATION_MAX_DECISIONS ||
+    !value.decisions.every(isCurationPresentation) ||
+    (value.diagnostic !== undefined &&
+      (typeof value.diagnostic !== "string" || value.diagnostic.length > 512)) ||
+    !hasOnlyKeys(value, [
+      "status",
+      "vaultId",
+      "sourcePath",
+      "canMutate",
+      "summary",
+      "decisions",
+      "diagnostic",
+    ])
+  ) {
+    return false;
+  }
+  if (
+    value.status === "invalid" &&
+    (typeof value.diagnostic !== "string" ||
+      value.canMutate ||
+      value.summary.kept !== 0 ||
+      value.summary.dismissed !== 0 ||
+      value.decisions.length !== 0)
+  ) {
+    return false;
+  }
+  if (value.status === "ready" && value.diagnostic !== undefined) return false;
+  const keys = new Set<string>();
+  for (const decision of value.decisions) {
+    const key = `${decision.leftPath}\0${decision.rightPath}`;
+    if (keys.has(key)) return false;
+    keys.add(key);
+    if (
+      value.sourcePath !== undefined &&
+      decision.leftPath !== value.sourcePath &&
+      decision.rightPath !== value.sourcePath
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+export const isRelatedNotesCurationMutationResponse: ApiGuard<
+  RelatedNotesCurationMutationResponse
+> = (value): value is RelatedNotesCurationMutationResponse => {
+  if (!isObjectRecord(value) || (value.status !== "updated" && value.status !== "cleared")) {
+    return false;
+  }
+  if (!hasOnlyKeys(value, ["status", "decision"])) return false;
+  if (value.status === "updated") return isCurationPresentation(value.decision);
+  return value.decision === undefined;
+};
+
 function isRelatedNotesDisabledResponse(value: unknown): boolean {
   return (
     isObjectRecord(value) &&
@@ -641,8 +730,98 @@ function isReadyRelatedNotesResponse(value: unknown): value is RelatedNotesRespo
         candidate.evidence.length > 0 &&
         candidate.evidence.length <= 5 &&
         candidate.evidence.every(isRelatedNoteEvidence),
-    )
+    ) &&
+    isRelatedNotesCurationResult(value.curation, value.sourcePath)
   );
+}
+
+function isRelatedNotesCurationResult(value: unknown, sourcePath: string): boolean {
+  if (
+    !isObjectRecord(value) ||
+    (value.status !== "ready" && value.status !== "invalid") ||
+    !Array.isArray(value.kept) ||
+    value.kept.length > RELATED_NOTES_CURATION_MAX_DECISIONS ||
+    !hasOnlyKeys(value, ["status", "kept", "diagnostic"]) ||
+    (value.diagnostic !== undefined &&
+      (typeof value.diagnostic !== "string" || value.diagnostic.length > 512))
+  ) {
+    return false;
+  }
+  if (
+    value.status === "invalid" &&
+    (typeof value.diagnostic !== "string" || value.kept.length !== 0)
+  ) {
+    return false;
+  }
+  if (value.status === "ready" && value.diagnostic !== undefined) return false;
+  const paths = new Set<string>();
+  return value.kept.every((entry) => {
+    if (
+      !isObjectRecord(entry) ||
+      !hasOnlyKeys(entry, ["targetPath", "decidedAt", "freshness"]) ||
+      !isMarkdownPath(entry.targetPath) ||
+      entry.targetPath === sourcePath ||
+      !isIsoTimestamp(entry.decidedAt) ||
+      !isCurationFreshness(entry.freshness) ||
+      paths.has(entry.targetPath)
+    ) {
+      return false;
+    }
+    paths.add(entry.targetPath);
+    return true;
+  });
+}
+
+function isCurationPresentation(value: unknown): value is RelatedNotesCurationPresentation {
+  return (
+    isObjectRecord(value) &&
+    hasOnlyKeys(value, [
+      "leftPath",
+      "rightPath",
+      "decision",
+      "decidedAt",
+      "freshness",
+      "producerAtDecision",
+      "producerVersionAtDecision",
+    ]) &&
+    isMarkdownPath(value.leftPath) &&
+    isMarkdownPath(value.rightPath) &&
+    compareRelatedNotesCurationPaths(value.leftPath, value.rightPath) < 0 &&
+    (value.decision === "kept" || value.decision === "dismissed") &&
+    isIsoTimestamp(value.decidedAt) &&
+    isCurationFreshness(value.freshness) &&
+    (value.producerAtDecision === undefined ||
+      (typeof value.producerAtDecision === "string" &&
+        value.producerAtDecision.length > 0 &&
+        value.producerAtDecision.length <= 128)) &&
+    (value.producerVersionAtDecision === undefined ||
+      (typeof value.producerVersionAtDecision === "number" &&
+        Number.isInteger(value.producerVersionAtDecision) &&
+        value.producerVersionAtDecision >= 1))
+  );
+}
+
+function isCurationFreshness(value: unknown): value is RelatedNotesCurationFreshness {
+  return [
+    "current",
+    "left-changed",
+    "right-changed",
+    "both-changed",
+    "left-missing",
+    "right-missing",
+    "both-missing",
+  ].includes(value as RelatedNotesCurationFreshness);
+}
+
+function isIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 64) return false;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+  const keys = new Set(allowed);
+  return Object.keys(value).every((key) => keys.has(key));
 }
 
 function isRelatedNoteEvidence(value: unknown): value is RelatedNoteEvidence {

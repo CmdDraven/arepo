@@ -22,6 +22,12 @@ import { getRelatedNotes } from "./relatedNotesCache.js";
 import { updateRelatedNotesPreferencesAndCache } from "./relatedNotesCache.js";
 import { readEnrichmentPreferences } from "./enrichmentPreferences.js";
 import {
+  clearRelatedNotesCurationDecision,
+  readRelatedNotesCuration,
+  renameRelatedNotesCurationPaths,
+  setRelatedNotesCurationDecision,
+} from "./relatedNotesCuration.js";
+import {
   getLocalNodeHealth,
   getLocalNodeInfo,
   getLocalNodeRuntimeStatus,
@@ -62,6 +68,7 @@ import { projectVaultList } from "./vaultListVisibility.js";
 import { apiErrorResponse, PublicApiError } from "./publicApiError.js";
 import { browseServerDirectories } from "./directoryBrowser.js";
 import type { VaultIndexResponse, VaultInfo } from "./types.js";
+import type { VaultListAccess } from "./vaultListVisibility.js";
 
 export type RequestLike = Pick<http.IncomingMessage, "method" | "url" | "headers"> &
   AsyncIterable<Buffer> & {
@@ -288,8 +295,25 @@ export async function routeRequest(
           body.toPath,
           body.kind === "folder" ? "folder" : "file",
         );
+        const curation = await renameRelatedNotesCurationPaths(
+          vault,
+          data.fromPath,
+          data.toPath,
+          body.kind === "folder" ? "folder" : "file",
+          cwd,
+        );
         await recordVaultMutation(vault, cwd);
-        return json(200, { ok: true, data }, cors.headers);
+        return json(
+          200,
+          {
+            ok: true,
+            data: {
+              ...data,
+              ...(curation.diagnostic ? { curationDiagnostic: curation.diagnostic } : {}),
+            },
+          },
+          cors.headers,
+        );
       }
 
       if (method === "DELETE" && action === "file") {
@@ -331,6 +355,51 @@ export async function routeRequest(
           buildVaultInspectResponse(data, url.searchParams.get("path")),
           cors.headers,
         );
+      }
+
+      if (
+        method === "GET" &&
+        action === "enrichment" &&
+        segments[4] === "related" &&
+        segments[5] === "curation"
+      ) {
+        const machine = await getTrackedMachineIndexResult(vault, cwd);
+        return json(
+          200,
+          await readRelatedNotesCuration(
+            vault,
+            machine,
+            url.searchParams.has("path") ? url.searchParams.get("path") : undefined,
+            canMutateRelatedNotesCuration(vault, protectedMode.vaultListAccess),
+            cwd,
+          ),
+          cors.headers,
+        );
+      }
+
+      if (
+        method === "PUT" &&
+        action === "enrichment" &&
+        segments[4] === "related" &&
+        segments[5] === "curation"
+      ) {
+        const body = asRecord(await readJson(request));
+        const machine = await getTrackedMachineIndexResult(vault, cwd);
+        return json(
+          200,
+          await setRelatedNotesCurationDecision(vault, machine, body, cwd),
+          cors.headers,
+        );
+      }
+
+      if (
+        method === "DELETE" &&
+        action === "enrichment" &&
+        segments[4] === "related" &&
+        segments[5] === "curation"
+      ) {
+        const body = asRecord(await readJson(request));
+        return json(200, await clearRelatedNotesCurationDecision(vault, body, cwd), cors.headers);
       }
 
       if (method === "GET" && action === "enrichment" && segments[4] === "related") {
@@ -505,6 +574,17 @@ function initialNote(rawPath: unknown): string {
   const path = typeof rawPath === "string" ? rawPath : "untitled.md";
   const slug = path.split("/").pop()?.replace(/\.md$/i, "") || "untitled";
   return `---\nid: ${slug}\ntitle: ${slug}\ntags: []\n---\n\n# ${slug}\n\n`;
+}
+
+function canMutateRelatedNotesCuration(vault: VaultInfo, access: VaultListAccess): boolean {
+  if (!vault.permissions.readIndex || !vault.permissions.writeContent) return false;
+  if (access.authMode === "disabled") return true;
+  return access.vaultGrants.some(
+    (grant) =>
+      grant.vaultId === vault.id &&
+      grant.permissions.includes("readIndex") &&
+      grant.permissions.includes("writeContent"),
+  );
 }
 
 async function main(): Promise<void> {

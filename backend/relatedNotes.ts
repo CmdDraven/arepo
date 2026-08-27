@@ -3,7 +3,7 @@ import { stripCodeForIndexing, type NoteIndex } from "../src/lib/vault/indexer.j
 import type {
   RelatedNoteCandidate,
   RelatedNoteEvidence,
-  RelatedNotesResponse,
+  RelatedNotesDerivedResponse,
 } from "../src/lib/vault/enrichmentContracts.js";
 import {
   RELATED_NOTES_DERIVATION_VERSION,
@@ -101,7 +101,7 @@ export type RelatedNotesDerivationStats = {
 };
 
 export type RelatedNotesCorpus = {
-  results: Map<string, RelatedNotesResponse>;
+  results: Map<string, RelatedNotesDerivedResponse>;
   stats: RelatedNotesDerivationStats;
 };
 
@@ -265,7 +265,7 @@ export function deriveRelatedNotesCorpus(
     if (rightCandidate) candidates.get(right.path)?.push(rightCandidate);
   }
 
-  const results = new Map<string, RelatedNotesResponse>();
+  const results = new Map<string, RelatedNotesDerivedResponse>();
   for (const source of prepared) {
     const ranked = (candidates.get(source.path) ?? [])
       .sort((a, b) => b.score - a.score || a.targetPath.localeCompare(b.targetPath))

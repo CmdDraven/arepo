@@ -48,6 +48,9 @@ const currentBackendRoutes = [
   "GET /api/vaults/:vaultId/enrichment/settings",
   "PUT /api/vaults/:vaultId/enrichment/settings",
   "GET /api/vaults/:vaultId/enrichment/related?path=...",
+  "GET /api/vaults/:vaultId/enrichment/related/curation?path=...",
+  "PUT /api/vaults/:vaultId/enrichment/related/curation",
+  "DELETE /api/vaults/:vaultId/enrichment/related/curation",
 ];
 
 function routeKey(policy: ProtectedRoutePolicy): string {
@@ -140,6 +143,19 @@ test("enrichment preferences are readable with readIndex and writable only by va
   const write = policyFor("PUT /api/vaults/:vaultId/enrichment/settings");
   assert.deepEqual(write.requiredPermissions, ["manageVaults"]);
   assert.equal(write.dataAccess.nodeManagement, true);
+});
+
+test("Related Notes curation is readable with readIndex and mutable with writeContent", () => {
+  const read = policyFor("GET /api/vaults/:vaultId/enrichment/related/curation?path=...");
+  assert.deepEqual(read.requiredPermissions, ["readIndex"]);
+  assert.equal(read.dataAccess.userCuration, true);
+  assert.equal(read.dataAccess.sourceContent, false);
+  for (const method of ["PUT", "DELETE"] as const) {
+    const write = policyFor(`${method} /api/vaults/:vaultId/enrichment/related/curation`);
+    assert.deepEqual(write.requiredPermissions, ["readIndex", "writeContent"]);
+    assert.equal(write.dataAccess.userCuration, true);
+    assert.equal(write.dataAccess.sourceMutation, false);
+  }
 });
 
 test("source mutations require writeContent", () => {

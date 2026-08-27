@@ -9,6 +9,13 @@ The labels are evaluation data, not training data. They never enter production
 weights, thresholds, caches, user vaults, or ranking. The harness does not tune
 the current producer.
 
+Durable user Keep/Dismiss decisions are also excluded from this harness. The
+locked baseline measures raw Balanced V1 producer output before presentation
+filtering, so personal curation can neither improve nor degrade benchmark
+metrics. The attempted local semantic comparison remains deferred for runtime
+maturity after maintained and legacy JavaScript runtimes failed the project's
+installation/security gates; no model dependency or asset was retained.
+
 ## Corpus and ratings
 
 [`evaluation/related-notes-v1.json`](../evaluation/related-notes-v1.json) is a

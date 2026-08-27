@@ -19,6 +19,7 @@ export type BrowserSecurityRequestClass =
   | "safeReadMetadata"
   | "sourceContentRead"
   | "sourceMutation"
+  | "curationMutation"
   | "delete"
   | "authManagement"
   | "vaultManagement"
@@ -99,6 +100,8 @@ const categoryRequestClasses: Record<RoutePolicyCategory, BrowserSecurityRequest
   indexSearch: "safeReadMetadata",
   indexInspect: "safeReadMetadata",
   relatedNotes: "sourceContentRead",
+  relatedNotesCurationRead: "safeReadMetadata",
+  relatedNotesCurationWrite: "curationMutation",
   enrichmentSettingsRead: "safeReadMetadata",
   enrichmentSettingsWrite: "vaultManagement",
 };
@@ -167,7 +170,13 @@ function requiresCsrfCheck(
   requestClass: BrowserSecurityRequestClass,
 ): boolean {
   if (client !== "browserCookieSession") return false;
-  return ["sourceMutation", "delete", "authManagement", "vaultManagement"].includes(requestClass);
+  return [
+    "sourceMutation",
+    "curationMutation",
+    "delete",
+    "authManagement",
+    "vaultManagement",
+  ].includes(requestClass);
 }
 
 function confirmationsForClass(

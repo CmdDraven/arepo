@@ -21,6 +21,10 @@ import {
   updateRelatedNotesPreferencesAndCache,
 } from "./relatedNotesCache.js";
 import type { VaultInfo } from "./types.js";
+import {
+  readRelatedNotesCuration,
+  setRelatedNotesCurationDecision,
+} from "./relatedNotesCuration.js";
 
 async function makeVault(
   t: TestContext,
@@ -89,6 +93,87 @@ test("default-off returns disabled without loading the index, reading bodies, or
   assert.equal(vaultOpens, 0);
   const file = await relatedNotesCachePath(vault, cwd);
   await assert.rejects(() => fs.access(file), { code: "ENOENT" });
+});
+
+test("curation filters cache hits without invalidation or Markdown body rereads", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  const machine = await getMachineIndexResult(vault, cwd);
+  const first = await getRelatedNotes(vault, "a.md", machine, cwd);
+  assert.equal(first.cacheStatus, "rebuilt");
+  const candidate = first.data.status === "ready" ? first.data.candidates[0] : undefined;
+  assert.ok(candidate);
+  const cacheFile = await relatedNotesCachePath(vault, cwd);
+  const cacheBefore = await fs.readFile(cacheFile, "utf8");
+
+  const originalOpen = fs.open;
+  t.after(() => {
+    fs.open = originalOpen;
+  });
+  let markdownOpens = 0;
+  fs.open = (async (file, ...args) => {
+    if (typeof file === "string" && file.startsWith(vault.rootPath) && file.endsWith(".md")) {
+      markdownOpens += 1;
+    }
+    return originalOpen(file, ...args);
+  }) as typeof fs.open;
+  await setRelatedNotesCurationDecision(
+    vault,
+    machine,
+    {
+      leftPath: "a.md",
+      rightPath: candidate.targetPath,
+      decision: "dismissed",
+    },
+    cwd,
+  );
+  const filtered = await getRelatedNotes(vault, "a.md", machine, cwd);
+  assert.equal(filtered.cacheStatus, "hit");
+  assert.equal(
+    filtered.data.status === "ready" &&
+      filtered.data.candidates.some((item) => item.targetPath === candidate.targetPath),
+    false,
+  );
+  assert.equal(markdownOpens, 0);
+  assert.equal(await fs.readFile(cacheFile, "utf8"), cacheBefore);
+});
+
+test("disabled enrichment preserves curation and re-enable restores suppression", async (t) => {
+  const { cwd, vault } = await makeVault(t);
+  const machine = await getMachineIndexResult(vault, cwd);
+  const ready = await getRelatedNotes(vault, "a.md", machine, cwd);
+  const candidate = ready.data.status === "ready" ? ready.data.candidates[0] : undefined;
+  assert.ok(candidate);
+  await setRelatedNotesCurationDecision(
+    vault,
+    machine,
+    {
+      leftPath: "a.md",
+      rightPath: candidate.targetPath,
+      decision: "dismissed",
+    },
+    cwd,
+  );
+  await updateRelatedNotesPreferencesAndCache(
+    vault,
+    namedRelatedNotesPreference("balanced", false),
+    cwd,
+  );
+  assert.equal((await getRelatedNotes(vault, "a.md", machine, cwd)).data.status, "disabled");
+  assert.equal(
+    (await readRelatedNotesCuration(vault, machine, undefined, true, cwd)).summary.dismissed,
+    1,
+  );
+  await updateRelatedNotesPreferencesAndCache(
+    vault,
+    namedRelatedNotesPreference("balanced", true),
+    cwd,
+  );
+  const restored = await getRelatedNotes(vault, "a.md", machine, cwd);
+  assert.equal(
+    restored.data.status === "ready" &&
+      restored.data.candidates.some((item) => item.targetPath === candidate.targetPath),
+    false,
+  );
 });
 
 test("disabling purges a valid disposable cache and never serves it", async (t) => {
