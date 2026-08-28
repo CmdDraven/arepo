@@ -151,12 +151,18 @@ import {
 import { renderMarkdown } from "@/lib/vault/render";
 import { markdownBodyForRendering } from "@/lib/vault/frontmatter";
 import {
+  countExplicitOutgoingRelationships,
+  countIncomingExplicitRelationships,
+} from "@/lib/vault/indexer";
+import {
   RELATIONSHIP_PROMOTION_EXPLANATION,
   canPromoteKeptRelationship,
   initialRelationshipPromotion,
   relationshipOriginLabels,
-  relationshipPromotionTarget,
+  relationshipPromotionOwnerPaths,
+  relationshipPromotionResultNotice,
   type RelationshipPromotionDraft,
+  type RelationshipPromotionOwnership,
 } from "@/lib/vault/relationshipUi";
 import { sourcePresentation } from "@/lib/vault/sourcePresentation";
 import {
@@ -635,8 +641,8 @@ function VaultApp() {
       for (const tag of selectedNote.tags) uniqueTags.add(tag);
       totalBytes += fileMeta[path]?.size ?? 0;
       headings += selectedNote.headings.length;
-      outgoing += selectedNote.wikilinks.length;
-      backlinks += index.backlinks[path]?.length ?? 0;
+      outgoing += countExplicitOutgoingRelationships(index, path);
+      backlinks += countIncomingExplicitRelationships(index, path);
       issueCount += issues.filter((issue) => issue.path === path).length;
     }
     return {
@@ -649,7 +655,7 @@ function VaultApp() {
       tags: Array.from(uniqueTags).sort((a, b) => a.localeCompare(b)),
       paths: selectedNotePaths,
     };
-  }, [fileMeta, index.backlinks, index.notes, issues, selectedNotePaths]);
+  }, [fileMeta, index, issues, selectedNotePaths]);
   const previewBody = useMemo(() => {
     // Re-parse the live buffer so preview matches what's in the editor
     if (!activePath || activeIsReadOnly) return "";
@@ -1123,9 +1129,11 @@ function VaultApp() {
 
   const confirmRelationshipPromotion = useCallback(async (): Promise<void> => {
     if (!activeVault || !relationshipPromotion || relationshipPromotionBusy) return;
-    const ownerPath = relationshipPromotion.ownerPath;
-    const targetPath = relationshipPromotionTarget(relationshipPromotion);
-    if (ownerPath === activePath && buffer !== savedSnapshot) {
+    if (
+      activePath &&
+      relationshipPromotionOwnerPaths(relationshipPromotion).includes(activePath) &&
+      buffer !== savedSnapshot
+    ) {
       setRelationshipPromotionError(
         "Save or discard the current note edits before adding relationship metadata.",
       );
@@ -1135,27 +1143,35 @@ function VaultApp() {
     setRelationshipPromotionError(null);
     setRelationshipPromotionNotice(null);
     try {
-      const owner = await requestApi(
-        `/api/vaults/${encodeURIComponent(activeVault.id)}/file?path=${encodeURIComponent(ownerPath)}`,
-        isVaultFileResponse,
+      const [current, related] = await Promise.all(
+        [relationshipPromotion.currentPath, relationshipPromotion.relatedPath].map((sourcePath) =>
+          requestApi(
+            `/api/vaults/${encodeURIComponent(activeVault.id)}/file?path=${encodeURIComponent(sourcePath)}`,
+            isVaultFileResponse,
+          ),
+        ),
       );
       const response = await requestApi(
         `/api/vaults/${encodeURIComponent(activeVault.id)}/relationships/promote`,
         isOperationResult(isRelationshipPromotionData),
         {
           method: "POST",
-          body: JSON.stringify({ ownerPath, targetPath, expectedHash: owner.hash }),
+          body: JSON.stringify({
+            ownership: relationshipPromotion.ownership,
+            currentPath: relationshipPromotion.currentPath,
+            relatedPath: relationshipPromotion.relatedPath,
+            expectedHashes: { current: current.hash, related: related.hash },
+          }),
         },
       );
       if (!response.ok) return;
-      setRelationshipPromotionNotice(
-        response.data.curationDiagnostic ??
-          (response.data.status === "already-present"
-            ? "This relationship was already explicit in the Markdown source."
-            : `Relationship metadata was added to ${response.data.ownerPath}.`),
-      );
-      setRelationshipPromotion(null);
-      setCurationRefresh((value) => value + 1);
+      if (response.data.status === "partial") {
+        setRelationshipPromotionNotice(relationshipPromotionResultNotice(response.data));
+      } else {
+        setRelationshipPromotionNotice(relationshipPromotionResultNotice(response.data));
+        setRelationshipPromotion(null);
+        setCurationRefresh((value) => value + 1);
+      }
       await refreshActiveVault();
     } catch (failure) {
       setRelationshipPromotionError(errorMessage(failure));
@@ -1919,6 +1935,12 @@ function VaultApp() {
         metadataNote={metadataNote}
         metadataPath={metadataPath}
         metadataFileMeta={metadataFileMeta}
+        metadataOutgoingRelationshipCount={
+          metadataPath ? countExplicitOutgoingRelationships(index, metadataPath) : 0
+        }
+        metadataIncomingRelationshipCount={
+          metadataPath ? countIncomingExplicitRelationships(index, metadataPath) : 0
+        }
         onPick={inspectPath}
         onAnchor={openAnchor}
         onReindex={() => void reindex()}
@@ -2166,8 +2188,9 @@ function VaultApp() {
         draft={relationshipPromotion}
         busy={relationshipPromotionBusy}
         error={relationshipPromotionError}
-        onOwnerChange={(ownerPath) =>
-          setRelationshipPromotion((current) => (current ? { ...current, ownerPath } : null))
+        notice={relationshipPromotionNotice}
+        onOwnershipChange={(ownership) =>
+          setRelationshipPromotion((current) => (current ? { ...current, ownership } : null))
         }
         onOpenChange={(open) => {
           if (!open && !relationshipPromotionBusy) {
@@ -2623,6 +2646,8 @@ function IndexInspectPanel({
   metadataNote,
   metadataPath,
   metadataFileMeta,
+  metadataOutgoingRelationshipCount,
+  metadataIncomingRelationshipCount,
   onPick,
   onAnchor,
   onReindex,
@@ -2831,6 +2856,8 @@ function IndexInspectPanel({
             note={metadataNote}
             path={metadataPath}
             fileMeta={metadataFileMeta}
+            outgoingRelationshipCount={metadataOutgoingRelationshipCount}
+            incomingRelationshipCount={metadataIncomingRelationshipCount}
           />
         ) : (
           <Empty>Select one file, or shift-select graph nodes to view combined metadata.</Empty>
@@ -3112,9 +3139,9 @@ function CombinedMetadataDetails({ metadata }: { metadata: CombinedInspectMetada
       </dd>
       <dt className="text-muted-foreground">headings</dt>
       <dd>{metadata.headings}</dd>
-      <dt className="text-muted-foreground">outgoing</dt>
+      <dt className="text-muted-foreground">explicit outgoing relationships</dt>
       <dd>{metadata.outgoing}</dd>
-      <dt className="text-muted-foreground">backlinks</dt>
+      <dt className="text-muted-foreground">incoming explicit relationships</dt>
       <dd>{metadata.backlinks}</dd>
       <dt className="text-muted-foreground">issues</dt>
       <dd>{metadata.issueCount}</dd>
@@ -3134,10 +3161,14 @@ function SingleMetadataDetails({
   note,
   path,
   fileMeta,
+  outgoingRelationshipCount,
+  incomingRelationshipCount,
 }: {
   note: MetadataNote;
   path: string | null;
   fileMeta?: { size: number };
+  outgoingRelationshipCount: number;
+  incomingRelationshipCount: number;
 }) {
   return (
     <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
@@ -3157,8 +3188,10 @@ function SingleMetadataDetails({
       </dd>
       <dt className="text-muted-foreground">headings</dt>
       <dd>{note.headings.length}</dd>
-      <dt className="text-muted-foreground">outgoing</dt>
-      <dd>{note.wikilinks.length}</dd>
+      <dt className="text-muted-foreground">explicit outgoing relationships</dt>
+      <dd>{outgoingRelationshipCount}</dd>
+      <dt className="text-muted-foreground">incoming explicit relationships</dt>
+      <dd>{incomingRelationshipCount}</dd>
     </dl>
   );
 }
@@ -3330,14 +3363,16 @@ function RelationshipPromotionDialog({
   draft,
   busy,
   error,
-  onOwnerChange,
+  notice,
+  onOwnershipChange,
   onOpenChange,
   onConfirm,
 }: {
   draft: RelationshipPromotionDraft | null;
   busy: boolean;
   error: string | null;
-  onOwnerChange: (ownerPath: string) => void;
+  notice: string | null;
+  onOwnershipChange: (ownership: RelationshipPromotionOwnership) => void;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }) {
@@ -3351,17 +3386,17 @@ function RelationshipPromotionDialog({
         {draft && (
           <div className="space-y-3 text-sm">
             <fieldset className="space-y-2" disabled={busy}>
-              <legend className="font-medium">Choose which note stores the metadata</legend>
+              <legend className="font-medium">Store relationship in</legend>
               <label className="flex cursor-pointer items-start gap-2 rounded border p-2">
                 <input
                   type="radio"
                   name="relationship-metadata-owner"
                   className="mt-1"
-                  checked={draft.ownerPath === draft.currentPath}
-                  onChange={() => onOwnerChange(draft.currentPath)}
+                  checked={draft.ownership === "current"}
+                  onChange={() => onOwnershipChange("current")}
                 />
                 <span className="min-w-0">
-                  <span className="block">Store in current note</span>
+                  <span className="block">Current note only</span>
                   <span className="block truncate font-mono text-xs text-muted-foreground">
                     {draft.currentPath}
                   </span>
@@ -3372,21 +3407,37 @@ function RelationshipPromotionDialog({
                   type="radio"
                   name="relationship-metadata-owner"
                   className="mt-1"
-                  checked={draft.ownerPath === draft.relatedPath}
-                  onChange={() => onOwnerChange(draft.relatedPath)}
+                  checked={draft.ownership === "related"}
+                  onChange={() => onOwnershipChange("related")}
                 />
                 <span className="min-w-0">
-                  <span className="block">Store in related note</span>
+                  <span className="block">Related note only</span>
                   <span className="block truncate font-mono text-xs text-muted-foreground">
                     {draft.relatedPath}
                   </span>
                 </span>
               </label>
+              <label className="flex cursor-pointer items-start gap-2 rounded border p-2">
+                <input
+                  type="radio"
+                  name="relationship-metadata-owner"
+                  className="mt-1"
+                  checked={draft.ownership === "both"}
+                  onChange={() => onOwnershipChange("both")}
+                />
+                <span>
+                  <span className="block">Both notes</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Add reciprocal metadata to the current note first, then the related note.
+                  </span>
+                </span>
+              </label>
             </fieldset>
             <p className="text-xs text-muted-foreground">
-              Only the selected note will change. AREPO treats the pair as explicit from either
-              declaration; it will not add reciprocal metadata or visible note text.
+              AREPO can map the relationship from either note. Both records reciprocal metadata in
+              both Markdown files. No option adds visible note text.
             </p>
+            {notice && <StateMessage>{notice}</StateMessage>}
             {error && <StateMessage tone="error">{error}</StateMessage>}
           </div>
         )}
@@ -3537,7 +3588,7 @@ function KeptRelationshipList({
             )}
           </button>
           <div className="flex shrink-0 flex-col items-end gap-1">
-            {canPromoteKeptRelationship(canMutate, relationship.explicitInSource) && (
+            {canPromoteKeptRelationship(canMutate) && (
               <Button
                 type="button"
                 variant="outline"
@@ -3550,7 +3601,7 @@ function KeptRelationshipList({
                 Add to note metadata
               </Button>
             )}
-            {!canMutate && !relationship.explicitInSource && (
+            {!canMutate && (
               <span className="text-[10px] text-muted-foreground">
                 Metadata promotion requires write access.
               </span>
@@ -4418,6 +4469,8 @@ type IndexInspectPanelProps = {
   metadataNote: MetadataNote | null;
   metadataPath: string | null;
   metadataFileMeta?: { size: number };
+  metadataOutgoingRelationshipCount: number;
+  metadataIncomingRelationshipCount: number;
   onPick: (path: string) => void;
   onAnchor: (path: string, anchor: string) => void;
   onReindex: () => void;

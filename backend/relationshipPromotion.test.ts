@@ -3,13 +3,21 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 
-import { getMachineIndexResult, rebuildMachineIndex } from "./indexCache.js";
+import { buildGraph } from "../src/lib/vault/graph.js";
 import {
-  readRelatedNotesCuration,
+  getMachineIndexResult,
+  rebuildMachineIndex,
+  type MachineIndexResult,
+} from "./indexCache.js";
+import {
+  readStoredRelatedNotesCurationForTest,
   relatedNotesCurationPath,
   setRelatedNotesCurationDecision,
 } from "./relatedNotesCuration.js";
-import { promoteKeptRelationshipToMetadata } from "./relationshipPromotion.js";
+import {
+  promoteKeptRelationshipToMetadata,
+  type RelationshipPromotionOwnership,
+} from "./relationshipPromotion.js";
 import { makeTestTempDir } from "./testTemp.js";
 import type { VaultInfo } from "./types.js";
 import { readVaultFile } from "./vaultFs.js";
@@ -55,36 +63,60 @@ async function fixture(t: TestContext, permissions?: Partial<VaultInfo["permissi
 
 async function promote(
   vault: VaultInfo,
-  machine: Awaited<ReturnType<typeof getMachineIndexResult>>,
+  machine: MachineIndexResult,
   cwd: string,
-  ownerPath = "a.md",
-  targetPath = "b.md",
+  ownership: RelationshipPromotionOwnership,
 ) {
-  const owner = await readVaultFile(vault, ownerPath);
+  const [current, related] = await Promise.all([
+    readVaultFile(vault, "a.md"),
+    readVaultFile(vault, "b.md"),
+  ]);
   return promoteKeptRelationshipToMetadata(
     vault,
     machine.data,
-    { ownerPath, targetPath, expectedHash: owner.hash },
+    {
+      ownership,
+      currentPath: "a.md",
+      relatedPath: "b.md",
+      expectedHashes: { current: current.hash, related: related.hash },
+    },
     cwd,
   );
 }
 
-test("a kept pair can be promoted into either chosen owner without reciprocal mutation", async (t) => {
-  for (const ownerPath of ["a.md", "b.md"] as const) {
+async function assertCuration(vault: VaultInfo, cwd: string, expected: "kept" | "cleared") {
+  const stored = await readStoredRelatedNotesCurationForTest(vault, cwd);
+  assert.equal(stored.status, "ready");
+  if (stored.status !== "ready") return;
+  assert.equal(stored.store.decisions[0]?.decision ?? "cleared", expected);
+}
+
+async function freshMachine(vault: VaultInfo, cwd: string): Promise<MachineIndexResult> {
+  await rebuildMachineIndex(vault, cwd);
+  return getMachineIndexResult(vault, cwd);
+}
+
+test("current-only and related-only promotion mutate exactly the selected owner and clear kept", async (t) => {
+  for (const ownership of ["current", "related"] as const) {
     const { cwd, rootPath, vault, machine } = await fixture(t);
-    const targetPath = ownerPath === "a.md" ? "b.md" : "a.md";
-    const untouchedBefore = await fs.readFile(path.join(rootPath, targetPath), "utf8");
-    const result = await promote(vault, machine, cwd, ownerPath, targetPath);
-    assert.equal(result.status, "promoted");
-    assert.equal(result.ownerPath, ownerPath);
-    assert.match(
-      await fs.readFile(path.join(rootPath, ownerPath), "utf8"),
-      /related:\n {2}- "\[\[[ab]\]\]"/,
+    const owner = ownership === "current" ? "a.md" : "b.md";
+    const target = ownership === "current" ? "b.md" : "a.md";
+    const untouched = await fs.readFile(path.join(rootPath, target), "utf8");
+    const result = await promote(vault, machine, cwd, ownership);
+    assert.equal(result.status, "complete");
+    assert.equal(result.ownership, ownership);
+    assert.deepEqual(
+      result.results.map(({ role, ownerPath, targetPath, status }) => ({
+        role,
+        ownerPath,
+        targetPath,
+        status,
+      })),
+      [{ role: ownership, ownerPath: owner, targetPath: target, status: "promoted" }],
     );
-    assert.equal(await fs.readFile(path.join(rootPath, targetPath), "utf8"), untouchedBefore);
-    const current = await getMachineIndexResult(vault, cwd);
-    const curation = await readRelatedNotesCuration(vault, current, undefined, true, cwd);
-    assert.deepEqual(curation.decisions, []);
+    assert.match(await fs.readFile(path.join(rootPath, owner), "utf8"), /related:/);
+    assert.equal(await fs.readFile(path.join(rootPath, target), "utf8"), untouched);
+    await assertCuration(vault, cwd, "cleared");
   }
 });
 
@@ -93,72 +125,269 @@ test("promotion preserves existing frontmatter, comments, ordering, and body tex
   const source =
     "---\ntitle: Alpha\n# keep this comment\ntags:\n  - systems\n---\n\n# Alpha\nBody A\n";
   await fs.writeFile(path.join(rootPath, "a.md"), source, "utf8");
-  await rebuildMachineIndex(vault, cwd);
-  const machine = await getMachineIndexResult(vault, cwd);
-  const result = await promote(vault, machine, cwd);
-  assert.equal(result.status, "promoted");
+  const result = await promote(vault, await freshMachine(vault, cwd), cwd, "current");
+  assert.equal(result.status, "complete");
   assert.equal(
     await fs.readFile(path.join(rootPath, "a.md"), "utf8"),
     '---\ntitle: Alpha\n# keep this comment\ntags:\n  - systems\nrelated:\n  - "[[b]]"\n---\n\n# Alpha\nBody A\n',
   );
 });
 
-test("already-explicit metadata and body relationships are idempotent and clear kept state", async (t) => {
-  for (const source of ['---\nrelated:\n  - "[[b]]"\n---\n# Alpha\n', "# Alpha\nSee [[b]].\n"]) {
+test("Both writes reciprocal metadata current-first, preserves declarations, and maps one graph edge", async (t) => {
+  const { cwd, rootPath, vault, machine } = await fixture(t);
+  const targets = [path.join(rootPath, "a.md"), path.join(rootPath, "b.md")];
+  const published: string[] = [];
+  const originalRename = fs.rename;
+  t.after(() => {
+    fs.rename = originalRename;
+  });
+  fs.rename = (async (from, to) => {
+    if (typeof to === "string" && targets.includes(to)) published.push(to);
+    return originalRename(from, to);
+  }) as typeof fs.rename;
+
+  const result = await promote(vault, machine, cwd, "both");
+  fs.rename = originalRename;
+  assert.equal(result.status, "complete");
+  assert.deepEqual(
+    result.results.map((owner) => [owner.role, owner.status]),
+    [
+      ["current", "promoted"],
+      ["related", "promoted"],
+    ],
+  );
+  assert.deepEqual(published, targets);
+  assert.match(await fs.readFile(targets[0], "utf8"), / {2}- "\[\[b\]\]"/);
+  assert.match(await fs.readFile(targets[1], "utf8"), / {2}- "\[\[a\]\]"/);
+  await assertCuration(vault, cwd, "cleared");
+
+  const rebuilt = await freshMachine(vault, cwd);
+  assert.deepEqual(rebuilt.data.index.outgoingLinks["a.md"]?.[0]?.origins, ["metadata"]);
+  assert.deepEqual(rebuilt.data.index.outgoingLinks["b.md"]?.[0]?.origins, ["metadata"]);
+  assert.equal(rebuilt.data.index.outgoingLinks["a.md"]?.[0]?.targetPath, "b.md");
+  assert.equal(rebuilt.data.index.outgoingLinks["b.md"]?.[0]?.targetPath, "a.md");
+  const graph = buildGraph(rebuilt.data.index, rebuilt.data.issues);
+  assert.equal(
+    graph.edges.filter(
+      (edge) => edge.type === "wikilink" && edge.source === "a.md" && edge.target === "b.md",
+    ).length,
+    1,
+  );
+});
+
+test("Both is idempotent for A-present/B-absent, A-absent/B-present, and both-present", async (t) => {
+  for (const present of ["current", "related", "both"] as const) {
     const { cwd, rootPath, vault } = await fixture(t);
-    await fs.writeFile(path.join(rootPath, "a.md"), source, "utf8");
-    await rebuildMachineIndex(vault, cwd);
-    const machine = await getMachineIndexResult(vault, cwd);
-    const before = await fs.readFile(path.join(rootPath, "a.md"), "utf8");
-    const result = await promote(vault, machine, cwd);
-    assert.equal(result.status, "already-present");
-    assert.equal(await fs.readFile(path.join(rootPath, "a.md"), "utf8"), before);
-    const curation = await readRelatedNotesCuration(vault, machine, undefined, true, cwd);
-    assert.deepEqual(curation.decisions, []);
+    if (present === "current" || present === "both") {
+      await fs.writeFile(
+        path.join(rootPath, "a.md"),
+        '---\nrelated:\n  - "[[b]]"\n---\n# Alpha\nBody A\n',
+      );
+    }
+    if (present === "related" || present === "both") {
+      await fs.writeFile(
+        path.join(rootPath, "b.md"),
+        '---\nrelated:\n  - "[[a]]"\n---\n# Beta\nBody B\n',
+      );
+    }
+    const beforeA = await fs.readFile(path.join(rootPath, "a.md"), "utf8");
+    const beforeB = await fs.readFile(path.join(rootPath, "b.md"), "utf8");
+    const result = await promote(vault, await freshMachine(vault, cwd), cwd, "both");
+    assert.equal(result.status, "complete");
+    assert.deepEqual(
+      result.results.map((owner) => owner.status),
+      present === "current"
+        ? ["already-present", "promoted"]
+        : present === "related"
+          ? ["promoted", "already-present"]
+          : ["already-present", "already-present"],
+    );
+    if (present === "current" || present === "both") {
+      assert.equal(await fs.readFile(path.join(rootPath, "a.md"), "utf8"), beforeA);
+    }
+    if (present === "related" || present === "both") {
+      assert.equal(await fs.readFile(path.join(rootPath, "b.md"), "utf8"), beforeB);
+    }
+    await assertCuration(vault, cwd, "cleared");
   }
 });
 
-test("unsupported or malformed related metadata is refused without changing source or curation", async (t) => {
-  for (const source of [
-    '---\nrelated: "[[b]]"\n---\n# Alpha\n',
-    "---\ntitle: Alpha\n# missing closing delimiter\n",
-  ]) {
+test("a body wikilink does not satisfy requested metadata ownership", async (t) => {
+  const { cwd, rootPath, vault } = await fixture(t);
+  await fs.writeFile(path.join(rootPath, "a.md"), "# Alpha\nSee [[b]] in prose.\n");
+  const result = await promote(vault, await freshMachine(vault, cwd), cwd, "both");
+  assert.equal(result.status, "complete");
+  assert.deepEqual(
+    result.results.map((owner) => owner.status),
+    ["promoted", "promoted"],
+  );
+  const a = await fs.readFile(path.join(rootPath, "a.md"), "utf8");
+  assert.match(a, /See \[\[b\]\] in prose\./);
+  assert.match(a, /related:/);
+  const rebuilt = await freshMachine(vault, cwd);
+  assert.deepEqual(rebuilt.data.index.outgoingLinks["a.md"]?.[0]?.origins, ["body", "metadata"]);
+  assert.equal(buildGraph(rebuilt.data.index, rebuilt.data.issues).edges.length, 1);
+});
+
+test("a stale precondition for either source is rejected before either write", async (t) => {
+  for (const changedRole of ["current", "related"] as const) {
+    const { cwd, rootPath, vault, machine } = await fixture(t);
+    const [current, related] = await Promise.all([
+      readVaultFile(vault, "a.md"),
+      readVaultFile(vault, "b.md"),
+    ]);
+    const changedPath = changedRole === "current" ? "a.md" : "b.md";
+    const unchangedPath = changedRole === "current" ? "b.md" : "a.md";
+    const unchanged = await fs.readFile(path.join(rootPath, unchangedPath), "utf8");
+    const external = `# externally changed ${changedRole}\n`;
+    await fs.writeFile(path.join(rootPath, changedPath), external);
+    await assert.rejects(
+      () =>
+        promoteKeptRelationshipToMetadata(
+          vault,
+          machine.data,
+          {
+            ownership: "both",
+            currentPath: "a.md",
+            relatedPath: "b.md",
+            expectedHashes: { current: current.hash, related: related.hash },
+          },
+          cwd,
+        ),
+      (error: { code?: string }) => error.code === "VAULT_FILE_CONFLICT",
+    );
+    assert.equal(await fs.readFile(path.join(rootPath, changedPath), "utf8"), external);
+    assert.equal(await fs.readFile(path.join(rootPath, unchangedPath), "utf8"), unchanged);
+    await assertCuration(vault, cwd, "kept");
+  }
+});
+
+test("unsupported or malformed requested-owner metadata is refused without changing source or curation", async (t) => {
+  for (const [source, code] of [
+    ['---\nrelated: "[[b]]"\n---\n# Alpha\n', "related-metadata-unsupported"],
+    ["---\ntitle: Alpha\n# missing closing delimiter\n", "related-metadata-malformed"],
+  ] as const) {
     const { cwd, rootPath, vault } = await fixture(t);
     await fs.writeFile(path.join(rootPath, "a.md"), source, "utf8");
-    await rebuildMachineIndex(vault, cwd);
-    const machine = await getMachineIndexResult(vault, cwd);
+    const machine = await freshMachine(vault, cwd);
     await assert.rejects(
-      () => promote(vault, machine, cwd),
-      (error: { code?: string }) =>
-        error.code === "related-metadata-unsupported" ||
-        error.code === "related-metadata-malformed",
+      () => promote(vault, machine, cwd, "current"),
+      (error: { code?: string }) => error.code === code,
     );
     assert.equal(await fs.readFile(path.join(rootPath, "a.md"), "utf8"), source);
-    const curation = await readRelatedNotesCuration(vault, machine, undefined, true, cwd);
-    assert.equal(curation.decisions[0]?.decision, "kept");
+    await assertCuration(vault, cwd, "kept");
   }
 });
 
-test("optimistic conflict leaves source and kept curation unchanged", async (t) => {
-  const { cwd, rootPath, vault, machine } = await fixture(t);
-  const before = await readVaultFile(vault, "a.md");
-  await fs.writeFile(path.join(rootPath, "a.md"), "# External edit\n", "utf8");
-  await assert.rejects(
-    () =>
-      promoteKeptRelationshipToMetadata(
-        vault,
-        machine.data,
-        { ownerPath: "a.md", targetPath: "b.md", expectedHash: before.hash },
-        cwd,
-      ),
-    (error: { code?: string }) => error.code === "VAULT_FILE_CONFLICT",
-  );
-  assert.equal(await fs.readFile(path.join(rootPath, "a.md"), "utf8"), "# External edit\n");
-  const curation = await readRelatedNotesCuration(vault, machine, undefined, true, cwd);
-  assert.equal(curation.decisions[0]?.decision, "kept");
+test("malformed or unsupported second-source metadata fails preflight before the current write", async (t) => {
+  for (const [source, code] of [
+    ['---\nrelated:\n  - "[[a]]"\n# no closing delimiter\n', "related-metadata-malformed"],
+    ['---\nrelated: "[[a]]"\n---\n# B\n', "related-metadata-unsupported"],
+  ] as const) {
+    const { cwd, rootPath, vault } = await fixture(t);
+    await fs.writeFile(path.join(rootPath, "b.md"), source);
+    const beforeA = await fs.readFile(path.join(rootPath, "a.md"), "utf8");
+    const machine = await freshMachine(vault, cwd);
+    await assert.rejects(
+      () => promote(vault, machine, cwd, "both"),
+      (error: { code?: string }) => error.code === code,
+    );
+    assert.equal(await fs.readFile(path.join(rootPath, "a.md"), "utf8"), beforeA);
+    assert.equal(await fs.readFile(path.join(rootPath, "b.md"), "utf8"), source);
+    await assertCuration(vault, cwd, "kept");
+  }
 });
 
-test("source publication failure preserves both the original source and kept decision", async (t) => {
+test("second-write conflict returns partial success without rollback and retry completes idempotently", async (t) => {
+  const { cwd, rootPath, vault, machine } = await fixture(t);
+  const aPath = path.join(rootPath, "a.md");
+  const bPath = path.join(rootPath, "b.md");
+  const originalRename = fs.rename;
+  t.after(() => {
+    fs.rename = originalRename;
+  });
+  fs.rename = (async (from, to) => {
+    const result = await originalRename(from, to);
+    if (to === aPath) await fs.writeFile(bPath, "# B changed between writes\n");
+    return result;
+  }) as typeof fs.rename;
+
+  const partial = await promote(vault, machine, cwd, "both");
+  fs.rename = originalRename;
+  assert.equal(partial.status, "partial");
+  assert.deepEqual(
+    partial.results.map((owner) => owner.status),
+    ["promoted", "failed"],
+  );
+  assert.equal(partial.results[1]?.status === "failed" && partial.results[1].code, "CONFLICT");
+  assert.match(await fs.readFile(aPath, "utf8"), /related:/);
+  assert.equal(await fs.readFile(bPath, "utf8"), "# B changed between writes\n");
+  await assertCuration(vault, cwd, "kept");
+
+  const complete = await promote(vault, await freshMachine(vault, cwd), cwd, "both");
+  assert.equal(complete.status, "complete");
+  assert.deepEqual(
+    complete.results.map((owner) => owner.status),
+    ["already-present", "promoted"],
+  );
+  await assertCuration(vault, cwd, "cleared");
+});
+
+test("a disappearing second source returns bounded partial success and preserves the first write", async (t) => {
+  const { cwd, rootPath, vault, machine } = await fixture(t);
+  const aPath = path.join(rootPath, "a.md");
+  const bPath = path.join(rootPath, "b.md");
+  const originalRename = fs.rename;
+  t.after(() => {
+    fs.rename = originalRename;
+  });
+  fs.rename = (async (from, to) => {
+    const result = await originalRename(from, to);
+    if (to === aPath) await fs.unlink(bPath);
+    return result;
+  }) as typeof fs.rename;
+  const result = await promote(vault, machine, cwd, "both");
+  fs.rename = originalRename;
+  assert.equal(result.status, "partial");
+  assert.deepEqual(
+    result.results.map((owner) => owner.status),
+    ["promoted", "failed"],
+  );
+  assert.match(await fs.readFile(aPath, "utf8"), /related:/);
+  await assert.rejects(() => fs.access(bPath), { code: "ENOENT" });
+  assert.equal(JSON.stringify(result).includes(rootPath), false);
+  await assertCuration(vault, cwd, "kept");
+});
+
+test("an unexpected second-write failure is bounded, does not roll back, and retains kept", async (t) => {
+  const { cwd, rootPath, vault, machine } = await fixture(t);
+  const aPath = path.join(rootPath, "a.md");
+  const bPath = path.join(rootPath, "b.md");
+  const beforeB = await fs.readFile(bPath, "utf8");
+  const originalRename = fs.rename;
+  t.after(() => {
+    fs.rename = originalRename;
+  });
+  fs.rename = (async (from, to) => {
+    if (to === bPath) {
+      throw Object.assign(new Error("EIO /private/example/secret.md"), { code: "EIO" });
+    }
+    return originalRename(from, to);
+  }) as typeof fs.rename;
+  const result = await promote(vault, machine, cwd, "both");
+  fs.rename = originalRename;
+  assert.equal(result.status, "partial");
+  assert.match(await fs.readFile(aPath, "utf8"), /related:/);
+  assert.equal(await fs.readFile(bPath, "utf8"), beforeB);
+  assert.equal(JSON.stringify(result).includes("/private/example"), false);
+  assert.equal(
+    result.results[1]?.status === "failed" && result.results[1].error,
+    "The requested note metadata could not be written.",
+  );
+  await assertCuration(vault, cwd, "kept");
+});
+
+test("first-source publication failure remains a whole-operation failure and preserves kept", async (t) => {
   const { cwd, rootPath, vault, machine } = await fixture(t);
   const target = path.join(rootPath, "a.md");
   const original = await fs.readFile(target, "utf8");
@@ -170,18 +399,13 @@ test("source publication failure preserves both the original source and kept dec
     if (to === target) throw Object.assign(new Error("simulated source failure"), { code: "EIO" });
     return originalRename(from, to);
   }) as typeof fs.rename;
-  await assert.rejects(() => promote(vault, machine, cwd), { code: "EIO" });
+  await assert.rejects(() => promote(vault, machine, cwd, "both"), { code: "EIO" });
   fs.rename = originalRename;
   assert.equal(await fs.readFile(target, "utf8"), original);
-  const curation = await readRelatedNotesCuration(vault, machine, undefined, true, cwd);
-  assert.equal(curation.decisions[0]?.decision, "kept");
-  assert.equal(
-    (await fs.readdir(rootPath)).some((entry) => entry.includes(".tmp")),
-    false,
-  );
+  await assertCuration(vault, cwd, "kept");
 });
 
-test("curation-clear failure after publication returns bounded success and never rolls back source", async (t) => {
+test("curation-clear failure after complete Both is bounded and never rolls back either source", async (t) => {
   const { cwd, rootPath, vault, machine } = await fixture(t);
   const curationFile = await relatedNotesCurationPath(vault, cwd);
   const originalRename = fs.rename;
@@ -194,20 +418,20 @@ test("curation-clear failure after publication returns bounded success and never
     }
     return originalRename(from, to);
   }) as typeof fs.rename;
-  const result = await promote(vault, machine, cwd);
+  const result = await promote(vault, machine, cwd, "both");
   fs.rename = originalRename;
-  assert.equal(result.status, "promoted");
+  assert.equal(result.status, "complete");
   assert.equal(
     result.curationDiagnostic,
-    "The canonical relationship is present, but its AREPO curation decision could not be cleared.",
+    "The requested canonical relationship metadata is present, but its AREPO curation decision could not be cleared.",
   );
   assert.equal(JSON.stringify(result).includes("/private/example"), false);
   assert.match(await fs.readFile(path.join(rootPath, "a.md"), "utf8"), /related:/);
-  const curation = await readRelatedNotesCuration(vault, machine, undefined, true, cwd);
-  assert.equal(curation.decisions[0]?.decision, "kept");
+  assert.match(await fs.readFile(path.join(rootPath, "b.md"), "utf8"), /related:/);
+  await assertCuration(vault, cwd, "kept");
 });
 
-test("promotion requires readIndex, readContent, and writeContent and Markdown paths", async (t) => {
+test("promotion requires permissions and the exact ownership/precondition request shape", async (t) => {
   for (const deniedPermission of ["readIndex", "readContent", "writeContent"] as const) {
     const { cwd, vault, machine } = await fixture(t, { [deniedPermission]: false });
     await assert.rejects(
@@ -215,21 +439,41 @@ test("promotion requires readIndex, readContent, and writeContent and Markdown p
         promoteKeptRelationshipToMetadata(
           vault,
           machine.data,
-          { ownerPath: "a.md", targetPath: "b.md", expectedHash: "a".repeat(64) },
+          {
+            ownership: "current",
+            currentPath: "a.md",
+            relatedPath: "b.md",
+            expectedHashes: { current: "a".repeat(64), related: "b".repeat(64) },
+          },
           cwd,
         ),
       (error: { code?: string }) => error.code === "relationship-promotion-not-permitted",
     );
   }
   const { cwd, vault, machine } = await fixture(t);
-  await assert.rejects(
-    () =>
-      promoteKeptRelationshipToMetadata(
-        vault,
-        machine.data,
-        { ownerPath: "a.txt", targetPath: "b.md", expectedHash: "a".repeat(64) },
-        cwd,
-      ),
-    (error: { code?: string }) => error.code === "invalid-relationship-promotion",
-  );
+  for (const invalid of [
+    {
+      ownership: "future",
+      currentPath: "a.md",
+      relatedPath: "b.md",
+      expectedHashes: { current: "a".repeat(64), related: "b".repeat(64) },
+    },
+    {
+      ownership: "both",
+      currentPath: "a.txt",
+      relatedPath: "b.md",
+      expectedHashes: { current: "a".repeat(64), related: "b".repeat(64) },
+    },
+    {
+      ownership: "both",
+      currentPath: "a.md",
+      relatedPath: "b.md",
+      expectedHashes: { current: "not-a-hash", related: "b".repeat(64) },
+    },
+  ]) {
+    await assert.rejects(
+      () => promoteKeptRelationshipToMetadata(vault, machine.data, invalid, cwd),
+      (error: { code?: string }) => error.code === "invalid-relationship-promotion",
+    );
+  }
 });

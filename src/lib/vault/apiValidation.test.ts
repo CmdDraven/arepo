@@ -502,39 +502,139 @@ test("mutation success and watcher-status payloads require their consumed fields
   );
 
   const promotionGuard = isOperationResult(isRelationshipPromotionData);
+  const file = (filePath: string) => ({
+    path: filePath,
+    kind: "markdown",
+    size: 32,
+    mtimeMs: 100,
+    hash: "a".repeat(64),
+  });
+  const currentResult = {
+    role: "current",
+    ownerPath: "note.md",
+    targetPath: "nested/target.md",
+    status: "promoted",
+    file: file("note.md"),
+  };
+  const relatedResult = {
+    role: "related",
+    ownerPath: "nested/target.md",
+    targetPath: "note.md",
+    status: "already-present",
+    file: file("nested/target.md"),
+  };
   const promotion = {
     ok: true,
     data: {
-      status: "promoted",
-      ownerPath: "note.md",
-      targetPath: "nested/target.md",
-      file: {
-        path: "note.md",
-        kind: "markdown",
-        size: 32,
-        mtimeMs: 100,
-        hash: "a".repeat(64),
-      },
+      status: "complete",
+      ownership: "current",
+      currentPath: "note.md",
+      relatedPath: "nested/target.md",
+      results: [currentResult],
       curationDiagnostic: "Curation could not be cleared.",
     },
   };
   assert.equal(promotionGuard(promotion), true);
   assert.equal(
-    promotionGuard({ ...promotion, data: { ...promotion.data, status: "future" } }),
+    promotionGuard({
+      ok: true,
+      data: {
+        status: "complete",
+        ownership: "related",
+        currentPath: "note.md",
+        relatedPath: "nested/target.md",
+        results: [relatedResult],
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    promotionGuard({
+      ok: true,
+      data: {
+        status: "complete",
+        ownership: "both",
+        currentPath: "note.md",
+        relatedPath: "nested/target.md",
+        results: [currentResult, relatedResult],
+      },
+    }),
+    true,
+  );
+  const partial = {
+    ok: true,
+    data: {
+      status: "partial",
+      ownership: "both",
+      currentPath: "note.md",
+      relatedPath: "nested/target.md",
+      results: [
+        currentResult,
+        {
+          role: "related",
+          ownerPath: "nested/target.md",
+          targetPath: "note.md",
+          status: "failed",
+          error: "Source changed on disk.",
+          code: "CONFLICT",
+        },
+      ],
+      diagnostic: "One note was updated; the other note was not changed.",
+    },
+  };
+  assert.equal(promotionGuard(partial), true);
+  assert.equal(
+    promotionGuard({
+      ok: false,
+      error: "Source changed on disk. Reload before adding relationship metadata.",
+      code: "VAULT_FILE_CONFLICT",
+    }),
+    true,
+  );
+  assert.equal(
+    promotionGuard({ ...promotion, data: { ...promotion.data, ownership: "future" } }),
     false,
   );
   assert.equal(
-    promotionGuard({ ...promotion, data: { ...promotion.data, ownerPath: "/private/note.md" } }),
-    false,
-  );
-  assert.equal(
-    promotionGuard({ ...promotion, data: { ...promotion.data, targetPath: "note.md" } }),
+    promotionGuard({ ...promotion, data: { ...promotion.data, currentPath: "/private/note.md" } }),
     false,
   );
   assert.equal(
     promotionGuard({
       ...promotion,
-      data: { ...promotion.data, file: { ...promotion.data.file, path: "other.md" } },
+      data: { ...promotion.data, results: [{ ...currentResult, ownerPath: "other.md" }] },
+    }),
+    false,
+  );
+  assert.equal(
+    promotionGuard({
+      ...partial,
+      data: { ...partial.data, results: [...partial.data.results].reverse() },
+    }),
+    false,
+  );
+  assert.equal(
+    promotionGuard({ ...partial, data: { ...partial.data, diagnostic: undefined } }),
+    false,
+  );
+  assert.equal(
+    promotionGuard({ ...partial, data: { ...partial.data, diagnostic: "x".repeat(513) } }),
+    false,
+  );
+  assert.equal(
+    promotionGuard({
+      ...partial,
+      data: {
+        ...partial.data,
+        results: [currentResult, { ...partial.data.results[1], error: "x".repeat(513) }],
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    promotionGuard({
+      ...promotion,
+      data: { ...promotion.data, status: "partial", diagnostic: "Partial." },
     }),
     false,
   );

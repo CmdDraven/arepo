@@ -5,7 +5,11 @@
 // separated islands using a small force-directed simulation per
 // component, then shelf-packed into the canvas plane.
 
-import type { ExplicitRelationshipOrigin, VaultIndex } from "./indexer.js";
+import {
+  countExplicitOutgoingRelationships,
+  type ExplicitRelationshipOrigin,
+  type VaultIndex,
+} from "./indexer.js";
 
 export type GNode = {
   id: string;
@@ -60,7 +64,7 @@ export function buildGraph(index: VaultIndex, issues: IssueLike[]): GraphData {
       label: note.title || note.slug,
       path: note.path,
       type: "note",
-      outgoingCount: 0,
+      outgoingCount: countExplicitOutgoingRelationships(index, note.path),
       backlinkCount: (index.backlinks[note.path] ?? []).length,
       validationIssueCount: issueByPath[note.path] ?? 0,
       componentId: -1,
@@ -72,13 +76,18 @@ export function buildGraph(index: VaultIndex, issues: IssueLike[]): GraphData {
   for (const note of Object.values(index.notes)) {
     for (const link of index.outgoingLinks[note.path] ?? []) {
       if (link.targetPath) {
-        addGraphEdge(edgeByPair, edges, nodes, {
-          source: note.path,
-          target: link.targetPath,
-          label: link.anchor,
-          type: "wikilink",
-          origins: [...link.origins],
-        });
+        addGraphEdge(
+          edgeByPair,
+          edges,
+          {
+            source: note.path,
+            target: link.targetPath,
+            label: link.anchor,
+            type: "wikilink",
+            origins: [...link.origins],
+          },
+          hasReciprocalMetadata(index, note.path, link.targetPath, link.origins),
+        );
       } else {
         const missId = `missing:${link.target}`;
         if (!nodes[missId]) {
@@ -95,7 +104,7 @@ export function buildGraph(index: VaultIndex, issues: IssueLike[]): GraphData {
             y: 0,
           };
         }
-        const added = addGraphEdge(edgeByPair, edges, nodes, {
+        const added = addGraphEdge(edgeByPair, edges, {
           source: note.path,
           target: missId,
           label: link.anchor,
@@ -309,10 +318,14 @@ export function buildGraph(index: VaultIndex, issues: IssueLike[]): GraphData {
 function addGraphEdge(
   edgeByPair: Map<string, GEdge>,
   edges: GEdge[],
-  nodes: Record<string, GNode>,
   edge: GEdge,
+  undirected = false,
 ): boolean {
-  const key = `${edge.source}\0${edge.target}`;
+  const [left, right] =
+    undirected && compareGraphPaths(edge.source, edge.target) > 0
+      ? [edge.target, edge.source]
+      : [edge.source, edge.target];
+  const key = `${undirected ? "undirected" : "directed"}\0${left}\0${right}`;
   const existing = edgeByPair.get(key);
   if (existing) {
     for (const origin of edge.origins) {
@@ -320,8 +333,26 @@ function addGraphEdge(
     }
     return false;
   }
-  edgeByPair.set(key, edge);
-  edges.push(edge);
-  nodes[edge.source].outgoingCount++;
+  const canonicalEdge = { ...edge, source: left, target: right };
+  edgeByPair.set(key, canonicalEdge);
+  edges.push(canonicalEdge);
   return true;
+}
+
+function hasReciprocalMetadata(
+  index: VaultIndex,
+  sourcePath: string,
+  targetPath: string,
+  origins: readonly ExplicitRelationshipOrigin[],
+): boolean {
+  return (
+    origins.includes("metadata") &&
+    (index.outgoingLinks[targetPath] ?? []).some(
+      (candidate) => candidate.targetPath === sourcePath && candidate.origins.includes("metadata"),
+    )
+  );
+}
+
+function compareGraphPaths(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }

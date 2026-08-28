@@ -244,8 +244,8 @@ The enrichment policy is:
 7. Keep and Dismiss are explicit durable user decisions stored separately from
    disposable enrichment caches; neither decision changes producer scoring.
 8. Kept relationships remain AREPO metadata rather than Markdown links or
-   structural graph edges unless the user explicitly promotes one into one
-   chosen note's canonical frontmatter metadata.
+   structural graph edges unless the user explicitly promotes one into the
+   current note, related note, or both notes' canonical frontmatter metadata.
 9. Curation decisions are not training data, telemetry, or automatic tuning
    input, and future producers must respect the same path-pair decisions.
 
@@ -257,9 +257,10 @@ the maintained candidate's native runtime installation failed its portability
 gate and the legacy fallback failed the dependency-security gate. A later
 experiment must still compare against the identical locked labels, avoid
 automatic tuning, and require separate per-vault consent before any production
-integration. The nearer design question is whether a kept relationship can be
-promoted through an explicit, directional, conflict-safe Markdown mutation
-without confusing AREPO metadata with canonical source.
+integration. Kept relationships now support explicit current-only, related-only,
+or reciprocal Both promotion through conflict-safe Markdown mutation without
+confusing AREPO metadata with canonical source. Both is deliberately non-atomic
+across files and exposes bounded partial success with idempotent retry.
 
 ## Deferred Work
 

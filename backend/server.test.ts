@@ -4181,12 +4181,17 @@ test("relationship promotion route writes only the chosen Markdown owner and cle
   );
   assert.equal(kept.status, 200);
   const source = await routeRequest(request("GET", `/api/vaults/${vault.id}/file?path=a.md`), cwd);
+  const related = await routeRequest(request("GET", `/api/vaults/${vault.id}/file?path=b.md`), cwd);
   const targetBefore = await fs.readFile(path.join(rootPath, "b.md"), "utf8");
   const promoted = await routeRequest(
     request("POST", `/api/vaults/${vault.id}/relationships/promote`, {
-      ownerPath: "a.md",
-      targetPath: "b.md",
-      expectedHash: (source.body as { hash: string }).hash,
+      ownership: "current",
+      currentPath: "a.md",
+      relatedPath: "b.md",
+      expectedHashes: {
+        current: (source.body as { hash: string }).hash,
+        related: (related.body as { hash: string }).hash,
+      },
     }),
     cwd,
   );
@@ -4195,10 +4200,33 @@ test("relationship promotion route writes only the chosen Markdown owner and cle
     {
       ok: (promoted.body as { ok: boolean }).ok,
       status: (promoted.body as { data: { status: string } }).data.status,
-      ownerPath: (promoted.body as { data: { ownerPath: string } }).data.ownerPath,
-      targetPath: (promoted.body as { data: { targetPath: string } }).data.targetPath,
+      ownership: (promoted.body as { data: { ownership: string } }).data.ownership,
+      results: (
+        promoted.body as {
+          data: {
+            results: Array<{ role: string; ownerPath: string; targetPath: string; status: string }>;
+          };
+        }
+      ).data.results.map(({ role, ownerPath, targetPath, status }) => ({
+        role,
+        ownerPath,
+        targetPath,
+        status,
+      })),
     },
-    { ok: true, status: "promoted", ownerPath: "a.md", targetPath: "b.md" },
+    {
+      ok: true,
+      status: "complete",
+      ownership: "current",
+      results: [
+        {
+          role: "current",
+          ownerPath: "a.md",
+          targetPath: "b.md",
+          status: "promoted",
+        },
+      ],
+    },
   );
   assert.match(await fs.readFile(path.join(rootPath, "a.md"), "utf8"), /related:/);
   assert.equal(await fs.readFile(path.join(rootPath, "b.md"), "utf8"), targetBefore);

@@ -252,7 +252,9 @@ export async function routeRequest(
         requireRelationshipPromotionPermissions(vault);
         const index = await refreshTrackedMachineIndex(vault, cwd);
         const data = await promoteKeptRelationshipToMetadata(vault, index, body, cwd);
-        if (data.status === "promoted") await recordVaultMutation(vault, cwd);
+        if (data.results.some((result) => result.status === "promoted")) {
+          await recordVaultMutation(vault, cwd);
+        }
         return json(200, { ok: true, data }, cors.headers);
       }
 

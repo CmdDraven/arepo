@@ -426,8 +426,11 @@ note-level Markdown wikilink. Aliases, anchors, external URLs, non-Markdown
 targets, objects, and scalars are preserved but reported as unsupported. When an
 authorized user explicitly promotes a kept relationship, the backend can append
 to a supported sequence or insert a minimal field without reserializing unrelated
-YAML. Unsafe or malformed frontmatter is left untouched. The user chooses which
-one note owns the declaration; AREPO never writes reciprocal metadata.
+YAML. Unsafe or malformed frontmatter is left untouched. The user chooses the
+current note only, the related note only, or Both. Both is one backend operation
+that preflights both sources and writes reciprocal metadata in deterministic
+current-then-related order. Reciprocal declarations remain authored in both
+notes while mapping to one undirected graph relationship.
 
 Frontmatter and wikilinks are common knowledge-base conventions, but neither
 AREPO's `related` meaning nor wikilinks are standardized by CommonMark. Other
@@ -479,11 +482,16 @@ or relationship visible to external Markdown editors. Decisions are not
 training data and are never sent anywhere.
 
 For a kept pair, an authorized user may explicitly choose **Add to note
-metadata**. This writes one conflict-checked `related` declaration through the
-same verified, atomic Markdown mutation boundary, then clears the redundant kept
-decision. It never inserts visible prose, changes both notes, or promotes
-automatically. Manually authored metadata has the same structural meaning and
-suppresses redundant inferred suggestions in either relationship orientation.
+metadata** and store the declaration in the current note only, related note only,
+or Both. Every requested owner has an optimistic source-hash precondition and
+uses the same verified, atomic per-file Markdown mutation boundary. Both is not a
+cross-file transaction: if the current write succeeds and the related write then
+fails, AREPO reports partial success, keeps the first write, retains the kept
+decision, and permits an idempotent retry. The kept decision clears only when all
+requested declarations are satisfied. Existing body wikilinks do not block an
+explicit metadata-ownership choice. Promotion never inserts visible prose or
+runs automatically. Manually authored metadata has the same structural meaning
+and suppresses redundant inferred suggestions in either relationship orientation.
 
 Related-note results live separately from machine-index v5 at:
 

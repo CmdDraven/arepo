@@ -4,7 +4,12 @@ import test from "node:test";
 import { buildVaultInspectResponse } from "./indexInspect.js";
 import { deriveRelatedNotesCorpus } from "./relatedNotes.js";
 import { buildGraph } from "../src/lib/vault/graph.js";
-import { buildIndex, validate } from "../src/lib/vault/indexer.js";
+import {
+  buildIndex,
+  countExplicitOutgoingRelationships,
+  countIncomingExplicitRelationships,
+  validate,
+} from "../src/lib/vault/indexer.js";
 
 const targetBody = "# Target\ncanonical transactions filesystem consistency recovery\n";
 
@@ -41,6 +46,60 @@ test("manually authored metadata is structural, incoming, deduplicated with body
     "folder/Target.md",
   );
   assert.deepEqual(incoming.backlinks[0]?.origins, ["body", "metadata"]);
+});
+
+test("explicit relationship summaries count unique structural pairs across body and metadata origins", () => {
+  const bodyOnly = buildIndex({ "A.md": "# A\n[[B]]\n", "B.md": "# B\n" });
+  assert.equal(countExplicitOutgoingRelationships(bodyOnly, "A.md"), 1);
+  assert.equal(countIncomingExplicitRelationships(bodyOnly, "B.md"), 1);
+
+  const metadataOnly = buildIndex({
+    "A.md": '---\nrelated:\n  - "[[B]]"\n---\n# A\n',
+    "B.md": "# B\n",
+  });
+  assert.equal(countExplicitOutgoingRelationships(metadataOnly, "A.md"), 1);
+  assert.equal(countIncomingExplicitRelationships(metadataOnly, "B.md"), 1);
+
+  const duplicateOrigins = buildIndex({
+    "A.md": '---\nrelated:\n  - "[[B]]"\n---\n# A\n[[B]] and [[B#heading]]\n',
+    "B.md": "# B\n## Heading\n",
+  });
+  assert.equal(countExplicitOutgoingRelationships(duplicateOrigins, "A.md"), 1);
+  assert.equal(countIncomingExplicitRelationships(duplicateOrigins, "B.md"), 1);
+
+  const multipleTargets = buildIndex({
+    "A.md": '---\nrelated:\n  - "[[B]]"\n  - "[[C]]"\n---\n# A\n[[B]]\n',
+    "B.md": "# B\n",
+    "C.md": "# C\n",
+  });
+  assert.equal(countExplicitOutgoingRelationships(multipleTargets, "A.md"), 2);
+  assert.equal(countIncomingExplicitRelationships(multipleTargets, "B.md"), 1);
+  assert.equal(countIncomingExplicitRelationships(multipleTargets, "C.md"), 1);
+
+  const reciprocal = buildIndex({
+    "A.md": '---\nrelated:\n  - "[[B]]"\n---\n# A\n',
+    "B.md": '---\nrelated:\n  - "[[A]]"\n---\n# B\n',
+  });
+  assert.equal(countExplicitOutgoingRelationships(reciprocal, "A.md"), 1);
+  assert.equal(countExplicitOutgoingRelationships(reciprocal, "B.md"), 1);
+  assert.equal(countIncomingExplicitRelationships(reciprocal, "A.md"), 1);
+  assert.equal(countIncomingExplicitRelationships(reciprocal, "B.md"), 1);
+  const reciprocalGraph = buildGraph(reciprocal, validate(reciprocal));
+  assert.equal(reciprocalGraph.edges.length, 1);
+  assert.equal(reciprocalGraph.nodeById["A.md"]?.outgoingCount, 1);
+  assert.equal(reciprocalGraph.nodeById["B.md"]?.outgoingCount, 1);
+
+  const reciprocalBody = buildIndex({
+    "A.md": "# A\n[[B]]\n",
+    "B.md": "# B\n[[A]]\n",
+  });
+  assert.equal(buildGraph(reciprocalBody, validate(reciprocalBody)).edges.length, 2);
+
+  const broken = buildIndex({
+    "A.md": '---\nrelated:\n  - "[[missing]]"\n  - "[[missing]]"\n---\n# A\n',
+  });
+  assert.equal(countExplicitOutgoingRelationships(broken, "A.md"), 1);
+  assert.equal(countIncomingExplicitRelationships(broken, "missing.md"), 0);
 });
 
 test("nested paths resolve exactly while duplicate basenames remain ambiguous", () => {

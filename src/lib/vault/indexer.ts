@@ -451,6 +451,18 @@ export function hasExplicitRelationship(
   );
 }
 
+export function countExplicitOutgoingRelationships(index: VaultIndex, sourcePath: string): number {
+  return new Set(
+    (index.outgoingLinks[sourcePath] ?? []).map((link) =>
+      link.targetPath ? `resolved\0${link.targetPath}` : `${link.status}\0${link.target}`,
+    ),
+  ).size;
+}
+
+export function countIncomingExplicitRelationships(index: VaultIndex, targetPath: string): number {
+  return new Set((index.backlinks[targetPath] ?? []).map((backlink) => backlink.fromPath)).size;
+}
+
 function isUnsafeWikiPath(target: string): boolean {
   if (target.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(target)) return true;
   if (target.includes("\\")) return true;

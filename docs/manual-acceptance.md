@@ -802,6 +802,53 @@ full document body search.
     semantic search, full-text search, database persistence, sync, migration,
     federation, remote-node, or mutation controls.
 
+## 15A. Related Notes Metadata Promotion
+
+Use a disposable scratch vault with two Markdown notes for this check. Enable
+Related Notes for that vault, generate a suggestion for the pair, and choose
+**Keep** so the pair appears in the kept relationships list.
+
+1. Select the first note and choose **Add to note metadata** for the kept pair.
+2. Expected result: the dialog is titled `Store relationship in`, defaults to
+   `Current note only`, and offers exactly `Current note only`, `Related note
+   only`, and `Both notes`.
+3. Choose `Current note only` and confirm.
+4. Expected result: only the current note receives a quoted `related` entry in
+   frontmatter; the related note and both notes' rendered prose remain unchanged.
+5. Recreate and keep the relationship, choose `Related note only`, and confirm.
+6. Expected result: only the related note receives the reciprocal target in its
+   frontmatter; rendered prose remains unchanged.
+7. With a fresh pair, choose `Both notes` and confirm.
+8. Expected result: the current note's multiline `related` sequence contains a
+   quoted `"[[related-note]]"` entry and the related note contains the reciprocal
+   `"[[current-note]]"` entry. The UI reports complete reciprocal metadata.
+9. Expected result: Inspect preserves one authored outgoing declaration for
+   each note, while Graph shows one relationship edge for the pair rather than
+   parallel reciprocal edges.
+10. Expected result: Metadata labels the figures `explicit outgoing
+   relationships` and `incoming explicit relationships`. Body-only and
+   metadata-only relationships each count once; a body and metadata declaration
+   to the same target still count once.
+11. Add a visible body wikilink between another kept pair and reopen its kept
+   action.
+12. Expected result: the metadata-promotion dialog remains available because a
+   body link does not choose metadata ownership. Promoting adds metadata while
+   leaving the body wikilink and rendered prose intact; Inspect reports both
+   Note text and Note metadata provenance.
+13. Optional partial-success race: after confirming `Both notes`, arrange for
+   the related note to change externally after the current source publishes but
+   before the related source publishes.
+14. Expected result: AREPO says the operation is partially complete, identifies
+   the source that now has metadata and the source that was not changed, does
+   not claim the whole promotion failed, preserves the kept decision, and offers
+   retry. It does not roll back the successful current-note write.
+15. Reload and retry `Both notes`.
+16. Expected result: the already-present side is not duplicated, the missing
+   side is added, the operation completes, and the kept decision clears.
+17. If either source changes before promotion preflight, expected result: AREPO
+   reports a bounded conflict, writes neither source, and preserves the kept
+   decision.
+
 ## 16. External Edit Conflict Detection
 
 This case protects safe coexistence with other editors. Use Kate, VSCodium, or

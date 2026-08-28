@@ -221,12 +221,31 @@ export type VaultInspectBacklink = {
 };
 
 export type RelationshipPromotionData = {
-  status: "promoted" | "already-present";
-  ownerPath: string;
-  targetPath: string;
-  file: VaultFileWriteResponse;
+  status: "complete" | "partial";
+  ownership: "current" | "related" | "both";
+  currentPath: string;
+  relatedPath: string;
+  results: RelationshipPromotionOwnerResult[];
+  diagnostic?: string;
   curationDiagnostic?: string;
 };
+
+export type RelationshipPromotionOwnerResult =
+  | {
+      role: "current" | "related";
+      ownerPath: string;
+      targetPath: string;
+      status: "promoted" | "already-present";
+      file: VaultFileWriteResponse;
+    }
+  | {
+      role: "current" | "related";
+      ownerPath: string;
+      targetPath: string;
+      status: "failed";
+      error: string;
+      code: string;
+    };
 
 export type VaultInspectDuplicateAnchor = {
   anchor: string;
@@ -513,17 +532,89 @@ export const isRenameMutationData: ApiGuard<{
 
 export const isRelationshipPromotionData: ApiGuard<RelationshipPromotionData> = (
   value,
-): value is RelationshipPromotionData =>
-  isObjectRecord(value) &&
-  (value.status === "promoted" || value.status === "already-present") &&
-  isMarkdownPath(value.ownerPath) &&
-  isMarkdownPath(value.targetPath) &&
-  value.ownerPath !== value.targetPath &&
-  isVaultFileWriteResponse(value.file) &&
-  value.file.path === value.ownerPath &&
-  (value.curationDiagnostic === undefined ||
-    (typeof value.curationDiagnostic === "string" && value.curationDiagnostic.length <= 512)) &&
-  hasOnlyKeys(value, ["status", "ownerPath", "targetPath", "file", "curationDiagnostic"]);
+): value is RelationshipPromotionData => {
+  if (
+    !isObjectRecord(value) ||
+    (value.status !== "complete" && value.status !== "partial") ||
+    (value.ownership !== "current" &&
+      value.ownership !== "related" &&
+      value.ownership !== "both") ||
+    !isMarkdownPath(value.currentPath) ||
+    !isMarkdownPath(value.relatedPath) ||
+    value.currentPath === value.relatedPath ||
+    !Array.isArray(value.results) ||
+    !boundedOptionalString(value, "diagnostic", 512) ||
+    !boundedOptionalString(value, "curationDiagnostic", 512) ||
+    !hasOnlyKeys(value, [
+      "status",
+      "ownership",
+      "currentPath",
+      "relatedPath",
+      "results",
+      "diagnostic",
+      "curationDiagnostic",
+    ])
+  ) {
+    return false;
+  }
+  const ownership = value.ownership;
+  const currentPath = value.currentPath;
+  const relatedPath = value.relatedPath;
+  const expectedRoles = ownership === "both" ? ["current", "related"] : [ownership];
+  if (value.results.length !== expectedRoles.length) return false;
+  if (
+    !value.results.every((result, index) =>
+      isRelationshipPromotionOwnerResult(
+        result,
+        expectedRoles[index] as "current" | "related",
+        currentPath,
+        relatedPath,
+      ),
+    )
+  ) {
+    return false;
+  }
+  const failures = value.results.filter((result) => result.status === "failed").length;
+  if (value.status === "complete") {
+    return failures === 0 && value.diagnostic === undefined;
+  }
+  return (
+    value.ownership === "both" &&
+    failures === 1 &&
+    value.results.some((result) => result.status !== "failed") &&
+    typeof value.diagnostic === "string" &&
+    value.curationDiagnostic === undefined
+  );
+};
+
+function isRelationshipPromotionOwnerResult(
+  value: unknown,
+  role: "current" | "related",
+  currentPath: string,
+  relatedPath: string,
+): value is RelationshipPromotionOwnerResult {
+  if (!isObjectRecord(value) || value.role !== role) return false;
+  const ownerPath = role === "current" ? currentPath : relatedPath;
+  const targetPath = role === "current" ? relatedPath : currentPath;
+  if (value.ownerPath !== ownerPath || value.targetPath !== targetPath) return false;
+  if (value.status === "failed") {
+    return (
+      typeof value.error === "string" &&
+      value.error.length > 0 &&
+      value.error.length <= 512 &&
+      typeof value.code === "string" &&
+      value.code.length > 0 &&
+      value.code.length <= 128 &&
+      hasOnlyKeys(value, ["role", "ownerPath", "targetPath", "status", "error", "code"])
+    );
+  }
+  return (
+    (value.status === "promoted" || value.status === "already-present") &&
+    isVaultFileWriteResponse(value.file) &&
+    value.file.path === ownerPath &&
+    hasOnlyKeys(value, ["role", "ownerPath", "targetPath", "status", "file"])
+  );
+}
 
 export const isAddVaultData: ApiGuard<{ vault: VaultInfo }> = (
   value,
@@ -1402,6 +1493,17 @@ function isAbsoluteDisplayPath(value: unknown): value is string {
 
 function optionalRelativePath(record: Record<string, unknown>, key: string): boolean {
   return record[key] === undefined || isRelativeVaultPath(record[key]);
+}
+
+function boundedOptionalString(
+  record: Record<string, unknown>,
+  key: string,
+  maxLength: number,
+): boolean {
+  return (
+    record[key] === undefined ||
+    (typeof record[key] === "string" && record[key].length > 0 && record[key].length <= maxLength)
+  );
 }
 
 function optionalStrings(record: Record<string, unknown>, keys: string[]): boolean {
