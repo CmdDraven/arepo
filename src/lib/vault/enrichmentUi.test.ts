@@ -68,6 +68,7 @@ test("enabled candidates preserve ready state and failures remain distinguishabl
               targetPath: "b.md",
               decidedAt: "2026-01-01T00:00:00.000Z",
               freshness: "current",
+              explicitInSource: false,
             },
           ],
         },

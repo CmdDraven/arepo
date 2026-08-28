@@ -65,6 +65,21 @@ test("cookie-session source mutation requires origin and CSRF", () => {
   assert.equal(plan.csrfCheckRequired, true);
 });
 
+test("relationship promotion receives the same browser protections as other source mutations", () => {
+  const plan = planBrowserSecurity({
+    client: "browserCookieSession",
+    routePolicy: policyFor("POST /api/vaults/:vaultId/relationships/promote"),
+    origin: "http://localhost:8733",
+    allowedOrigins: ["http://localhost:8733"],
+    sessionState: "valid",
+    csrfTokenPresent: true,
+  });
+  assert.equal(plan.requestClass, "sourceMutation");
+  assert.equal(plan.originCheckRequired, true);
+  assert.equal(plan.csrfCheckRequired, true);
+  assert.equal(plan.authorizationRequired, true);
+});
+
 test("cookie-session delete requires origin CSRF authorization and stronger confirmation", () => {
   const plan = planBrowserSecurity({
     client: "browserCookieSession",

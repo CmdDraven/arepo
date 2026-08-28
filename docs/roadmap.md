@@ -203,6 +203,8 @@ surface built from the generated machine index:
 - center Tree/Graph workspace views for map inspection
 - deterministic Related Notes suggestions that supplement inspection without
   becoming explicit links, backlinks, or graph edges
+- canonical frontmatter `related` relationships with origin-aware structural
+  graph and Inspect behavior
 
 This phase is non-AI and local-only. Structural graph, search, inspect, and
 index data remain rebuildable from Markdown files. Related Notes is separate
@@ -230,7 +232,8 @@ data rather than training data or runtime settings. See
 The enrichment policy is:
 
 1. Every producer is explicitly opt-in per vault and defaults off.
-2. Users may permanently choose first-class Markdown-only relationships.
+2. Users may permanently choose source-owned relationships as visible body
+   wikilinks or hidden frontmatter `related` metadata.
 3. Enabling deterministic Related Notes does not grant consent for any model,
    embedding, vector storage, download, or network provider.
 4. Each future semantic or generative producer requires independent consent;
@@ -241,12 +244,15 @@ The enrichment policy is:
 7. Keep and Dismiss are explicit durable user decisions stored separately from
    disposable enrichment caches; neither decision changes producer scoring.
 8. Kept relationships remain AREPO metadata rather than Markdown links or
-   structural graph edges. Only a future explicit source-mutation action may
-   promote one into canonical Markdown.
+   structural graph edges unless the user explicitly promotes one into one
+   chosen note's canonical frontmatter metadata.
 9. Curation decisions are not training data, telemetry, or automatic tuning
    input, and future producers must respect the same path-pair decisions.
 
-The evaluation-only local semantic experiment is deferred for runtime maturity:
+Canonical frontmatter promotion is implemented with backend-authoritative,
+optimistic, verified Markdown mutation. Visible body-wikilink promotion remains
+deferred because placement, wording, alias, and editing context require separate
+UX. The evaluation-only local semantic experiment is deferred for runtime maturity:
 the maintained candidate's native runtime installation failed its portability
 gate and the legacy fallback failed the dependency-security gate. A later
 experiment must still compare against the identical locked labels, avoid
@@ -260,8 +266,7 @@ without confusing AREPO metadata with canonical source.
 - production semantic/embedding enrichment pending comparative evaluation and
   separate explicit consent
 - generative AI/LLM enrichment and external model providers
-- explicit, directional promotion of a kept relationship into user-authored
-  Markdown with backend-authoritative conflict handling
+- visible body-wikilink promotion with explicit placement and wording UX
 - semantic/vector search unless separately planned
 - sync implementation
 - Git/versioning replacement

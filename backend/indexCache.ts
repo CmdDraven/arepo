@@ -18,8 +18,8 @@ import {
 import type { VaultIndexResponse, VaultInfo } from "./types.js";
 
 export const MACHINE_INDEX_VERSION = 5;
-export const STRUCTURAL_INDEX_DERIVATION_VERSION = 1;
-export const MARKDOWN_SOURCE_DERIVATION_VERSION = 1;
+export const STRUCTURAL_INDEX_DERIVATION_VERSION = 2;
+export const MARKDOWN_SOURCE_DERIVATION_VERSION = 2;
 const OWNED_MACHINE_INDEX_VERSIONS = new Set([1, 2, 3, 4, MACHINE_INDEX_VERSION]);
 const indexOperationLocks = new Map<string, Promise<void>>();
 
@@ -528,6 +528,12 @@ function isMarkdownSourceDerivation(value: unknown): value is MarkdownSourceDeri
     isStringArray(value.anchors) &&
     Array.isArray(value.wikilinks) &&
     value.wikilinks.every(isWikiLink) &&
+    Array.isArray(value.metadataRelationships) &&
+    value.metadataRelationships.every(isWikiLink) &&
+    Array.isArray(value.metadataRelationshipIssues) &&
+    value.metadataRelationshipIssues.every(
+      (issue) => isRecord(issue) && typeof issue.message === "string",
+    ) &&
     isStringArray(value.tags)
   );
 }
@@ -549,6 +555,7 @@ function isOutgoingLink(value: unknown): boolean {
     isOptionalString(value.targetPath) &&
     typeof value.status === "string" &&
     typeof value.broken === "boolean" &&
+    isRelationshipOrigins(value.origins) &&
     (value.targetPaths === undefined || isStringArray(value.targetPaths))
   );
 }
@@ -557,6 +564,7 @@ function isBacklink(value: unknown): boolean {
   return (
     isRecord(value) &&
     typeof value.fromPath === "string" &&
+    isRelationshipOrigins(value.origins) &&
     isOptionalString(value.anchor) &&
     isOptionalString(value.alias)
   );
@@ -569,8 +577,19 @@ function isBrokenLink(value: unknown): boolean {
     typeof value.target === "string" &&
     typeof value.raw === "string" &&
     typeof value.status === "string" &&
+    isRelationshipOrigins(value.origins) &&
     isOptionalString(value.anchor) &&
     isOptionalString(value.targetPath)
+  );
+}
+
+function isRelationshipOrigins(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length >= 1 &&
+    value.length <= 2 &&
+    value.every((origin) => origin === "body" || origin === "metadata") &&
+    new Set(value).size === value.length
   );
 }
 

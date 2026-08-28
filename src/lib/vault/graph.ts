@@ -1,11 +1,11 @@
 // Build a navigable graph from the rebuildable Markdown index.
-// Each note is a node. Each wikilink is an edge. Unresolved wikilinks
-// produce "missing" nodes. Notes with no incoming or outgoing links
+// Each note is a node. Each explicit body or metadata relationship is an
+// edge. Unresolved relationship targets produce "missing" nodes. Notes with no incoming or outgoing links
 // are flagged as orphans. Connected components are laid out as
 // separated islands using a small force-directed simulation per
 // component, then shelf-packed into the canvas plane.
 
-import type { VaultIndex } from "./indexer.js";
+import type { ExplicitRelationshipOrigin, VaultIndex } from "./indexer.js";
 
 export type GNode = {
   id: string;
@@ -25,6 +25,7 @@ export type GEdge = {
   target: string;
   label?: string;
   type: "wikilink" | "broken";
+  origins: ExplicitRelationshipOrigin[];
 };
 
 export type ComponentBounds = {
@@ -51,6 +52,7 @@ export function buildGraph(index: VaultIndex, issues: IssueLike[]): GraphData {
 
   const nodes: Record<string, GNode> = {};
   const edges: GEdge[] = [];
+  const edgeByPair = new Map<string, GEdge>();
 
   for (const note of Object.values(index.notes)) {
     nodes[note.path] = {
@@ -70,13 +72,13 @@ export function buildGraph(index: VaultIndex, issues: IssueLike[]): GraphData {
   for (const note of Object.values(index.notes)) {
     for (const link of index.outgoingLinks[note.path] ?? []) {
       if (link.targetPath) {
-        edges.push({
+        addGraphEdge(edgeByPair, edges, nodes, {
           source: note.path,
           target: link.targetPath,
           label: link.anchor,
           type: "wikilink",
+          origins: [...link.origins],
         });
-        nodes[note.path].outgoingCount++;
       } else {
         const missId = `missing:${link.target}`;
         if (!nodes[missId]) {
@@ -93,14 +95,14 @@ export function buildGraph(index: VaultIndex, issues: IssueLike[]): GraphData {
             y: 0,
           };
         }
-        nodes[missId].backlinkCount++;
-        edges.push({
+        const added = addGraphEdge(edgeByPair, edges, nodes, {
           source: note.path,
           target: missId,
           label: link.anchor,
           type: "broken",
+          origins: [...link.origins],
         });
-        nodes[note.path].outgoingCount++;
+        if (added) nodes[missId].backlinkCount++;
       }
     }
   }
@@ -302,4 +304,24 @@ export function buildGraph(index: VaultIndex, issues: IssueLike[]): GraphData {
     nodeById: nodes,
     componentBounds,
   };
+}
+
+function addGraphEdge(
+  edgeByPair: Map<string, GEdge>,
+  edges: GEdge[],
+  nodes: Record<string, GNode>,
+  edge: GEdge,
+): boolean {
+  const key = `${edge.source}\0${edge.target}`;
+  const existing = edgeByPair.get(key);
+  if (existing) {
+    for (const origin of edge.origins) {
+      if (!existing.origins.includes(origin)) existing.origins.push(origin);
+    }
+    return false;
+  }
+  edgeByPair.set(key, edge);
+  edges.push(edge);
+  nodes[edge.source].outgoingCount++;
+  return true;
 }

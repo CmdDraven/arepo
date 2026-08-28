@@ -38,6 +38,7 @@ const currentBackendRoutes = [
   "POST /api/vaults/:vaultId/file",
   "POST /api/vaults/:vaultId/folder",
   "POST /api/vaults/:vaultId/rename",
+  "POST /api/vaults/:vaultId/relationships/promote",
   "DELETE /api/vaults/:vaultId/file?path=...",
   "POST /api/vaults/:vaultId/reindex",
   "PATCH /api/vaults/:vaultId/index-scope",
@@ -156,6 +157,15 @@ test("Related Notes curation is readable with readIndex and mutable with writeCo
     assert.equal(write.dataAccess.userCuration, true);
     assert.equal(write.dataAccess.sourceMutation, false);
   }
+});
+
+test("relationship promotion is a source mutation requiring structural, read, and write access", () => {
+  const policy = policyFor("POST /api/vaults/:vaultId/relationships/promote");
+  assert.deepEqual(policy.requiredPermissions, ["readIndex", "readContent", "writeContent"]);
+  assert.equal(policy.dataAccess.generatedIndex, true);
+  assert.equal(policy.dataAccess.sourceContent, true);
+  assert.equal(policy.dataAccess.sourceMutation, true);
+  assert.equal(policy.dataAccess.userCuration, true);
 });
 
 test("source mutations require writeContent", () => {

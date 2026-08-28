@@ -3455,6 +3455,51 @@ test("external additions and deletions are reflected in status and rebuilt index
   assert.ok(index.notes["b.md"]);
 });
 
+test("external related-metadata edits refresh structural targets, backlinks, removal, and malformed issues", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-metadata-refresh-server-");
+  const appDataDir = await makeTestTempDir(t, "arepo-metadata-refresh-data-");
+  await writeConfig(cwd, appDataDir);
+  const rootPath = await makeTestTempDir(t, "arepo-metadata-refresh-root-");
+  const sourcePath = path.join(rootPath, "a.md");
+  await fs.writeFile(sourcePath, "# A\n", "utf8");
+  await fs.writeFile(path.join(rootPath, "b.md"), "# B\n", "utf8");
+  await fs.writeFile(path.join(rootPath, "c.md"), "# C\n", "utf8");
+  const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
+  const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
+
+  const observeAndIndex = async (): Promise<VaultIndexResponse> => {
+    const status = await routeRequest(request("GET", `/api/vaults/${vault.id}/status`), cwd);
+    assert.ok(statusBody(status).changedPaths.includes("a.md"));
+    const response = await routeRequest(request("GET", `/api/vaults/${vault.id}/index`), cwd);
+    assert.equal(response.status, 200);
+    return response.body as VaultIndexResponse;
+  };
+
+  await fs.writeFile(sourcePath, '---\nrelated:\n  - "[[b]]"\n---\n# A\n', "utf8");
+  let current = await observeAndIndex();
+  assert.equal(current.index.outgoingLinks["a.md"]?.[0]?.targetPath, "b.md");
+  assert.equal(current.index.backlinks["b.md"]?.[0]?.fromPath, "a.md");
+
+  await fs.writeFile(sourcePath, "# A\n", "utf8");
+  current = await observeAndIndex();
+  assert.deepEqual(current.index.outgoingLinks["a.md"], []);
+  assert.deepEqual(current.index.backlinks["b.md"], undefined);
+
+  await fs.writeFile(sourcePath, '---\nrelated:\n  - "[[c]]"\n---\n# A\n', "utf8");
+  current = await observeAndIndex();
+  assert.equal(current.index.outgoingLinks["a.md"]?.[0]?.targetPath, "c.md");
+  assert.equal(current.index.backlinks["c.md"]?.[0]?.fromPath, "a.md");
+
+  await fs.writeFile(sourcePath, '---\nrelated: "[[c]]"\n---\n# A\n', "utf8");
+  current = await observeAndIndex();
+  assert.ok(
+    current.issues.some(
+      (issue) => issue.path === "a.md" && issue.kind === "invalid-related-metadata",
+    ),
+  );
+  assert.equal(JSON.stringify(current.issues).includes(rootPath), false);
+});
+
 test("plain-text watcher changes stay visible without staling or rebuilding the Markdown index", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-server-");
   const appDataDir = await makeTestTempDir(t, "arepo-data-");
@@ -4115,6 +4160,50 @@ test("managed rename stays successful when subsequent curation bookkeeping is de
   await fs.access(path.join(rootPath, "new.md"));
   await assert.rejects(() => fs.access(path.join(rootPath, "old.md")), { code: "ENOENT" });
   assert.equal(await fs.readFile(curationFile, "utf8"), "invalid curation state");
+});
+
+test("relationship promotion route writes only the chosen Markdown owner and clears kept curation", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-promotion-server-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-promotion-server-vault-");
+  const appDataDir = path.join(cwd, "app-data");
+  const vault = testVault(rootPath, "promotion-server-vault");
+  await fs.writeFile(path.join(rootPath, "a.md"), "# A\nsource body\n");
+  await fs.writeFile(path.join(rootPath, "b.md"), "# B\ntarget body\n");
+  await writeConfig(cwd, appDataDir, { vaults: [vault] });
+  const curationUrl = `/api/vaults/${vault.id}/enrichment/related/curation`;
+  const kept = await routeRequest(
+    request("PUT", curationUrl, {
+      leftPath: "a.md",
+      rightPath: "b.md",
+      decision: "kept",
+    }),
+    cwd,
+  );
+  assert.equal(kept.status, 200);
+  const source = await routeRequest(request("GET", `/api/vaults/${vault.id}/file?path=a.md`), cwd);
+  const targetBefore = await fs.readFile(path.join(rootPath, "b.md"), "utf8");
+  const promoted = await routeRequest(
+    request("POST", `/api/vaults/${vault.id}/relationships/promote`, {
+      ownerPath: "a.md",
+      targetPath: "b.md",
+      expectedHash: (source.body as { hash: string }).hash,
+    }),
+    cwd,
+  );
+  assert.equal(promoted.status, 200);
+  assert.deepEqual(
+    {
+      ok: (promoted.body as { ok: boolean }).ok,
+      status: (promoted.body as { data: { status: string } }).data.status,
+      ownerPath: (promoted.body as { data: { ownerPath: string } }).data.ownerPath,
+      targetPath: (promoted.body as { data: { targetPath: string } }).data.targetPath,
+    },
+    { ok: true, status: "promoted", ownerPath: "a.md", targetPath: "b.md" },
+  );
+  assert.match(await fs.readFile(path.join(rootPath, "a.md"), "utf8"), /related:/);
+  assert.equal(await fs.readFile(path.join(rootPath, "b.md"), "utf8"), targetBefore);
+  const curation = await routeRequest(request("GET", curationUrl), cwd);
+  assert.deepEqual((curation.body as { decisions: unknown[] }).decisions, []);
 });
 
 test("protected curation reads require readIndex and writes require readIndex plus writeContent", async (t) => {

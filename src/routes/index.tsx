@@ -97,10 +97,13 @@ import {
   isIndexFilterResponse,
   isIndexSearchResponse,
   isLocalNodeRuntimeStatus,
+  isOperationResult,
+  isRelationshipPromotionData,
   isRelatedNotesCurationMutationResponse,
   isRelatedNotesCurationResponse,
   isRelatedNotesResponse,
   isVaultFileListResponse,
+  isVaultFileResponse,
   isVaultIndexResponse,
   isVaultInspectResponse,
   isVaultStorageSummary,
@@ -146,6 +149,15 @@ import {
   type DirectoryBrowserState,
 } from "@/lib/vault/directoryBrowser";
 import { renderMarkdown } from "@/lib/vault/render";
+import { markdownBodyForRendering } from "@/lib/vault/frontmatter";
+import {
+  RELATIONSHIP_PROMOTION_EXPLANATION,
+  canPromoteKeptRelationship,
+  initialRelationshipPromotion,
+  relationshipOriginLabels,
+  relationshipPromotionTarget,
+  type RelationshipPromotionDraft,
+} from "@/lib/vault/relationshipUi";
 import { sourcePresentation } from "@/lib/vault/sourcePresentation";
 import {
   ENRICHMENT_ADVANCED_DEFAULT_OPEN,
@@ -261,6 +273,13 @@ function VaultApp() {
   const [curationMutationBusy, setCurationMutationBusy] = useState(false);
   const [curationRefresh, setCurationRefresh] = useState(0);
   const [showCurationManager, setShowCurationManager] = useState(false);
+  const [relationshipPromotion, setRelationshipPromotion] =
+    useState<RelationshipPromotionDraft | null>(null);
+  const [relationshipPromotionBusy, setRelationshipPromotionBusy] = useState(false);
+  const [relationshipPromotionError, setRelationshipPromotionError] = useState<string | null>(null);
+  const [relationshipPromotionNotice, setRelationshipPromotionNotice] = useState<string | null>(
+    null,
+  );
   const [enrichmentSettings, setEnrichmentSettings] =
     useState<EnrichmentPreferencesResponse | null>(null);
   const [enrichmentSettingsLoading, setEnrichmentSettingsLoading] = useState(false);
@@ -634,8 +653,7 @@ function VaultApp() {
   const previewBody = useMemo(() => {
     // Re-parse the live buffer so preview matches what's in the editor
     if (!activePath || activeIsReadOnly) return "";
-    const stripped = buffer.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
-    return renderMarkdown(stripped, index);
+    return renderMarkdown(markdownBodyForRendering(buffer), index);
   }, [activeIsReadOnly, buffer, index, activePath]);
 
   const backlinks = metadataPath ? (index.backlinks[metadataPath] ?? []) : [];
@@ -1092,6 +1110,67 @@ function VaultApp() {
     },
     [activeVault, curationData?.canMutate, curationMutationBusy],
   );
+
+  const openRelationshipPromotion = useCallback(
+    (targetPath: string) => {
+      if (!metadataPath) return;
+      setRelationshipPromotion(initialRelationshipPromotion(metadataPath, targetPath));
+      setRelationshipPromotionError(null);
+      setRelationshipPromotionNotice(null);
+    },
+    [metadataPath],
+  );
+
+  const confirmRelationshipPromotion = useCallback(async (): Promise<void> => {
+    if (!activeVault || !relationshipPromotion || relationshipPromotionBusy) return;
+    const ownerPath = relationshipPromotion.ownerPath;
+    const targetPath = relationshipPromotionTarget(relationshipPromotion);
+    if (ownerPath === activePath && buffer !== savedSnapshot) {
+      setRelationshipPromotionError(
+        "Save or discard the current note edits before adding relationship metadata.",
+      );
+      return;
+    }
+    setRelationshipPromotionBusy(true);
+    setRelationshipPromotionError(null);
+    setRelationshipPromotionNotice(null);
+    try {
+      const owner = await requestApi(
+        `/api/vaults/${encodeURIComponent(activeVault.id)}/file?path=${encodeURIComponent(ownerPath)}`,
+        isVaultFileResponse,
+      );
+      const response = await requestApi(
+        `/api/vaults/${encodeURIComponent(activeVault.id)}/relationships/promote`,
+        isOperationResult(isRelationshipPromotionData),
+        {
+          method: "POST",
+          body: JSON.stringify({ ownerPath, targetPath, expectedHash: owner.hash }),
+        },
+      );
+      if (!response.ok) return;
+      setRelationshipPromotionNotice(
+        response.data.curationDiagnostic ??
+          (response.data.status === "already-present"
+            ? "This relationship was already explicit in the Markdown source."
+            : `Relationship metadata was added to ${response.data.ownerPath}.`),
+      );
+      setRelationshipPromotion(null);
+      setCurationRefresh((value) => value + 1);
+      await refreshActiveVault();
+    } catch (failure) {
+      setRelationshipPromotionError(errorMessage(failure));
+    } finally {
+      setRelationshipPromotionBusy(false);
+    }
+  }, [
+    activePath,
+    activeVault,
+    buffer,
+    refreshActiveVault,
+    relationshipPromotion,
+    relationshipPromotionBusy,
+    savedSnapshot,
+  ]);
 
   const onPreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
@@ -1831,6 +1910,7 @@ function VaultApp() {
         curationData={curationData}
         curationLoading={curationLoading}
         curationError={curationError}
+        relationshipPromotionNotice={relationshipPromotionNotice}
         curationMutationBusy={curationMutationBusy}
         backlinks={backlinks}
         noteTitles={index.notes}
@@ -1846,6 +1926,7 @@ function VaultApp() {
         onCurationDecision={(targetPath, decision) =>
           metadataPath ? void changeCurationDecision(metadataPath, targetPath, decision) : undefined
         }
+        onPromoteRelationship={openRelationshipPromotion}
         onOpenCurationManager={() => setShowCurationManager(true)}
       />
     );
@@ -2080,6 +2161,22 @@ function VaultApp() {
           busy={curationMutationBusy}
         />
       )}
+
+      <RelationshipPromotionDialog
+        draft={relationshipPromotion}
+        busy={relationshipPromotionBusy}
+        error={relationshipPromotionError}
+        onOwnerChange={(ownerPath) =>
+          setRelationshipPromotion((current) => (current ? { ...current, ownerPath } : null))
+        }
+        onOpenChange={(open) => {
+          if (!open && !relationshipPromotionBusy) {
+            setRelationshipPromotion(null);
+            setRelationshipPromotionError(null);
+          }
+        }}
+        onConfirm={() => void confirmRelationshipPromotion()}
+      />
 
       {!showSettings && loading && !activeVault && (
         <main className="flex-1 min-h-0 flex items-center justify-center p-6 text-sm text-muted-foreground">
@@ -2517,6 +2614,7 @@ function IndexInspectPanel({
   curationData,
   curationLoading,
   curationError,
+  relationshipPromotionNotice,
   curationMutationBusy,
   backlinks,
   noteTitles,
@@ -2530,6 +2628,7 @@ function IndexInspectPanel({
   onReindex,
   onOpenSettings,
   onCurationDecision,
+  onPromoteRelationship,
   onOpenCurationManager,
 }: IndexInspectPanelProps) {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
@@ -2626,6 +2725,9 @@ function IndexInspectPanel({
                   Curation could not be updated: {curationError}
                 </StateMessage>
               )}
+              {relationshipPromotionNotice && (
+                <StateMessage>{relationshipPromotionNotice}</StateMessage>
+              )}
               {relatedData.curation.status === "invalid" && relatedData.curation.diagnostic && (
                 <StateMessage tone="error">{relatedData.curation.diagnostic}</StateMessage>
               )}
@@ -2637,6 +2739,7 @@ function IndexInspectPanel({
                   busy={curationMutationBusy}
                   onPick={onPick}
                   onClear={(targetPath) => onCurationDecision(targetPath, null)}
+                  onPromote={onPromoteRelationship}
                 />
               )}
               {relatedData.candidates.length > 0 ? (
@@ -2688,7 +2791,7 @@ function IndexInspectPanel({
 
       <Section
         icon={<Link2 className="size-3.5" />}
-        title="Backlinks"
+        title="Incoming explicit relationships"
         count={backlinks.length}
         collapsed={sectionCollapsed("backlinks")}
         onToggle={() => toggleSection("backlinks")}
@@ -2951,7 +3054,7 @@ function BacklinkList({
   onPick: (path: string) => void;
 }) {
   if (backlinks.length === 0) {
-    return <Empty>No backlinks found for this file.</Empty>;
+    return <Empty>No incoming explicit relationships found for this file.</Empty>;
   }
   return (
     <ul className="min-w-0 space-y-1 overflow-hidden">
@@ -2969,6 +3072,7 @@ function BacklinkList({
               )}
               <span className="text-muted-foreground"> — {backlink.fromPath}</span>
             </button>
+            <RelationshipOriginText origins={backlink.origins} />
           </li>
         );
       })}
@@ -3222,6 +3326,88 @@ function CurationManagerDialog({
   );
 }
 
+function RelationshipPromotionDialog({
+  draft,
+  busy,
+  error,
+  onOwnerChange,
+  onOpenChange,
+  onConfirm,
+}: {
+  draft: RelationshipPromotionDraft | null;
+  busy: boolean;
+  error: string | null;
+  onOwnerChange: (ownerPath: string) => void;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={draft !== null} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Promote relationship</DialogTitle>
+          <DialogDescription>{RELATIONSHIP_PROMOTION_EXPLANATION}</DialogDescription>
+        </DialogHeader>
+        {draft && (
+          <div className="space-y-3 text-sm">
+            <fieldset className="space-y-2" disabled={busy}>
+              <legend className="font-medium">Choose which note stores the metadata</legend>
+              <label className="flex cursor-pointer items-start gap-2 rounded border p-2">
+                <input
+                  type="radio"
+                  name="relationship-metadata-owner"
+                  className="mt-1"
+                  checked={draft.ownerPath === draft.currentPath}
+                  onChange={() => onOwnerChange(draft.currentPath)}
+                />
+                <span className="min-w-0">
+                  <span className="block">Store in current note</span>
+                  <span className="block truncate font-mono text-xs text-muted-foreground">
+                    {draft.currentPath}
+                  </span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-2 rounded border p-2">
+                <input
+                  type="radio"
+                  name="relationship-metadata-owner"
+                  className="mt-1"
+                  checked={draft.ownerPath === draft.relatedPath}
+                  onChange={() => onOwnerChange(draft.relatedPath)}
+                />
+                <span className="min-w-0">
+                  <span className="block">Store in related note</span>
+                  <span className="block truncate font-mono text-xs text-muted-foreground">
+                    {draft.relatedPath}
+                  </span>
+                </span>
+              </label>
+            </fieldset>
+            <p className="text-xs text-muted-foreground">
+              Only the selected note will change. AREPO treats the pair as explicit from either
+              declaration; it will not add reciprocal metadata or visible note text.
+            </p>
+            {error && <StateMessage tone="error">{error}</StateMessage>}
+          </div>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="button" disabled={busy || draft === null} onClick={onConfirm}>
+            {busy ? "Adding metadata..." : "Add to note metadata"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RelatedNoteList({
   data,
   canMutate,
@@ -3304,6 +3490,7 @@ function KeptRelationshipList({
   busy,
   onPick,
   onClear,
+  onPromote,
 }: {
   relationships: RelatedNotesResponse["curation"]["kept"];
   noteTitles: Record<string, { title: string }>;
@@ -3311,6 +3498,7 @@ function KeptRelationshipList({
   busy: boolean;
   onPick: (path: string) => void;
   onClear: (targetPath: string) => void;
+  onPromote: (targetPath: string) => void;
 }) {
   return (
     <div className="space-y-1.5 rounded border border-emerald-500/30 bg-emerald-500/5 p-2 text-xs">
@@ -3342,20 +3530,45 @@ function KeptRelationshipList({
                 {curationFreshnessLabel(relationship.freshness)}
               </div>
             )}
+            {relationship.explicitInSource && (
+              <div className="text-[10px] text-emerald-700 dark:text-emerald-300">
+                Already explicit in source
+              </div>
+            )}
           </button>
-          {canMutate && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-6 shrink-0 text-[10px]"
-              disabled={busy}
-              onClick={() => onClear(relationship.targetPath)}
-              title="Clear this AREPO curation decision. No Markdown is changed."
-            >
-              Clear
-            </Button>
-          )}
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            {canPromoteKeptRelationship(canMutate, relationship.explicitInSource) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 text-[10px]"
+                disabled={busy}
+                onClick={() => onPromote(relationship.targetPath)}
+                title={RELATIONSHIP_PROMOTION_EXPLANATION}
+              >
+                Add to note metadata
+              </Button>
+            )}
+            {!canMutate && !relationship.explicitInSource && (
+              <span className="text-[10px] text-muted-foreground">
+                Metadata promotion requires write access.
+              </span>
+            )}
+            {canMutate && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 text-[10px]"
+                disabled={busy}
+                onClick={() => onClear(relationship.targetPath)}
+                title="Clear this AREPO curation decision. No Markdown is changed."
+              >
+                Clear
+              </Button>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -3434,13 +3647,19 @@ function InspectDetails({
         ))}
       </InspectGroup>
 
-      <InspectGroup title="Outgoing links" empty="No outgoing links found in this file.">
+      <InspectGroup
+        title="Outgoing explicit relationships"
+        empty="No outgoing explicit relationships found in this file."
+      >
         {data.outgoingLinks.map((link, index) => (
           <InspectLinkRow key={`${link.raw}-${index}`} link={link} onPick={onPick} />
         ))}
       </InspectGroup>
 
-      <InspectGroup title="Backlinks" empty="No backlinks found for this file.">
+      <InspectGroup
+        title="Incoming explicit relationships"
+        empty="No incoming explicit relationships found for this file."
+      >
         {data.backlinks.map((backlink, index) => (
           <button
             key={`${backlink.fromPath}-${index}`}
@@ -3452,6 +3671,7 @@ function InspectDetails({
               {backlink.fromPath}
               {backlink.anchor ? `#${backlink.anchor}` : ""}
             </div>
+            <RelationshipOriginText origins={backlink.origins} />
           </button>
         ))}
       </InspectGroup>
@@ -3473,6 +3693,7 @@ function InspectDetails({
                 ? "Target exists but is outside this vault's Index Scope."
                 : "No resolved file exists for this link."}
             </div>
+            <RelationshipOriginText origins={link.origins} />
           </div>
         ))}
       </InspectGroup>
@@ -3600,6 +3821,7 @@ function InspectLinkRow({
       {link.alias && (
         <div className="text-[10px] text-muted-foreground truncate">alias: {link.alias}</div>
       )}
+      <RelationshipOriginText origins={link.origins} />
     </>
   );
   if (!link.targetPath) {
@@ -3612,6 +3834,15 @@ function InspectLinkRow({
     >
       {content}
     </button>
+  );
+}
+
+function RelationshipOriginText({ origins }: { origins: ReadonlyArray<"body" | "metadata"> }) {
+  const labels = relationshipOriginLabels(origins);
+  return (
+    <div className="text-[10px] text-muted-foreground">
+      Source: {labels.length === 1 ? labels[0] : labels.join(" · ")}
+    </div>
   );
 }
 
@@ -4137,6 +4368,7 @@ type InspectBacklink = {
   fromPath: string;
   anchor?: string;
   alias?: string;
+  origins: Array<"body" | "metadata">;
 };
 
 type MetadataNote = {
@@ -4177,6 +4409,7 @@ type IndexInspectPanelProps = {
   curationData: RelatedNotesCurationResponse | null;
   curationLoading: boolean;
   curationError: string | null;
+  relationshipPromotionNotice: string | null;
   curationMutationBusy: boolean;
   backlinks: InspectBacklink[];
   noteTitles: Record<string, { title: string }>;
@@ -4190,6 +4423,7 @@ type IndexInspectPanelProps = {
   onReindex: () => void;
   onOpenSettings: () => void;
   onCurationDecision: (targetPath: string, decision: RelatedNotesCurationDecision | null) => void;
+  onPromoteRelationship: (targetPath: string) => void;
   onOpenCurationManager: () => void;
 };
 

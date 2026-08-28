@@ -371,6 +371,8 @@ function indexResponse(markdown: Record<string, string>): VaultIndexResponse {
         headings: [],
         anchors: [],
         wikilinks: [],
+        metadataRelationships: [],
+        metadataRelationshipIssues: [],
         tags: [],
       },
     ]),

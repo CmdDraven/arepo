@@ -264,6 +264,7 @@ AREPO cache and preference files to appear beside user notes.
 - `POST /api/vaults/:vaultId/file`
 - `POST /api/vaults/:vaultId/folder`
 - `POST /api/vaults/:vaultId/rename`
+- `POST /api/vaults/:vaultId/relationships/promote`
 - `DELETE /api/vaults/:vaultId/file?path=...`
 - `POST /api/vaults/:vaultId/reindex`
 - `GET /api/vaults/:vaultId/index`
@@ -398,6 +399,43 @@ possibly stale watcher snapshot.
 The frontend still owns preview rendering and graph layout, but note content
 and the index now come from the local backend.
 
+### Explicit relationship layers
+
+AREPO keeps source-authored and app-owned relationships distinct:
+
+1. A body wikilink is canonical Markdown, explicit, and visible in rendered prose.
+2. A frontmatter `related` entry is canonical Markdown metadata, explicit, hidden
+   from rendered prose, and included in outgoing relationships, incoming
+   relationships, validation, orphan detection, Inspect, and the structural graph.
+3. A kept Related Notes relationship is durable AREPO app metadata. It is not a
+   Markdown link and does not enter structural graph semantics.
+4. An inferred Related Notes candidate is disposable enrichment.
+
+AREPO V1 interprets this deliberately narrow shape:
+
+```yaml
+---
+related:
+  - "[[folder/note]]"
+  - "[[another-note]]"
+---
+```
+
+`related` must be a YAML sequence of quoted strings, each containing exactly one
+note-level Markdown wikilink. Aliases, anchors, external URLs, non-Markdown
+targets, objects, and scalars are preserved but reported as unsupported. When an
+authorized user explicitly promotes a kept relationship, the backend can append
+to a supported sequence or insert a minimal field without reserializing unrelated
+YAML. Unsafe or malformed frontmatter is left untouched. The user chooses which
+one note owns the declaration; AREPO never writes reciprocal metadata.
+
+Frontmatter and wikilinks are common knowledge-base conventions, but neither
+AREPO's `related` meaning nor wikilinks are standardized by CommonMark. Other
+applications may understand, display, preserve, or ignore these entries. The
+source remains readable Markdown/YAML owned by the user. AREPO-managed and
+external renames follow the existing authored-link behavior: incoming body or
+metadata targets are not automatically rewritten.
+
 ### Related-note enrichment
 
 For Markdown notes, the Inspect panel can lazily request a small ranked list of
@@ -439,6 +477,13 @@ external renames are deliberately not inferred from matching content hashes.
 A kept relationship is AREPO app metadata—not a wikilink, backlink, graph edge,
 or relationship visible to external Markdown editors. Decisions are not
 training data and are never sent anywhere.
+
+For a kept pair, an authorized user may explicitly choose **Add to note
+metadata**. This writes one conflict-checked `related` declaration through the
+same verified, atomic Markdown mutation boundary, then clears the redundant kept
+decision. It never inserts visible prose, changes both notes, or promotes
+automatically. Manually authored metadata has the same structural meaning and
+suppresses redundant inferred suggestions in either relationship orientation.
 
 Related-note results live separately from machine-index v5 at:
 

@@ -341,6 +341,8 @@ function matchRoutePolicy(request: RequestShapedCredentialInput): ProtectedRoute
       return policyFor(method, "/api/vaults/:vaultId/folder");
     case "rename":
       return policyFor(method, "/api/vaults/:vaultId/rename");
+    case "relationships/promote":
+      return policyFor(method, "/api/vaults/:vaultId/relationships/promote");
     case "reindex":
       return policyFor(method, "/api/vaults/:vaultId/reindex");
     case "index-scope":

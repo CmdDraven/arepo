@@ -63,6 +63,7 @@ export type RelatedNotesKeptRelationship = {
   targetPath: string;
   decidedAt: string;
   freshness: RelatedNotesCurationFreshness;
+  explicitInSource: boolean;
 };
 
 export type RelatedNotesCurationResult = {

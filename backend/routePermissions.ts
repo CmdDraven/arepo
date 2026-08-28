@@ -51,6 +51,7 @@ export type RoutePolicyCategory =
   | "relatedNotes"
   | "relatedNotesCurationRead"
   | "relatedNotesCurationWrite"
+  | "relationshipPromotion"
   | "enrichmentSettingsRead"
   | "enrichmentSettingsWrite";
 
@@ -105,6 +106,23 @@ function access(overrides: Partial<RoutePolicyDataAccess>): RoutePolicyDataAcces
 }
 
 export const PROTECTED_ROUTE_POLICIES = [
+  {
+    method: "POST",
+    routePattern: "/api/vaults/:vaultId/relationships/promote",
+    category: "relationshipPromotion",
+    requiredPermissions: ["readIndex", "readContent", "writeContent"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({
+      generatedIndex: true,
+      sourceContent: true,
+      sourceMutation: true,
+      userCuration: true,
+    }),
+    networkExposureSafe: false,
+    notes:
+      "Promotion explicitly writes canonical Markdown frontmatter and clears redundant kept curation after success.",
+  },
   {
     method: "GET",
     routePattern: "/api/vaults/:vaultId/enrichment/related/curation?path=...",

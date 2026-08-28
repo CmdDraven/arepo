@@ -859,6 +859,7 @@ export type VaultInspectLink = {
   status: string;
   broken: boolean;
   targetPaths?: string[];
+  origins: Array<"body" | "metadata">;
 };
 
 export type VaultInspectBacklink = {
@@ -866,6 +867,7 @@ export type VaultInspectBacklink = {
   fromTitle: string;
   anchor?: string;
   alias?: string;
+  origins: Array<"body" | "metadata">;
 };
 
 export type VaultInspectDuplicateAnchor = {

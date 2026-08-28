@@ -10,6 +10,7 @@ import {
   isLocalNodeRuntimeStatus,
   isOperationResult,
   isPathMutationData,
+  isRelationshipPromotionData,
   isRenameMutationData,
   isRelatedNotesCurationMutationResponse,
   isRelatedNotesCurationResponse,
@@ -500,6 +501,44 @@ test("mutation success and watcher-status payloads require their consumed fields
     false,
   );
 
+  const promotionGuard = isOperationResult(isRelationshipPromotionData);
+  const promotion = {
+    ok: true,
+    data: {
+      status: "promoted",
+      ownerPath: "note.md",
+      targetPath: "nested/target.md",
+      file: {
+        path: "note.md",
+        kind: "markdown",
+        size: 32,
+        mtimeMs: 100,
+        hash: "a".repeat(64),
+      },
+      curationDiagnostic: "Curation could not be cleared.",
+    },
+  };
+  assert.equal(promotionGuard(promotion), true);
+  assert.equal(
+    promotionGuard({ ...promotion, data: { ...promotion.data, status: "future" } }),
+    false,
+  );
+  assert.equal(
+    promotionGuard({ ...promotion, data: { ...promotion.data, ownerPath: "/private/note.md" } }),
+    false,
+  );
+  assert.equal(
+    promotionGuard({ ...promotion, data: { ...promotion.data, targetPath: "note.md" } }),
+    false,
+  );
+  assert.equal(
+    promotionGuard({
+      ...promotion,
+      data: { ...promotion.data, file: { ...promotion.data.file, path: "other.md" } },
+    }),
+    false,
+  );
+
   const status = {
     vaultId: "notes",
     indexStatus: "fresh",
@@ -586,6 +625,8 @@ function publicIndex() {
         headings: [{ level: 1, text: "Note", anchor: "note", explicit: false }],
         anchors: ["note"],
         wikilinks: [],
+        metadataRelationships: [],
+        metadataRelationshipIssues: [],
         tags: [],
       },
     },

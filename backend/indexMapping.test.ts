@@ -45,6 +45,8 @@ function mappingIndex(): VaultIndexResponse {
             { target: "Beta", raw: "Beta" },
             { target: "Missing", raw: "Missing" },
           ],
+          metadataRelationships: [],
+          metadataRelationshipIssues: [],
           tags: ["project", "shared"],
         },
         "Folder/Beta.md": {
@@ -55,6 +57,8 @@ function mappingIndex(): VaultIndexResponse {
           headings: [{ level: 1, text: "Beta Note", anchor: "beta-note", explicit: false }],
           anchors: ["beta-note"],
           wikilinks: [{ target: "Alpha", raw: "Alpha" }],
+          metadataRelationships: [],
+          metadataRelationshipIssues: [],
           tags: ["project", "beta"],
         },
         "Folder/Gamma.md": {
@@ -65,6 +69,8 @@ function mappingIndex(): VaultIndexResponse {
           headings: [{ level: 1, text: "Gamma Note", anchor: "gamma-note", explicit: false }],
           anchors: ["gamma-note"],
           wikilinks: [],
+          metadataRelationships: [],
+          metadataRelationshipIssues: [],
           tags: ["zeta"],
         },
       },
@@ -85,16 +91,24 @@ function mappingIndex(): VaultIndexResponse {
             target: "Beta",
             targetPath: "Folder/Beta.md",
             raw: "Beta",
+            origins: ["body"],
             status: "resolved",
             broken: false,
           },
-          { target: "Missing", raw: "Missing", status: "missing", broken: true },
+          {
+            target: "Missing",
+            raw: "Missing",
+            origins: ["body"],
+            status: "missing",
+            broken: true,
+          },
         ],
         "Folder/Beta.md": [
           {
             target: "Alpha",
             targetPath: "Alpha.md",
             raw: "Alpha",
+            origins: ["body"],
             status: "resolved",
             broken: false,
           },
@@ -102,10 +116,18 @@ function mappingIndex(): VaultIndexResponse {
         "Folder/Gamma.md": [],
       },
       backlinks: {
-        "Alpha.md": [{ fromPath: "Folder/Beta.md" }],
-        "Folder/Beta.md": [{ fromPath: "Alpha.md" }],
+        "Alpha.md": [{ fromPath: "Folder/Beta.md", origins: ["body"] }],
+        "Folder/Beta.md": [{ fromPath: "Alpha.md", origins: ["body"] }],
       },
-      brokenLinks: [{ fromPath: "Alpha.md", target: "Missing", raw: "Missing", status: "missing" }],
+      brokenLinks: [
+        {
+          fromPath: "Alpha.md",
+          target: "Missing",
+          raw: "Missing",
+          status: "missing",
+          origins: ["body"],
+        },
+      ],
       orphanNotes: ["Folder/Gamma.md"],
     },
     issues: [
@@ -331,6 +353,8 @@ test("mapping helpers operate on supplied rebuildable index data rather than app
     ],
     anchors: ["scratch-runtime-note"],
     wikilinks: [],
+    metadataRelationships: [],
+    metadataRelationshipIssues: [],
     tags: ["runtime"],
   };
   data.index.outgoingLinks["Scratch.md"] = [];

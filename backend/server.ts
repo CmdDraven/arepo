@@ -67,6 +67,10 @@ import { rebindVaultRoot } from "./vaultRelocation.js";
 import { projectVaultList } from "./vaultListVisibility.js";
 import { apiErrorResponse, PublicApiError } from "./publicApiError.js";
 import { browseServerDirectories } from "./directoryBrowser.js";
+import {
+  promoteKeptRelationshipToMetadata,
+  requireRelationshipPromotionPermissions,
+} from "./relationshipPromotion.js";
 import type { VaultIndexResponse, VaultInfo } from "./types.js";
 import type { VaultListAccess } from "./vaultListVisibility.js";
 
@@ -237,6 +241,20 @@ export async function routeRequest(
       }
 
       const vault = await requireAvailableVault(await getLocalVault(vaultId, cwd));
+
+      if (
+        method === "POST" &&
+        action === "relationships" &&
+        segments[4] === "promote" &&
+        segments.length === 5
+      ) {
+        const body = asRecord(await readJson(request));
+        requireRelationshipPromotionPermissions(vault);
+        const index = await refreshTrackedMachineIndex(vault, cwd);
+        const data = await promoteKeptRelationshipToMetadata(vault, index, body, cwd);
+        if (data.status === "promoted") await recordVaultMutation(vault, cwd);
+        return json(200, { ok: true, data }, cors.headers);
+      }
 
       if (method === "GET" && action === "files") {
         const [files, folders] = await Promise.all([

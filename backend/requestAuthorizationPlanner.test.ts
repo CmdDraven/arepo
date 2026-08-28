@@ -205,6 +205,26 @@ test("curation reads require readIndex while writes require writeContent too", (
   assert.equal(allowed.wouldAllow, true);
 });
 
+test("relationship promotion requires index, content-read, and content-write grants", () => {
+  const denied = planRouteAwareRequestAuthorization({
+    request: bearerRequest("POST", "/api/vaults/notes/relationships/promote"),
+    stores: storesForCredential(credential(["readIndex", "writeContent"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(denied.wouldDeny, true);
+  assert.deepEqual(denied.missingPermissions, ["readContent"]);
+
+  const allowed = planRouteAwareRequestAuthorization({
+    request: bearerRequest("POST", "/api/vaults/notes/relationships/promote"),
+    stores: storesForCredential(credential(["readIndex", "readContent", "writeContent"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(allowed.wouldAllow, true);
+  assert.equal(allowed.routePattern, "/api/vaults/:vaultId/relationships/promote");
+});
+
 test("enrichment settings separate readIndex visibility from manageVaults mutation", () => {
   const read = planRouteAwareRequestAuthorization({
     request: bearerRequest("GET", "/api/vaults/notes/enrichment/settings"),

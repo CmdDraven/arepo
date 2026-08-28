@@ -6,6 +6,7 @@ import type { MachineIndexResult } from "./indexCache.js";
 import { normalizeMarkdownFilePath } from "./path.js";
 import { PublicApiError } from "./publicApiError.js";
 import type { VaultInfo } from "./types.js";
+import { hasExplicitRelationship } from "../src/lib/vault/indexer.js";
 import {
   RELATED_NOTES_CURATION_KIND,
   RELATED_NOTES_CURATION_MAX_DECISIONS,
@@ -177,6 +178,11 @@ export async function applyRelatedNotesCuration(
       targetPath: otherPath(record, response.sourcePath),
       decidedAt: record.decidedAt,
       freshness: freshnessFor(record, machine),
+      explicitInSource: hasExplicitRelationship(
+        machine.data.index,
+        response.sourcePath,
+        otherPath(record, response.sourcePath),
+      ),
     }))
     .filter((record) => machine.data.index.notes[record.targetPath] !== undefined)
     .sort((left, right) => compareRelatedNotesCurationPaths(left.targetPath, right.targetPath));
@@ -187,6 +193,27 @@ export async function applyRelatedNotesCuration(
     ),
     curation: { status: "ready", kept },
   };
+}
+
+export async function requireKeptRelatedNotesCurationDecision(
+  vault: VaultInfo,
+  rawLeftPath: unknown,
+  rawRightPath: unknown,
+  cwd = process.cwd(),
+): Promise<void> {
+  requireReadPermission(vault);
+  const pair = canonicalPair(rawLeftPath, rawRightPath);
+  const read = await readStoredCuration(await relatedNotesCurationPath(vault, cwd), vault.id);
+  if (read.status === "invalid") throw invalidStoredCuration();
+  const record = read.store.decisions.find(
+    (candidate) =>
+      pairKey(candidate.leftPath, candidate.rightPath) === pairKey(pair.leftPath, pair.rightPath),
+  );
+  if (record?.decision !== "kept") {
+    throw new PublicApiError(409, "Only a kept relationship can be added to note metadata.", {
+      code: "relationship-promotion-requires-kept",
+    });
+  }
 }
 
 export async function renameRelatedNotesCurationPaths(

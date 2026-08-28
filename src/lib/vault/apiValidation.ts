@@ -81,6 +81,9 @@ const VALIDATION_ISSUE_KINDS = new Set<ValidationIssue["kind"]>([
   "ambiguous-link",
   "missing-title",
   "missing-id",
+  "invalid-related-metadata",
+  "broken-related-metadata",
+  "ambiguous-related-metadata",
   "source-unreadable",
 ]);
 
@@ -206,6 +209,7 @@ export type VaultInspectLink = {
   status: string;
   broken: boolean;
   targetPaths?: string[];
+  origins: Array<"body" | "metadata">;
 };
 
 export type VaultInspectBacklink = {
@@ -213,6 +217,15 @@ export type VaultInspectBacklink = {
   fromTitle: string;
   anchor?: string;
   alias?: string;
+  origins: Array<"body" | "metadata">;
+};
+
+export type RelationshipPromotionData = {
+  status: "promoted" | "already-present";
+  ownerPath: string;
+  targetPath: string;
+  file: VaultFileWriteResponse;
+  curationDiagnostic?: string;
 };
 
 export type VaultInspectDuplicateAnchor = {
@@ -498,6 +511,20 @@ export const isRenameMutationData: ApiGuard<{
   (value.curationDiagnostic === undefined ||
     (typeof value.curationDiagnostic === "string" && value.curationDiagnostic.length <= 512));
 
+export const isRelationshipPromotionData: ApiGuard<RelationshipPromotionData> = (
+  value,
+): value is RelationshipPromotionData =>
+  isObjectRecord(value) &&
+  (value.status === "promoted" || value.status === "already-present") &&
+  isMarkdownPath(value.ownerPath) &&
+  isMarkdownPath(value.targetPath) &&
+  value.ownerPath !== value.targetPath &&
+  isVaultFileWriteResponse(value.file) &&
+  value.file.path === value.ownerPath &&
+  (value.curationDiagnostic === undefined ||
+    (typeof value.curationDiagnostic === "string" && value.curationDiagnostic.length <= 512)) &&
+  hasOnlyKeys(value, ["status", "ownerPath", "targetPath", "file", "curationDiagnostic"]);
+
 export const isAddVaultData: ApiGuard<{ vault: VaultInfo }> = (
   value,
 ): value is { vault: VaultInfo } => isObjectRecord(value) && isVaultInfo(value.vault);
@@ -758,11 +785,12 @@ function isRelatedNotesCurationResult(value: unknown, sourcePath: string): boole
   return value.kept.every((entry) => {
     if (
       !isObjectRecord(entry) ||
-      !hasOnlyKeys(entry, ["targetPath", "decidedAt", "freshness"]) ||
+      !hasOnlyKeys(entry, ["targetPath", "decidedAt", "freshness", "explicitInSource"]) ||
       !isMarkdownPath(entry.targetPath) ||
       entry.targetPath === sourcePath ||
       !isIsoTimestamp(entry.decidedAt) ||
       !isCurationFreshness(entry.freshness) ||
+      typeof entry.explicitInSource !== "boolean" ||
       paths.has(entry.targetPath)
     ) {
       return false;
@@ -1006,6 +1034,12 @@ function isNoteIndex(value: unknown): value is NoteIndex {
     isStringArray(value.anchors) &&
     Array.isArray(value.wikilinks) &&
     value.wikilinks.every(isWikiLink) &&
+    Array.isArray(value.metadataRelationships) &&
+    value.metadataRelationships.every(isWikiLink) &&
+    Array.isArray(value.metadataRelationshipIssues) &&
+    value.metadataRelationshipIssues.every(
+      (issue) => isObjectRecord(issue) && typeof issue.message === "string",
+    ) &&
     isStringArray(value.tags)
   );
 }
@@ -1037,6 +1071,7 @@ function isOutgoingLink(value: unknown): boolean {
     optionalRelativePath(value, "targetPath") &&
     LINK_STATUSES.has(value.status as string) &&
     typeof value.broken === "boolean" &&
+    isRelationshipOrigins(value.origins) &&
     (value.targetPaths === undefined ||
       (Array.isArray(value.targetPaths) && value.targetPaths.every(isRelativeVaultPath)))
   );
@@ -1046,6 +1081,7 @@ function isBacklink(value: unknown): boolean {
   return (
     isObjectRecord(value) &&
     isRelativeVaultPath(value.fromPath) &&
+    isRelationshipOrigins(value.origins) &&
     optionalString(value, "anchor") &&
     optionalString(value, "alias")
   );
@@ -1059,7 +1095,18 @@ function isBrokenLink(value: unknown): boolean {
     optionalString(value, "anchor") &&
     typeof value.raw === "string" &&
     BROKEN_LINK_STATUSES.has(value.status as string) &&
+    isRelationshipOrigins(value.origins) &&
     optionalRelativePath(value, "targetPath")
+  );
+}
+
+function isRelationshipOrigins(value: unknown): value is Array<"body" | "metadata"> {
+  return (
+    Array.isArray(value) &&
+    value.length >= 1 &&
+    value.length <= 2 &&
+    value.every((origin) => origin === "body" || origin === "metadata") &&
+    new Set(value).size === value.length
   );
 }
 

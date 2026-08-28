@@ -325,6 +325,29 @@ test("dismissed and kept decisions filter after derivation while clear restores 
   );
 });
 
+test("manual canonical metadata remains distinct from durable kept and dismissed decisions", async (t) => {
+  const { cwd, vault, machine } = await fixture(t);
+  await setRelatedNotesCurationDecision(vault, machine, pair("a.md", "b.md", "kept"), cwd);
+  await setRelatedNotesCurationDecision(
+    vault,
+    machine,
+    pair("a.md", "nested/c.md", "dismissed"),
+    cwd,
+  );
+  await write(
+    vault.rootPath,
+    "a.md",
+    '---\nrelated:\n  - "[[b]]"\n---\n# Alpha\ncanonical stale conflict version',
+  );
+  await rebuildMachineIndex(vault, cwd);
+  const current = await getMachineIndexResult(vault, cwd);
+  const response = await applyRelatedNotesCuration(vault, current, derived(), cwd);
+  assert.equal(response.curation.kept[0]?.targetPath, "b.md");
+  assert.equal(response.curation.kept[0]?.explicitInSource, true);
+  const stored = await readRelatedNotesCuration(vault, current, undefined, true, cwd);
+  assert.deepEqual(stored.summary, { kept: 1, dismissed: 1 });
+});
+
 test("managed file and folder renames update paths; unrelated identical content is never inferred", async (t) => {
   const { cwd, vault, machine } = await fixture(t);
   await setRelatedNotesCurationDecision(vault, machine, pair("a.md", "b.md", "kept"), cwd);

@@ -1,7 +1,8 @@
 // Pure indexer over a map of path -> markdown content. The index is
 // disposable; it can be rebuilt from the Markdown files alone.
 
-import { parseFrontmatter, type Frontmatter } from "./frontmatter.js";
+import { parseFrontmatter, parseRelatedMetadata, type Frontmatter } from "./frontmatter.js";
+import { sourceKindForPath } from "./sourcePolicy.js";
 
 export type Heading = {
   level: number;
@@ -15,6 +16,12 @@ export type WikiLink = {
   anchor?: string;
   alias?: string;
   raw: string;
+};
+
+export type ExplicitRelationshipOrigin = "body" | "metadata";
+
+export type MetadataRelationshipIssue = {
+  message: string;
 };
 
 export type WikiLinkResolution =
@@ -32,6 +39,8 @@ export type NoteIndex = {
   headings: Heading[];
   anchors: string[];
   wikilinks: WikiLink[];
+  metadataRelationships: WikiLink[];
+  metadataRelationshipIssues: MetadataRelationshipIssue[];
   tags: string[];
 };
 
@@ -54,12 +63,21 @@ export type VaultIndex = {
       anchor?: string;
       alias?: string;
       raw: string;
+      origins: ExplicitRelationshipOrigin[];
       status: WikiLinkResolution["status"];
       broken: boolean;
       targetPaths?: string[];
     }[]
   >;
-  backlinks: Record<string, { fromPath: string; anchor?: string; alias?: string }[]>;
+  backlinks: Record<
+    string,
+    {
+      fromPath: string;
+      anchor?: string;
+      alias?: string;
+      origins: ExplicitRelationshipOrigin[];
+    }[]
+  >;
   brokenLinks: {
     fromPath: string;
     target: string;
@@ -70,6 +88,7 @@ export type VaultIndex = {
       "missing" | "excluded-by-index-scope" | "invalid"
     >;
     targetPath?: string;
+    origins: ExplicitRelationshipOrigin[];
   }[];
   orphanNotes: string[];
 };
@@ -84,6 +103,9 @@ export type ValidationIssue = {
     | "ambiguous-link"
     | "missing-title"
     | "missing-id"
+    | "invalid-related-metadata"
+    | "broken-related-metadata"
+    | "ambiguous-related-metadata"
     | "source-unreadable";
   path: string;
   message: string;
@@ -161,6 +183,7 @@ export function parseWikiLink(raw: string): WikiLink {
 
 export function deriveMarkdownSource(path: string, content: string): MarkdownSourceDerivation {
   const { frontmatter, body } = parseFrontmatter(content);
+  const related = deriveMetadataRelationships(content);
   const indexableBody = stripCodeForIndexing(body);
   const headings = extractHeadings(indexableBody);
   const wikilinks = extractWikilinks(indexableBody);
@@ -177,6 +200,8 @@ export function deriveMarkdownSource(path: string, content: string): MarkdownSou
     headings,
     anchors: headings.map((h) => h.anchor),
     wikilinks,
+    metadataRelationships: related.relationships,
+    metadataRelationshipIssues: related.issues,
     tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.map(String) : [],
   };
 }
@@ -264,46 +289,93 @@ export function assembleIndex(
   const outgoingLinks: VaultIndex["outgoingLinks"] = {};
   const brokenLinks: VaultIndex["brokenLinks"] = [];
   for (const note of Object.values(notes)) {
-    for (const wl of note.wikilinks) {
+    const byRelationship = new Map<string, VaultIndex["outgoingLinks"][string][number]>();
+    for (const { link: wl, origin } of [
+      ...note.wikilinks.map((link) => ({ link, origin: "body" as const })),
+      ...note.metadataRelationships.map((link) => ({ link, origin: "metadata" as const })),
+    ]) {
       const resolution = resolveWikiLink(
         { notes, bySlug, duplicateSlugs, byId, duplicateIds, excludedPaths, excludedBySlug },
         wl,
       );
       const targetPath = resolution.status === "resolved" ? resolution.targetPath : undefined;
-      (outgoingLinks[note.path] ||= []).push({
-        target: wl.target,
-        targetPath,
-        anchor: wl.anchor,
-        alias: wl.alias,
-        raw: wl.raw,
-        status: resolution.status,
-        broken: !targetPath,
-        targetPaths: resolution.status === "ambiguous" ? resolution.targetPaths : undefined,
-      });
+      const metadataMatch =
+        origin === "metadata"
+          ? [...byRelationship.values()].find((candidate) =>
+              targetPath
+                ? candidate.targetPath === targetPath
+                : candidate.status === resolution.status &&
+                  candidate.target === wl.target &&
+                  candidate.anchor === wl.anchor,
+            )
+          : undefined;
+      const relationshipKey =
+        origin === "body"
+          ? `body\0${resolution.status}\0${targetPath ?? wl.target}\0${wl.anchor ?? ""}\0${wl.alias ?? ""}\0${wl.raw}`
+          : targetPath
+            ? `metadata\0resolved\0${targetPath}`
+            : `metadata\0${resolution.status}\0${wl.target}\0${wl.anchor ?? ""}`;
+      const existing = metadataMatch ?? byRelationship.get(relationshipKey);
+      if (existing) {
+        if (!existing.origins.includes(origin)) existing.origins.push(origin);
+      } else {
+        byRelationship.set(relationshipKey, {
+          target: wl.target,
+          targetPath,
+          anchor: wl.anchor,
+          alias: wl.alias,
+          raw: wl.raw,
+          origins: [origin],
+          status: resolution.status,
+          broken: !targetPath,
+          targetPaths: resolution.status === "ambiguous" ? resolution.targetPaths : undefined,
+        });
+      }
       if (!targetPath) {
         if (
           resolution.status === "missing" ||
           resolution.status === "excluded-by-index-scope" ||
           resolution.status === "invalid"
         ) {
-          brokenLinks.push({
-            fromPath: note.path,
-            target: wl.target,
-            anchor: wl.anchor,
-            raw: wl.raw,
-            status: resolution.status,
-            targetPath:
-              resolution.status === "excluded-by-index-scope" ? resolution.targetPath : undefined,
-          });
+          const existingBroken = brokenLinks.find(
+            (broken) =>
+              broken.fromPath === note.path &&
+              broken.target === wl.target &&
+              broken.anchor === wl.anchor &&
+              broken.status === resolution.status,
+          );
+          if (existingBroken) {
+            if (!existingBroken.origins.includes(origin)) existingBroken.origins.push(origin);
+          } else {
+            brokenLinks.push({
+              fromPath: note.path,
+              target: wl.target,
+              anchor: wl.anchor,
+              raw: wl.raw,
+              status: resolution.status,
+              targetPath:
+                resolution.status === "excluded-by-index-scope" ? resolution.targetPath : undefined,
+              origins: [origin],
+            });
+          }
         }
         continue;
       }
-      (backlinks[targetPath] ||= []).push({
-        fromPath: note.path,
-        anchor: wl.anchor,
-        alias: wl.alias,
-      });
+      const existingBacklink = (backlinks[targetPath] ?? []).find(
+        (backlink) => backlink.fromPath === note.path,
+      );
+      if (existingBacklink) {
+        if (!existingBacklink.origins.includes(origin)) existingBacklink.origins.push(origin);
+      } else {
+        (backlinks[targetPath] ||= []).push({
+          fromPath: note.path,
+          anchor: wl.anchor,
+          alias: wl.alias,
+          origins: [origin],
+        });
+      }
     }
+    outgoingLinks[note.path] = [...byRelationship.values()];
   }
   const orphanNotes = Object.values(notes)
     .filter(
@@ -368,6 +440,17 @@ export function resolveWikiLink(
   return { status: "missing" };
 }
 
+export function hasExplicitRelationship(
+  index: VaultIndex,
+  leftPath: string,
+  rightPath: string,
+): boolean {
+  return (
+    (index.outgoingLinks[leftPath] ?? []).some((link) => link.targetPath === rightPath) ||
+    (index.outgoingLinks[rightPath] ?? []).some((link) => link.targetPath === leftPath)
+  );
+}
+
 function isUnsafeWikiPath(target: string): boolean {
   if (target.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(target)) return true;
   if (target.includes("\\")) return true;
@@ -379,6 +462,14 @@ export function validate(index: VaultIndex): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const idCounts: Record<string, string[]> = {};
   for (const note of Object.values(index.notes)) {
+    for (const relatedIssue of note.metadataRelationshipIssues) {
+      issues.push({
+        kind: "invalid-related-metadata",
+        path: note.path,
+        message: relatedIssue.message,
+        severity: "error",
+      });
+    }
     const id = note.frontmatter.id;
     if (typeof id === "string" && id) {
       (idCounts[id] ||= []).push(note.path);
@@ -448,6 +539,35 @@ export function validate(index: VaultIndex): ValidationIssue[] {
         }
       }
     }
+    for (const relationship of note.metadataRelationships) {
+      const resolution = resolveWikiLink(index, relationship);
+      if (resolution.status === "resolved") continue;
+      if (resolution.status === "ambiguous") {
+        issues.push({
+          kind: "ambiguous-related-metadata",
+          path: note.path,
+          message: "A related metadata entry resolves to more than one Markdown note.",
+          severity: "error",
+        });
+      } else if (resolution.status === "invalid") {
+        issues.push({
+          kind: "invalid-related-metadata",
+          path: note.path,
+          message: "A related metadata entry has an unsafe target.",
+          severity: "error",
+        });
+      } else {
+        issues.push({
+          kind: "broken-related-metadata",
+          path: note.path,
+          message:
+            resolution.status === "excluded-by-index-scope"
+              ? "A related metadata target exists outside this vault's Index Scope."
+              : "A related metadata target could not be resolved.",
+          severity: "error",
+        });
+      }
+    }
   }
   for (const [slug, paths] of Object.entries(index.duplicateSlugs)) {
     for (const p of paths) {
@@ -474,4 +594,35 @@ export function validate(index: VaultIndex): ValidationIssue[] {
     }
   }
   return issues;
+}
+
+function deriveMetadataRelationships(content: string): {
+  relationships: WikiLink[];
+  issues: MetadataRelationshipIssue[];
+} {
+  const parsed = parseRelatedMetadata(content);
+  const issues = parsed.issues.map((message) => ({ message }));
+  const relationships: WikiLink[] = [];
+  for (const entry of parsed.entries) {
+    const match = entry.match(/^\[\[([^\]]+)\]\]$/);
+    if (!match) {
+      issues.push({ message: "Each related metadata entry must contain one note-level wikilink." });
+      continue;
+    }
+    const link = parseWikiLink(match[1]);
+    const targetKind = sourceKindForPath(link.target);
+    if (
+      link.anchor !== undefined ||
+      link.alias !== undefined ||
+      /^[a-z][a-z0-9+.-]*:/i.test(link.target) ||
+      (targetKind !== null && targetKind !== "markdown")
+    ) {
+      issues.push({
+        message: "Related metadata supports only note-level Markdown wikilink targets.",
+      });
+      continue;
+    }
+    relationships.push(link);
+  }
+  return { relationships, issues };
 }

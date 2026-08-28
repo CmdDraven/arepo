@@ -102,6 +102,7 @@ const categoryRequestClasses: Record<RoutePolicyCategory, BrowserSecurityRequest
   relatedNotes: "sourceContentRead",
   relatedNotesCurationRead: "safeReadMetadata",
   relatedNotesCurationWrite: "curationMutation",
+  relationshipPromotion: "sourceMutation",
   enrichmentSettingsRead: "safeReadMetadata",
   enrichmentSettingsWrite: "vaultManagement",
 };
