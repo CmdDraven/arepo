@@ -1,3 +1,8 @@
+---
+related:
+  - "[[better-auth-backup-restore-session-state-policy]]"
+---
+
 # Better Auth Expired-Session Pruning Policy
 
 Status: accepted with conditions.
