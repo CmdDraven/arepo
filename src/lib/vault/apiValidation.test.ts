@@ -15,6 +15,8 @@ import {
   isRelatedNotesCurationMutationResponse,
   isRelatedNotesCurationResponse,
   isRelatedNotesResponse,
+  isSemanticProviderStatusResponse,
+  isSemanticRuntimeStatusResponse,
   isVaultFileListResponse,
   isVaultFileResponse,
   isVaultIndexResponse,
@@ -98,6 +100,74 @@ test("related-note response guard enforces versions, paths, scores, bounds, and 
       producer: "arepo.related-notes",
       candidates: [],
       internal: true,
+    }),
+    false,
+  );
+});
+
+test("semantic provider runtime guard accepts bounded provenance and rejects vectors", () => {
+  const valid = {
+    enabled: true,
+    provider: "ollama",
+    endpoint: "http://127.0.0.1:11434",
+    model: "embed",
+    models: [{ name: "embed", digest: "f".repeat(64) }],
+    producer: {
+      name: "arepo.semantic-similarity",
+      version: 1,
+      textVersion: 1,
+      productionCandidates: "deferred",
+    },
+    status: "available",
+    identity: {
+      provider: "ollama",
+      endpoint: "http://127.0.0.1:11434",
+      model: "embed",
+      modelDigest: "f".repeat(64),
+      dimensions: 768,
+    },
+  };
+  assert.equal(isSemanticProviderStatusResponse(valid), true);
+  assert.equal(
+    isSemanticRuntimeStatusResponse({
+      provider: valid,
+      scope: {
+        mode: "selected",
+        selectedCount: 3,
+        eligibleCount: 2,
+        unavailableCount: 1,
+        pairwiseRelationshipCount: 1,
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    isSemanticRuntimeStatusResponse({
+      provider: valid,
+      scope: {
+        mode: "selected",
+        selectedCount: 1,
+        eligibleCount: 2,
+        unavailableCount: 0,
+        pairwiseRelationshipCount: 1,
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    isSemanticRuntimeStatusResponse({
+      provider: valid,
+      scope: { mode: "all", eligibleCount: 1, pairwiseRelationshipCount: 1 },
+    }),
+    false,
+  );
+  assert.equal(isSemanticProviderStatusResponse({ ...valid, vectors: [[1, 2]] }), false);
+  assert.equal(
+    isSemanticProviderStatusResponse({
+      ...valid,
+      status: "provider-unreachable",
+      identity: undefined,
+      diagnostic: "/private/example/secret.txt".repeat(20),
     }),
     false,
   );
@@ -210,14 +280,21 @@ test("enrichment preference response guard rejects unknown producers, presets, a
       },
     },
   };
+  const semantic = {
+    enabled: false,
+    provider: "ollama",
+    endpoint: "http://127.0.0.1:11434",
+    model: "",
+    scope: { mode: "selected", selectedPaths: [] },
+  };
   const valid = {
     status: "ready",
     storageStatus: "default",
     preferences: {
       kind: "arepo.enrichmentPreferences",
-      version: 1,
+      version: 3,
       vaultId: "notes",
-      producers: { relatedNotes },
+      producers: { relatedNotes, semantic },
     },
   };
   assert.equal(isEnrichmentPreferencesResponse(valid), true);
@@ -236,7 +313,7 @@ test("enrichment preference response guard rejects unknown producers, presets, a
       ...valid,
       preferences: {
         ...valid.preferences,
-        producers: { relatedNotes: { ...relatedNotes, preset: "future" } },
+        producers: { relatedNotes: { ...relatedNotes, preset: "future" }, semantic },
       },
     }),
     false,
@@ -252,6 +329,7 @@ test("enrichment preference response guard rejects unknown producers, presets, a
             preset: "custom",
             configuration: { ...relatedNotes.configuration, minimumScore: Number.NaN },
           },
+          semantic,
         },
       },
     }),
@@ -274,6 +352,7 @@ test("enrichment preference response guard rejects unknown producers, presets, a
               },
             },
           },
+          semantic,
         },
       },
     }),
@@ -485,6 +564,7 @@ test("mutation success and watcher-status payloads require their consumed fields
         fromPath: "old.md",
         toPath: "new.md",
         curationDiagnostic: "Curation bookkeeping could not be updated.",
+        semanticScopeDiagnostic: "Semantic selections could not be updated.",
       },
     }),
     true,
@@ -496,6 +576,17 @@ test("mutation success and watcher-status payloads require their consumed fields
         fromPath: "old.md",
         toPath: "new.md",
         curationDiagnostic: "x".repeat(513),
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    renameGuard({
+      ok: true,
+      data: {
+        fromPath: "old.md",
+        toPath: "new.md",
+        semanticScopeDiagnostic: "x".repeat(513),
       },
     }),
     false,

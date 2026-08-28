@@ -366,6 +366,10 @@ function matchRoutePolicy(request: RequestShapedCredentialInput): ProtectedRoute
       );
     case "enrichment/settings":
       return policyFor(method, "/api/vaults/:vaultId/enrichment/settings");
+    case "enrichment/semantic/status":
+      return policyFor(method, "/api/vaults/:vaultId/enrichment/semantic/status");
+    case "enrichment/semantic/test":
+      return policyFor(method, "/api/vaults/:vaultId/enrichment/semantic/test");
     default:
       return undefined;
   }

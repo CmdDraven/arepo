@@ -21,6 +21,7 @@ import {
   enrichmentPreferencesPath,
   readEnrichmentPreferences,
   writeRelatedNotesPreference,
+  writeSemanticPreference,
 } from "./enrichmentPreferences.js";
 import { relatedNotesCachePath } from "./relatedNotesCache.js";
 import { relatedNotesCurationPath } from "./relatedNotesCuration.js";
@@ -2501,6 +2502,17 @@ test("discarding generated data retains durable enrichment preferences", async (
   const created = await routeRequest(request("POST", "/api/vaults", { rootPath }), cwd);
   const vault = (created.body as { data: { vault: VaultInfo } }).data.vault;
   await writeRelatedNotesPreference(vault, namedRelatedNotesPreference("balanced", true), cwd);
+  await writeSemanticPreference(
+    vault,
+    {
+      enabled: true,
+      provider: "ollama",
+      endpoint: "http://127.0.0.1:11434",
+      model: "embed-model",
+      scope: { mode: "selected", selectedPaths: ["a.md", "b.md"] },
+    },
+    cwd,
+  );
   await routeRequest(request("GET", `/api/vaults/${vault.id}/enrichment/related?path=a.md`), cwd);
   const preferenceFile = await enrichmentPreferencesPath(vault, cwd);
   const enrichmentCache = await relatedNotesCachePath(vault, cwd);
@@ -2516,6 +2528,10 @@ test("discarding generated data retains durable enrichment preferences", async (
   await assert.rejects(() => fs.access(enrichmentCache), { code: "ENOENT" });
   assert.equal(
     (await readEnrichmentPreferences(vault, cwd)).preferences.producers.relatedNotes.enabled,
+    true,
+  );
+  assert.equal(
+    (await readEnrichmentPreferences(vault, cwd)).preferences.producers.semantic.enabled,
     true,
   );
 });
@@ -3819,6 +3835,90 @@ test("enrichment settings default off, enable explicitly, fail invalid updates s
   assert.equal((afterDisable.body as { status: string }).status, "disabled");
 });
 
+test("semantic settings and status remain independent, default-off, and loopback-only", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-semantic-server-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-semantic-server-vault-");
+  const vault = testVault(rootPath, "semantic-settings-vault");
+  await fs.writeFile(path.join(rootPath, "a.md"), "# Alpha\n");
+  await writeConfig(cwd, path.join(cwd, "app-data"), { vaults: [vault] });
+  const settingsUrl = `/api/vaults/${vault.id}/enrichment/settings`;
+  const statusUrl = `/api/vaults/${vault.id}/enrichment/semantic/status`;
+  const testUrl = `/api/vaults/${vault.id}/enrichment/semantic/test`;
+
+  const initial = await routeRequest(request("GET", statusUrl), cwd);
+  assert.equal(initial.status, 200);
+  assert.deepEqual(
+    {
+      enabled: (initial.body as { provider: { enabled: boolean } }).provider.enabled,
+      status: (initial.body as { provider: { status: string } }).provider.status,
+      models: (initial.body as { provider: { models: unknown[] } }).provider.models,
+      scope: (initial.body as { scope: unknown }).scope,
+    },
+    {
+      enabled: false,
+      status: "disabled",
+      models: [],
+      scope: {
+        mode: "selected",
+        selectedCount: 0,
+        eligibleCount: 0,
+        unavailableCount: 0,
+        pairwiseRelationshipCount: 0,
+      },
+    },
+  );
+
+  const updated = await routeRequest(
+    request("PUT", settingsUrl, {
+      semantic: {
+        enabled: false,
+        provider: "ollama",
+        endpoint: "http://localhost:11434",
+        model: "embed-model",
+        scope: { mode: "selected", selectedPaths: ["a.md"] },
+      },
+    }),
+    cwd,
+  );
+  assert.equal(updated.status, 200);
+  const producers = (
+    updated.body as {
+      preferences: {
+        producers: { relatedNotes: { enabled: boolean }; semantic: { model: string } };
+      };
+    }
+  ).preferences.producers;
+  assert.equal(producers.relatedNotes.enabled, false);
+  assert.equal(producers.semantic.model, "embed-model");
+  assert.equal(
+    (
+      updated.body as {
+        preferences: { producers: { semantic: { endpoint: string } } };
+      }
+    ).preferences.producers.semantic.endpoint,
+    "http://127.0.0.1:11434",
+  );
+
+  const remote = await routeRequest(
+    request("POST", testUrl, {
+      semantic: {
+        enabled: true,
+        provider: "ollama",
+        endpoint: "http://192.168.1.5:11434",
+        model: "embed-model",
+        scope: { mode: "selected", selectedPaths: [] },
+      },
+    }),
+    cwd,
+  );
+  assert.deepEqual(remote.body, {
+    ok: false,
+    error: "Semantic provider test settings are invalid.",
+    code: "invalid-semantic-provider-test",
+  });
+  assert.equal(JSON.stringify(remote.body).includes("192.168.1.5"), false);
+});
+
 test("enrichment consent and custom settings remain isolated per vault", async (t) => {
   const cwd = await makeTestTempDir(t, "arepo-enrichment-isolation-cwd-");
   const appDataDir = path.join(cwd, "app-data");
@@ -3867,6 +3967,8 @@ test("protected enrichment settings are readable with readIndex and writable onl
   await fs.writeFile(path.join(rootPath, "a.md"), "# A\n");
   await writeConfig(cwd, appDataDir, { auth: { mode: "protected" }, vaults: [vault] });
   const url = `/api/vaults/${vault.id}/enrichment/settings`;
+  const semanticStatusUrl = `/api/vaults/${vault.id}/enrichment/semantic/status`;
+  const semanticTestUrl = `/api/vaults/${vault.id}/enrichment/semantic/test`;
   const authorization = { authorization: `Bearer ${protectedBearerToken}` };
 
   await writeProtectedAuthStores(appDataDir, {
@@ -3876,6 +3978,15 @@ test("protected enrichment settings are readable with readIndex and writable onl
   assert.equal(
     (await routeRequest(request("GET", url, undefined, authorization), cwd)).status,
     200,
+  );
+  assert.equal(
+    (await routeRequest(request("GET", semanticStatusUrl, undefined, authorization), cwd)).status,
+    200,
+  );
+  assert.equal(
+    (await routeRequest(request("POST", semanticTestUrl, { semantic: {} }, authorization), cwd))
+      .status,
+    403,
   );
   assert.equal(
     (
@@ -3893,6 +4004,11 @@ test("protected enrichment settings are readable with readIndex and writable onl
   );
 
   await writeProtectedAuthStores(appDataDir, { nodePermissions: ["manageVaults"] });
+  assert.equal(
+    (await routeRequest(request("POST", semanticTestUrl, { semantic: {} }, authorization), cwd))
+      .status,
+    400,
+  );
   assert.equal(
     (
       await routeRequest(
@@ -4160,6 +4276,182 @@ test("managed rename stays successful when subsequent curation bookkeeping is de
   await fs.access(path.join(rootPath, "new.md"));
   await assert.rejects(() => fs.access(path.join(rootPath, "old.md")), { code: "ENOENT" });
   assert.equal(await fs.readFile(curationFile, "utf8"), "invalid curation state");
+});
+
+test("managed file and folder renames update dormant Selected paths while All remains active", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-semantic-rename-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-semantic-rename-vault-");
+  const vault = testVault(rootPath, "semantic-rename-vault");
+  await fs.mkdir(path.join(rootPath, "docs", "sub"), { recursive: true });
+  await fs.writeFile(path.join(rootPath, "docs", "a.md"), "# A\n");
+  await fs.writeFile(path.join(rootPath, "docs", "sub", "b.md"), "# B\n");
+  await fs.writeFile(path.join(rootPath, "unselected.md"), "# Unselected\n");
+  await writeConfig(cwd, path.join(cwd, "app-data"), { vaults: [vault] });
+  await writeSemanticPreference(
+    vault,
+    {
+      enabled: false,
+      provider: "ollama",
+      endpoint: "http://127.0.0.1:11434",
+      model: "",
+      scope: {
+        mode: "selected",
+        selectedPaths: ["docs/a.md", "docs/sub/b.md"],
+      },
+    },
+    cwd,
+  );
+  const selectedPreference = (await readEnrichmentPreferences(vault, cwd)).preferences.producers
+    .semantic;
+  await writeSemanticPreference(
+    vault,
+    {
+      ...selectedPreference,
+      scope: { ...selectedPreference.scope, mode: "all" },
+    },
+    cwd,
+  );
+
+  const fileRename = await routeRequest(
+    request("POST", `/api/vaults/${vault.id}/rename`, {
+      fromPath: "docs/a.md",
+      toPath: "docs/renamed.md",
+      kind: "file",
+    }),
+    cwd,
+  );
+  assert.equal(fileRename.status, 200);
+  const folderRename = await routeRequest(
+    request("POST", `/api/vaults/${vault.id}/rename`, {
+      fromPath: "docs/sub",
+      toPath: "archive",
+      kind: "folder",
+    }),
+    cwd,
+  );
+  assert.equal(folderRename.status, 200);
+  let preference = (await readEnrichmentPreferences(vault, cwd)).preferences.producers.semantic;
+  assert.deepEqual(preference.scope, {
+    mode: "all",
+    selectedPaths: ["archive/b.md", "docs/renamed.md"],
+  });
+  assert.equal(preference.scope.selectedPaths.includes("unselected.md"), false);
+  await writeSemanticPreference(
+    vault,
+    { ...preference, scope: { ...preference.scope, mode: "selected" } },
+    cwd,
+  );
+  preference = (await readEnrichmentPreferences(vault, cwd)).preferences.producers.semantic;
+  assert.deepEqual(preference.scope, {
+    mode: "selected",
+    selectedPaths: ["archive/b.md", "docs/renamed.md"],
+  });
+});
+
+test("semantic preference bookkeeping failure cannot turn a successful rename into failure", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-semantic-rename-warning-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-semantic-rename-warning-vault-");
+  const vault = testVault(rootPath, "semantic-rename-warning-vault");
+  await fs.writeFile(path.join(rootPath, "old.md"), "# Old\n");
+  await writeConfig(cwd, path.join(cwd, "app-data"), { vaults: [vault] });
+  await writeSemanticPreference(
+    vault,
+    {
+      enabled: false,
+      provider: "ollama",
+      endpoint: "http://127.0.0.1:11434",
+      model: "",
+      scope: { mode: "all", selectedPaths: ["old.md"] },
+    },
+    cwd,
+  );
+  const preferenceFile = await enrichmentPreferencesPath(vault, cwd);
+  const originalRename = fs.rename;
+  t.after(() => {
+    fs.rename = originalRename;
+  });
+  fs.rename = (async (from, to) => {
+    if (to === preferenceFile) {
+      throw Object.assign(new Error("EACCES /private/example/preferences"), { code: "EACCES" });
+    }
+    return originalRename(from, to);
+  }) as typeof fs.rename;
+
+  const renamed = await routeRequest(
+    request("POST", `/api/vaults/${vault.id}/rename`, {
+      fromPath: "old.md",
+      toPath: "new.md",
+      kind: "file",
+    }),
+    cwd,
+  );
+  assert.equal(renamed.status, 200);
+  assert.equal((renamed.body as { ok: boolean }).ok, true);
+  assert.equal(
+    (
+      renamed.body as {
+        data: { semanticScopeDiagnostic?: string };
+      }
+    ).data.semanticScopeDiagnostic,
+    "The source was renamed, but Semantic Similarity selections could not be updated.",
+  );
+  assert.equal(JSON.stringify(renamed.body).includes("/private"), false);
+  await fs.access(path.join(rootPath, "new.md"));
+  await assert.rejects(() => fs.access(path.join(rootPath, "old.md")), { code: "ENOENT" });
+  assert.deepEqual(
+    (await readEnrichmentPreferences(vault, cwd)).preferences.producers.semantic.scope,
+    { mode: "all", selectedPaths: ["old.md"] },
+  );
+});
+
+test("external rename does not rewrite dormant All-mode selections", async (t) => {
+  const cwd = await makeTestTempDir(t, "arepo-semantic-external-rename-cwd-");
+  const rootPath = await makeTestTempDir(t, "arepo-semantic-external-rename-vault-");
+  const vault = testVault(rootPath, "semantic-external-rename-vault");
+  await fs.writeFile(path.join(rootPath, "old.md"), "# Old\n");
+  await writeConfig(cwd, path.join(cwd, "app-data"), { vaults: [vault] });
+  await writeSemanticPreference(
+    vault,
+    {
+      enabled: false,
+      provider: "ollama",
+      endpoint: "http://127.0.0.1:11434",
+      model: "",
+      scope: { mode: "all", selectedPaths: ["old.md"] },
+    },
+    cwd,
+  );
+  await fs.rename(path.join(rootPath, "old.md"), path.join(rootPath, "external.md"));
+  let preference = (await readEnrichmentPreferences(vault, cwd)).preferences.producers.semantic;
+  assert.deepEqual(preference.scope, {
+    mode: "all",
+    selectedPaths: ["old.md"],
+  });
+  assert.equal(preference.scope.selectedPaths.includes("external.md"), false);
+  await writeSemanticPreference(
+    vault,
+    { ...preference, scope: { ...preference.scope, mode: "selected" } },
+    cwd,
+  );
+  preference = (await readEnrichmentPreferences(vault, cwd)).preferences.producers.semantic;
+  assert.deepEqual(preference.scope.selectedPaths, ["old.md"]);
+  const unavailable = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/enrichment/semantic/status`),
+    cwd,
+  );
+  assert.deepEqual((unavailable.body as { scope: unknown }).scope, {
+    mode: "selected",
+    selectedCount: 1,
+    eligibleCount: 0,
+    unavailableCount: 1,
+    pairwiseRelationshipCount: 0,
+  });
+  await fs.writeFile(path.join(rootPath, "old.md"), "# Restored\n");
+  const restored = await routeRequest(
+    request("GET", `/api/vaults/${vault.id}/enrichment/semantic/status`),
+    cwd,
+  );
+  assert.equal((restored.body as { scope: { eligibleCount: number } }).scope.eligibleCount, 1);
 });
 
 test("relationship promotion route writes only the chosen Markdown owner and clears kept curation", async (t) => {

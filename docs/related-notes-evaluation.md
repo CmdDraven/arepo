@@ -12,9 +12,9 @@ the current producer.
 Durable user Keep/Dismiss decisions are also excluded from this harness. The
 locked baseline measures raw Balanced V1 producer output before presentation
 filtering, so personal curation can neither improve nor degrade benchmark
-metrics. The attempted local semantic comparison remains deferred for runtime
-maturity after maintained and legacy JavaScript runtimes failed the project's
-installation/security gates; no model dependency or asset was retained.
+metrics. The semantic experiment now runs only through a separately installed
+loopback Ollama provider; no model dependency, runtime, vector, or asset is
+bundled or retained by AREPO.
 
 ## Corpus and ratings
 
@@ -89,6 +89,32 @@ Production deliberately omits any pair connected by a resolved direct link in
 either direction. Relevant direct-link pairs are reported separately and are
 excluded from inferred-recall denominators; their absence is not a retrieval
 failure.
+
+## Running the semantic experiment
+
+The semantic experiment is intentionally separate from the deterministic
+baseline and ordinary CI:
+
+```bash
+AREPO_OLLAMA_MODEL=<installed-embedding-model> npm run eval:semantic
+```
+
+`AREPO_OLLAMA_URL` may optionally select a normalized HTTP loopback origin; it
+defaults to `http://127.0.0.1:11434`. The model must already exist in Ollama.
+Exact `localhost` input is pinned to literal `127.0.0.1` before a request is
+constructed; arbitrary hostname resolution is never used to establish
+loopback equivalence.
+AREPO does not install Ollama, pull models, invoke a CLI, or choose a model. A
+missing model configuration or unreachable provider produces a bounded
+unavailable/skipped result and modifies no files.
+
+The evaluator uses versioned Markdown-only semantic text, requests bounded
+embeddings through AREPO's provider abstraction, calculates cosine similarity
+inside AREPO, excludes direct links under the same evaluation policy, and uses
+code-unit path ordering for ties. It reports the same retrieval metrics plus
+provider/model/digest/dimension and semantic producer/text provenance. It never
+prints or persists vectors. The locked labels remain evaluation data only and
+do not tune either producer.
 
 The evaluator reports relevant pairs that rank below a requested cutoff
 separately from pairs absent from the thresholded production rankings. Because

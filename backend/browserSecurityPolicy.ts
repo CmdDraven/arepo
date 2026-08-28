@@ -105,6 +105,8 @@ const categoryRequestClasses: Record<RoutePolicyCategory, BrowserSecurityRequest
   relationshipPromotion: "sourceMutation",
   enrichmentSettingsRead: "safeReadMetadata",
   enrichmentSettingsWrite: "vaultManagement",
+  semanticProviderStatus: "safeReadMetadata",
+  semanticProviderTest: "vaultManagement",
 };
 
 export function classifyBrowserSecurityRequest(

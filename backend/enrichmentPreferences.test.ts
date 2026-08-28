@@ -6,7 +6,9 @@ import path from "node:path";
 import {
   enrichmentPreferencesPath,
   readEnrichmentPreferences,
+  writeEnrichmentPreferences,
   writeRelatedNotesPreference,
+  writeSemanticPreference,
 } from "./enrichmentPreferences.js";
 import { makeTestTempDir } from "./testTemp.js";
 import type { VaultInfo } from "./types.js";
@@ -57,10 +59,131 @@ test("missing preferences are disabled and do not create storage", async (t) => 
   const response = await readEnrichmentPreferences(vault, cwd);
   assert.equal(response.storageStatus, "default");
   assert.equal(response.preferences.producers.relatedNotes.enabled, false);
+  assert.equal(response.preferences.producers.semantic.enabled, false);
   const file = await enrichmentPreferencesPath(vault, cwd);
   await assert.rejects(() => fs.access(file), {
     code: "ENOENT",
   });
+});
+
+test("version 1 preferences migrate in memory without granting semantic consent", async (t) => {
+  const { cwd, vault } = await fixture(t);
+  const file = await enrichmentPreferencesPath(vault, cwd);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(
+    file,
+    JSON.stringify({
+      kind: "arepo.enrichmentPreferences",
+      version: 1,
+      vaultId: vault.id,
+      producers: { relatedNotes: namedRelatedNotesPreference("exploratory", true) },
+    }),
+  );
+  const response = await readEnrichmentPreferences(vault, cwd);
+  assert.equal(response.storageStatus, "stored");
+  assert.equal(response.preferences.version, 3);
+  assert.equal(response.preferences.producers.relatedNotes.enabled, true);
+  assert.equal(response.preferences.producers.semantic.enabled, false);
+  assert.deepEqual(response.preferences.producers.semantic.scope, {
+    mode: "selected",
+    selectedPaths: [],
+  });
+});
+
+test("version 2 semantic settings preserve configuration but infer no vault-content scope", async (t) => {
+  const { cwd, vault } = await fixture(t);
+  const file = await enrichmentPreferencesPath(vault, cwd);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(
+    file,
+    JSON.stringify({
+      kind: "arepo.enrichmentPreferences",
+      version: 2,
+      vaultId: vault.id,
+      producers: {
+        relatedNotes: namedRelatedNotesPreference("exploratory", true),
+        semantic: {
+          enabled: true,
+          provider: "ollama",
+          endpoint: "http://localhost:11434",
+          model: "embed",
+        },
+      },
+    }),
+  );
+  const response = await readEnrichmentPreferences(vault, cwd);
+  assert.equal(response.storageStatus, "stored");
+  assert.equal(response.preferences.version, 3);
+  assert.deepEqual(response.preferences.producers.semantic, {
+    enabled: true,
+    provider: "ollama",
+    endpoint: "http://127.0.0.1:11434",
+    model: "embed",
+    scope: { mode: "selected", selectedPaths: [] },
+  });
+});
+
+test("malformed semantic settings fail closed while valid deterministic consent survives", async (t) => {
+  const { cwd, vault } = await fixture(t);
+  const file = await enrichmentPreferencesPath(vault, cwd);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(
+    file,
+    JSON.stringify({
+      kind: "arepo.enrichmentPreferences",
+      version: 2,
+      vaultId: vault.id,
+      producers: {
+        relatedNotes: namedRelatedNotesPreference("conservative", true),
+        semantic: {
+          enabled: true,
+          provider: "ollama",
+          endpoint: "http://192.168.1.5:11434",
+          model: "secret",
+        },
+      },
+    }),
+  );
+  const response = await readEnrichmentPreferences(vault, cwd);
+  assert.equal(response.storageStatus, "invalid");
+  assert.equal(response.preferences.producers.relatedNotes.enabled, true);
+  assert.equal(response.preferences.producers.relatedNotes.preset, "conservative");
+  assert.equal(response.preferences.producers.semantic.enabled, false);
+  assert.equal(JSON.stringify(response).includes("192.168.1.5"), false);
+});
+
+test("semantic and deterministic preferences update independently", async (t) => {
+  const { cwd, vault } = await fixture(t);
+  await writeSemanticPreference(
+    vault,
+    {
+      enabled: true,
+      provider: "ollama",
+      endpoint: "http://127.0.0.1:11434",
+      model: "nomic-embed-text:latest",
+      scope: { mode: "selected", selectedPaths: ["docs/a.md"] },
+    },
+    cwd,
+  );
+  await storePreset(vault, cwd, "exploratory", true);
+  let response = await readEnrichmentPreferences(vault, cwd);
+  assert.equal(response.preferences.producers.relatedNotes.enabled, true);
+  assert.equal(response.preferences.producers.semantic.enabled, true);
+  assert.equal(response.preferences.producers.semantic.model, "nomic-embed-text:latest");
+
+  await writeEnrichmentPreferences(
+    vault,
+    {
+      semantic: {
+        ...response.preferences.producers.semantic,
+        enabled: false,
+      },
+    },
+    cwd,
+  );
+  response = await readEnrichmentPreferences(vault, cwd);
+  assert.equal(response.preferences.producers.relatedNotes.enabled, true);
+  assert.equal(response.preferences.producers.semantic.enabled, false);
 });
 
 test("malformed, unknown-version, mismatched-vault, and unreadable-shaped state fail closed", async (t) => {

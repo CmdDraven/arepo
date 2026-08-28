@@ -102,6 +102,8 @@ import {
   isRelatedNotesCurationMutationResponse,
   isRelatedNotesCurationResponse,
   isRelatedNotesResponse,
+  isSemanticProviderStatusResponse,
+  isSemanticRuntimeStatusResponse,
   isVaultFileListResponse,
   isVaultFileResponse,
   isVaultIndexResponse,
@@ -139,6 +141,13 @@ import {
   type RelatedNotesEvidenceKey,
   type RelatedNotesPreference,
 } from "@/lib/vault/enrichmentPreferences";
+import {
+  isSemanticPreference,
+  normalizeOllamaEndpoint,
+  type SemanticPreference,
+  type SemanticProviderStatusResponse,
+  type SemanticScopeSummary,
+} from "@/lib/vault/semanticContracts";
 import {
   beginDirectoryNavigation,
   cancelDirectoryBrowser,
@@ -4775,6 +4784,12 @@ function EnrichmentSettingsCard({
   const descriptionId = useId();
   const [response, setResponse] = useState<EnrichmentPreferencesResponse | null>(null);
   const [draft, setDraft] = useState<RelatedNotesPreference | null>(null);
+  const [semanticDraft, setSemanticDraft] = useState<SemanticPreference | null>(null);
+  const [semanticStatus, setSemanticStatus] = useState<SemanticProviderStatusResponse | null>(null);
+  const [semanticScopeStatus, setSemanticScopeStatus] = useState<SemanticScopeSummary | null>(null);
+  const [semanticScopeStatusError, setSemanticScopeStatusError] = useState(false);
+  const [markdownPaths, setMarkdownPaths] = useState<string[]>([]);
+  const [semanticPathSearch, setSemanticPathSearch] = useState("");
   const [advanced, setAdvanced] = useState(ENRICHMENT_ADVANCED_DEFAULT_OPEN);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -4784,23 +4799,46 @@ function EnrichmentSettingsCard({
     let cancelled = false;
     setResponse(null);
     setDraft(null);
+    setSemanticDraft(null);
+    setSemanticStatus(null);
+    setSemanticScopeStatus(null);
+    setSemanticScopeStatusError(false);
+    setMarkdownPaths([]);
+    setSemanticPathSearch("");
     setAdvanced(ENRICHMENT_ADVANCED_DEFAULT_OPEN);
     setError(null);
     setLoading(true);
-    requestApi(
-      `/api/vaults/${encodeURIComponent(vault.id)}/enrichment/settings`,
-      isEnrichmentPreferencesResponse,
-    )
-      .then((next) => {
+    Promise.all([
+      requestApi(
+        `/api/vaults/${encodeURIComponent(vault.id)}/enrichment/settings`,
+        isEnrichmentPreferencesResponse,
+      ),
+      requestApi(`/api/vaults/${encodeURIComponent(vault.id)}/index`, isVaultIndexResponse),
+    ])
+      .then(([next, index]) => {
         if (cancelled) return;
         setResponse(next);
         setDraft(structuredClone(next.preferences.producers.relatedNotes));
+        setSemanticDraft(structuredClone(next.preferences.producers.semantic));
+        setMarkdownPaths(Object.keys(index.index.notes).sort(compareCodeUnitStrings));
       })
       .catch((failure) => {
         if (!cancelled) setError(errorMessage(failure));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+      });
+    requestApi(
+      `/api/vaults/${encodeURIComponent(vault.id)}/enrichment/semantic/status`,
+      isSemanticRuntimeStatusResponse,
+    )
+      .then((status) => {
+        if (cancelled) return;
+        setSemanticStatus(status.provider);
+        setSemanticScopeStatus(status.scope);
+      })
+      .catch(() => {
+        if (!cancelled) setSemanticScopeStatusError(true);
       });
     return () => {
       cancelled = true;
@@ -4823,16 +4861,27 @@ function EnrichmentSettingsCard({
       setError("Choose at least one evidence source with a positive relative importance.");
       return;
     }
+    if (!semanticDraft || !isSemanticPreference(semanticDraft)) {
+      setError("Enter a valid loopback Ollama address and embedding model name.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const next = await requestApi(
         `/api/vaults/${encodeURIComponent(vault.id)}/enrichment/settings`,
         isEnrichmentPreferencesResponse,
-        { method: "PUT", body: JSON.stringify({ relatedNotes: draft }) },
+        {
+          method: "PUT",
+          body: JSON.stringify({ relatedNotes: draft, semantic: semanticDraft }),
+        },
       );
       setResponse(next);
       setDraft(structuredClone(next.preferences.producers.relatedNotes));
+      setSemanticDraft(structuredClone(next.preferences.producers.semantic));
+      setSemanticStatus(null);
+      setSemanticScopeStatus(null);
+      setSemanticScopeStatusError(false);
       onChanged(next);
     } catch (failure) {
       setError(errorMessage(failure));
@@ -4844,9 +4893,36 @@ function EnrichmentSettingsCard({
   const dirty = Boolean(
     draft &&
     response &&
-    JSON.stringify(draft) !== JSON.stringify(response.preferences.producers.relatedNotes),
+    ((draft &&
+      JSON.stringify(draft) !== JSON.stringify(response.preferences.producers.relatedNotes)) ||
+      (semanticDraft &&
+        JSON.stringify(semanticDraft) !== JSON.stringify(response.preferences.producers.semantic))),
   );
   const enabled = draft?.enabled ?? false;
+  const filteredMarkdownPaths = markdownPaths
+    .filter((notePath) => notePath.toLowerCase().includes(semanticPathSearch.trim().toLowerCase()))
+    .slice(0, 200);
+
+  const testSemanticConnection = async (): Promise<void> => {
+    if (!semanticDraft || !isSemanticPreference(semanticDraft)) {
+      setError("Enter a valid loopback Ollama address and model name.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const status = await requestApi(
+        `/api/vaults/${encodeURIComponent(vault.id)}/enrichment/semantic/test`,
+        isSemanticProviderStatusResponse,
+        { method: "POST", body: JSON.stringify({ semantic: semanticDraft }) },
+      );
+      setSemanticStatus(status);
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <section className="rounded border">
@@ -5031,12 +5107,276 @@ function EnrichmentSettingsCard({
               )}
             </div>
 
+            {semanticDraft && (
+              <div className="space-y-3 rounded border p-3">
+                <label className="flex items-start justify-between gap-4">
+                  <span>
+                    <span className="block text-sm font-medium">Semantic similarity</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Uses an embedding model provided by software running separately on the AREPO
+                      server. AREPO does not install or download models. This producer is
+                      independent of Related Notes.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-label="Semantic similarity"
+                    checked={semanticDraft.enabled}
+                    onChange={(event) => {
+                      setSemanticDraft((current) =>
+                        current ? { ...current, enabled: event.target.checked } : current,
+                      );
+                      setSemanticStatus(null);
+                    }}
+                    className="mt-1"
+                  />
+                </label>
+
+                <fieldset className="grid gap-3 sm:grid-cols-2" disabled={!semanticDraft.enabled}>
+                  <label className="space-y-1 text-xs">
+                    <span className="font-medium">Provider</span>
+                    <input
+                      value="Ollama"
+                      disabled
+                      className="h-8 w-full rounded border bg-muted px-2"
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs">
+                    <span className="font-medium">Address</span>
+                    <input
+                      value={semanticDraft.endpoint}
+                      maxLength={256}
+                      onChange={(event) => {
+                        setSemanticDraft({ ...semanticDraft, endpoint: event.target.value });
+                        setSemanticStatus(null);
+                      }}
+                      onBlur={() => {
+                        const normalized = normalizeOllamaEndpoint(semanticDraft.endpoint);
+                        if (normalized) {
+                          setSemanticDraft({ ...semanticDraft, endpoint: normalized });
+                        }
+                      }}
+                      className="h-8 w-full rounded border bg-background px-2"
+                    />
+                    <span className="block text-muted-foreground">Loopback addresses only.</span>
+                  </label>
+                  <label className="space-y-1 text-xs sm:col-span-2">
+                    <span className="font-medium">Embedding model</span>
+                    <input
+                      list={`semantic-models-${vault.id}`}
+                      value={semanticDraft.model}
+                      maxLength={200}
+                      onChange={(event) => {
+                        setSemanticDraft({ ...semanticDraft, model: event.target.value });
+                        setSemanticStatus(null);
+                      }}
+                      placeholder="Select or enter an installed model"
+                      className="h-8 w-full rounded border bg-background px-2"
+                    />
+                    <datalist id={`semantic-models-${vault.id}`}>
+                      {semanticStatus?.models.map((model) => (
+                        <option key={model.name} value={model.name} />
+                      ))}
+                    </datalist>
+                  </label>
+                </fieldset>
+
+                <fieldset className="space-y-3" disabled={!semanticDraft.enabled}>
+                  <legend className="text-xs font-medium">
+                    Notes allowed for semantic processing
+                  </legend>
+                  <p className="text-xs text-muted-foreground">
+                    Only allowed notes are sent to the provider. In Selected mode, selected notes
+                    are compared only with other selected notes.
+                  </p>
+                  <label className="flex items-start gap-2 rounded border p-2 text-xs">
+                    <input
+                      type="radio"
+                      name={`semantic-scope-${vault.id}`}
+                      checked={semanticDraft.scope.mode === "all"}
+                      onChange={() =>
+                        setSemanticDraft({
+                          ...semanticDraft,
+                          scope: { ...semanticDraft.scope, mode: "all" },
+                        })
+                      }
+                    />
+                    <span>
+                      <span className="block font-medium">Use all Markdown notes</span>
+                      <span className="block text-muted-foreground">
+                        Includes eligible Markdown notes added later. Your Selected-mode choices
+                        remain saved if you switch back.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 rounded border p-2 text-xs">
+                    <input
+                      type="radio"
+                      name={`semantic-scope-${vault.id}`}
+                      checked={semanticDraft.scope.mode === "selected"}
+                      onChange={() =>
+                        setSemanticDraft({
+                          ...semanticDraft,
+                          scope: { ...semanticDraft.scope, mode: "selected" },
+                        })
+                      }
+                    />
+                    <span>
+                      <span className="block font-medium">Use selected Markdown notes</span>
+                      <span className="block text-muted-foreground">
+                        Only explicitly checked paths participate. Missing selections stay saved and
+                        become active again if restored.
+                      </span>
+                    </span>
+                  </label>
+
+                  {semanticDraft.scope.mode === "selected" && (
+                    <div className="space-y-2 rounded border p-2">
+                      <label className="block space-y-1 text-xs">
+                        <span className="font-medium">Search note paths</span>
+                        <input
+                          type="search"
+                          value={semanticPathSearch}
+                          onChange={(event) => setSemanticPathSearch(event.target.value)}
+                          placeholder="Search Markdown notes…"
+                          className="h-8 w-full rounded border bg-background px-2"
+                        />
+                      </label>
+                      <div
+                        className="max-h-64 space-y-1 overflow-y-auto"
+                        role="group"
+                        aria-label="Markdown notes"
+                      >
+                        {filteredMarkdownPaths.map((notePath) => {
+                          const checked = semanticDraft.scope.selectedPaths.includes(notePath);
+                          return (
+                            <label key={notePath} className="flex items-start gap-2 py-1 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(event) => {
+                                  const selectedPaths = event.target.checked
+                                    ? [...semanticDraft.scope.selectedPaths, notePath]
+                                    : semanticDraft.scope.selectedPaths.filter(
+                                        (selectedPath) => selectedPath !== notePath,
+                                      );
+                                  setSemanticDraft({
+                                    ...semanticDraft,
+                                    scope: {
+                                      ...semanticDraft.scope,
+                                      selectedPaths: [...new Set(selectedPaths)].sort(
+                                        compareCodeUnitStrings,
+                                      ),
+                                    },
+                                  });
+                                }}
+                              />
+                              <span className="break-all">{notePath}</span>
+                            </label>
+                          );
+                        })}
+                        {filteredMarkdownPaths.length === 0 && (
+                          <p className="py-2 text-xs text-muted-foreground">
+                            No matching Markdown notes.
+                          </p>
+                        )}
+                      </div>
+                      {markdownPaths.filter((notePath) =>
+                        notePath.toLowerCase().includes(semanticPathSearch.trim().toLowerCase()),
+                      ).length > 200 && (
+                        <p className="text-xs text-muted-foreground">
+                          Showing the first 200 matches. Refine the search to choose other notes.
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span>
+                          {semanticDraft.scope.selectedPaths.length === 0
+                            ? "No notes selected. Semantic processing will not run on vault content."
+                            : `${semanticDraft.scope.selectedPaths.length} notes selected`}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={semanticDraft.scope.selectedPaths.length === 0}
+                          onClick={() =>
+                            setSemanticDraft({
+                              ...semanticDraft,
+                              scope: { ...semanticDraft.scope, selectedPaths: [] },
+                            })
+                          }
+                        >
+                          Clear selected
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </fieldset>
+
+                {semanticScopeStatus && (
+                  <p className="text-xs text-muted-foreground">
+                    Scope: {semanticScopeStatus.eligibleCount} eligible note
+                    {semanticScopeStatus.eligibleCount === 1 ? "" : "s"}
+                    {semanticScopeStatus.mode === "selected" &&
+                    semanticScopeStatus.unavailableCount > 0
+                      ? `; ${semanticScopeStatus.unavailableCount} saved selection${semanticScopeStatus.unavailableCount === 1 ? " is" : "s are"} currently unavailable`
+                      : ""}
+                    .
+                  </p>
+                )}
+                {semanticScopeStatusError && (
+                  <p className="text-xs text-muted-foreground">
+                    Scope status is temporarily unavailable. Saved settings are unchanged.
+                  </p>
+                )}
+
+                {semanticStatus && (
+                  <StateMessage
+                    tone={
+                      semanticStatus.status === "available" ||
+                      semanticStatus.status === "model-installed"
+                        ? "empty"
+                        : "error"
+                    }
+                  >
+                    {semanticStatus.status === "available"
+                      ? `Available: ${semanticStatus.identity.model} (${semanticStatus.identity.dimensions} dimensions)`
+                      : semanticStatus.status === "model-installed"
+                        ? "The configured model is installed. Use Test connection to verify embedding capability."
+                        : semanticStatus.status === "disabled"
+                          ? "Semantic similarity is disabled."
+                          : semanticStatus.diagnostic}
+                  </StateMessage>
+                )}
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      loading || !semanticDraft.enabled || !isSemanticPreference(semanticDraft)
+                    }
+                    onClick={() => void testSemanticConnection()}
+                  >
+                    {loading ? "Testing…" : "Test connection"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2">
               {dirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
               <Button
                 type="button"
                 size="sm"
-                disabled={saving || !dirty || !isRelatedNotesPreference(draft)}
+                disabled={
+                  saving ||
+                  !dirty ||
+                  !isRelatedNotesPreference(draft) ||
+                  !semanticDraft ||
+                  !isSemanticPreference(semanticDraft)
+                }
                 onClick={() => void save()}
               >
                 {saving ? "Saving…" : "Save enrichment settings"}
@@ -5093,6 +5433,10 @@ function advancedEvidenceLabel(key: RelatedNotesEvidenceKey): string {
     case "headings":
       return "Heading terms";
   }
+}
+
+function compareCodeUnitStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function NodeHealthCard({

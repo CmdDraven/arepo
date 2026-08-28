@@ -48,6 +48,8 @@ const currentBackendRoutes = [
   "GET /api/vaults/:vaultId/index/inspect?path=...",
   "GET /api/vaults/:vaultId/enrichment/settings",
   "PUT /api/vaults/:vaultId/enrichment/settings",
+  "GET /api/vaults/:vaultId/enrichment/semantic/status",
+  "POST /api/vaults/:vaultId/enrichment/semantic/test",
   "GET /api/vaults/:vaultId/enrichment/related?path=...",
   "GET /api/vaults/:vaultId/enrichment/related/curation?path=...",
   "PUT /api/vaults/:vaultId/enrichment/related/curation",
@@ -144,6 +146,16 @@ test("enrichment preferences are readable with readIndex and writable only by va
   const write = policyFor("PUT /api/vaults/:vaultId/enrichment/settings");
   assert.deepEqual(write.requiredPermissions, ["manageVaults"]);
   assert.equal(write.dataAccess.nodeManagement, true);
+});
+
+test("semantic provider status is readable while active testing requires vault management", () => {
+  const status = policyFor("GET /api/vaults/:vaultId/enrichment/semantic/status");
+  assert.deepEqual(status.requiredPermissions, ["readIndex"]);
+  assert.equal(status.dataAccess.sourceContent, false);
+  const probe = policyFor("POST /api/vaults/:vaultId/enrichment/semantic/test");
+  assert.deepEqual(probe.requiredPermissions, ["manageVaults"]);
+  assert.equal(probe.dataAccess.nodeManagement, true);
+  assert.equal(probe.dataAccess.sourceContent, false);
 });
 
 test("Related Notes curation is readable with readIndex and mutable with writeContent", () => {

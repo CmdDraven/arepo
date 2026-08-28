@@ -21,6 +21,13 @@ test("missing preferences default Related Notes off with Balanced reference valu
     resolveRelatedNotesSettings(preferences.producers.relatedNotes),
     BALANCED_RELATED_NOTES_SETTINGS,
   );
+  assert.deepEqual(preferences.producers.semantic, {
+    enabled: false,
+    provider: "ollama",
+    endpoint: "http://127.0.0.1:11434",
+    model: "",
+    scope: { mode: "selected", selectedPaths: [] },
+  });
 });
 
 test("named presets are deterministic monotonic variants and Balanced is deterministic V1", () => {
@@ -126,7 +133,7 @@ test("canonical effective settings ignore relative scale and object insertion co
 test("preference documents reject unknown versions, producers, presets, and impossible named states", () => {
   const valid = defaultEnrichmentPreferences("notes");
   assert.equal(isEnrichmentPreferences(valid, "notes"), true);
-  assert.equal(isEnrichmentPreferences({ ...valid, version: 2 }, "notes"), false);
+  assert.equal(isEnrichmentPreferences({ ...valid, version: 1 }, "notes"), false);
   assert.equal(
     isEnrichmentPreferences({ ...valid, producers: { ...valid.producers, future: {} } }, "notes"),
     false,
@@ -135,7 +142,10 @@ test("preference documents reject unknown versions, producers, presets, and impo
     isEnrichmentPreferences(
       {
         ...valid,
-        producers: { relatedNotes: { ...valid.producers.relatedNotes, preset: "future" } },
+        producers: {
+          ...valid.producers,
+          relatedNotes: { ...valid.producers.relatedNotes, preset: "future" },
+        },
       },
       "notes",
     ),

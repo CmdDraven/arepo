@@ -849,6 +849,49 @@ Related Notes for that vault, generate a suggestion for the pair, and choose
    reports a bounded conflict, writes neither source, and preserves the kept
    decision.
 
+## 15B. Semantic Scope And Loopback Provider
+
+Use a disposable vault with at least three Markdown notes. A real Ollama
+service is optional except for the connection-test step.
+
+1. Open Vault Settings, enable **Semantic similarity**, and configure a model.
+2. Choose **Use selected Markdown notes**, check exactly two notes, save, and
+   reload Settings.
+3. Expected result: both selections persist, the third note remains unchecked,
+   and the count says two notes are selected.
+4. Choose **Use all Markdown notes**.
+5. Expected result: the UI explains that All is dynamic rather than a snapshot
+   of checked paths. Add a Markdown note and verify the effective count includes
+   it after refresh.
+6. Switch back to Selected before saving a different selection.
+7. Expected result: the previous explicit selected set is still present.
+8. Delete one selected note externally and refresh.
+9. Expected result: its stored selection is retained but scope status reports
+   one unavailable selection; the path is not silently deselected.
+10. Restore an eligible Markdown note at the same path.
+11. Expected result: the selection becomes eligible again.
+12. Rename a selected note through AREPO.
+13. Expected result: the stored selection follows the managed rename.
+14. Switch to All, rename a previously selected note or containing folder
+    through AREPO, then switch back to Selected.
+15. Expected result: the dormant selection follows the managed rename without
+    changing All authorization while All was active.
+16. Rename a selected note externally while All is active, then switch back to
+    Selected.
+17. Expected result: the old path becomes unavailable and the new path is not
+    inferred or automatically selected.
+18. Clear all Selected paths while leaving Semantic similarity enabled.
+19. Expected result: the UI says no notes are selected and no vault-content
+    semantic processing can run.
+20. If Ollama is available, enter `http://localhost:11434` and use **Test
+    connection**.
+21. Expected result: the saved/status address is literal
+    `http://127.0.0.1:11434`; the fixed capability probe works even with zero
+    selected notes and no vault text is chosen for the test.
+22. Disable Semantic similarity.
+23. Expected result: no vault-content semantic work is authorized regardless of
+    the retained scope. Related Notes remains governed by its separate toggle.
+
 ## 16. External Edit Conflict Detection
 
 This case protects safe coexistence with other editors. Use Kate, VSCodium, or

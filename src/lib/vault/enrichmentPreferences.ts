@@ -1,5 +1,7 @@
+import type { SemanticPreference } from "./semanticContracts.js";
+
 export const ENRICHMENT_PREFERENCES_KIND = "arepo.enrichmentPreferences" as const;
-export const ENRICHMENT_PREFERENCES_SCHEMA_VERSION = 1;
+export const ENRICHMENT_PREFERENCES_SCHEMA_VERSION = 3;
 
 export const RELATED_NOTES_EVIDENCE_KEYS = [
   "tags",
@@ -44,6 +46,7 @@ export type EnrichmentPreferences = {
   vaultId: string;
   producers: {
     relatedNotes: RelatedNotesPreference;
+    semantic: SemanticPreference;
   };
 };
 
@@ -101,7 +104,10 @@ export function defaultEnrichmentPreferences(vaultId: string): EnrichmentPrefere
     kind: ENRICHMENT_PREFERENCES_KIND,
     version: ENRICHMENT_PREFERENCES_SCHEMA_VERSION,
     vaultId,
-    producers: { relatedNotes: namedRelatedNotesPreference("balanced", false) },
+    producers: {
+      relatedNotes: namedRelatedNotesPreference("balanced", false),
+      semantic: defaultStoredSemanticPreference(),
+    },
   };
 }
 
@@ -126,11 +132,14 @@ export function isEnrichmentPreferences(
     !/^[a-zA-Z0-9_-]{1,128}$/.test(value.vaultId) ||
     (expectedVaultId !== undefined && value.vaultId !== expectedVaultId) ||
     !isRecord(value.producers) ||
-    !hasExactKeys(value.producers, ["relatedNotes"])
+    !hasExactKeys(value.producers, ["relatedNotes", "semantic"])
   ) {
     return false;
   }
-  return isRelatedNotesPreference(value.producers.relatedNotes);
+  return (
+    isRelatedNotesPreference(value.producers.relatedNotes) &&
+    isStoredSemanticPreference(value.producers.semantic)
+  );
 }
 
 export function isRelatedNotesPreference(value: unknown): value is RelatedNotesPreference {
@@ -285,6 +294,94 @@ function cloneConfiguration(value: RelatedNotesConfiguration): RelatedNotesConfi
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function defaultStoredSemanticPreference(): SemanticPreference {
+  return {
+    enabled: false,
+    provider: "ollama",
+    endpoint: "http://127.0.0.1:11434",
+    model: "",
+    scope: { mode: "selected", selectedPaths: [] },
+  };
+}
+
+function isStoredSemanticPreference(value: unknown): value is SemanticPreference {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["enabled", "provider", "endpoint", "model", "scope"])
+  ) {
+    return false;
+  }
+  return (
+    typeof value.enabled === "boolean" &&
+    value.provider === "ollama" &&
+    isNormalizedStoredLoopbackEndpoint(value.endpoint) &&
+    typeof value.model === "string" &&
+    (value.model === "" || /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/.test(value.model)) &&
+    isStoredSemanticScope(value.scope)
+  );
+}
+
+function isNormalizedStoredLoopbackEndpoint(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0 || value.length > 256) return false;
+  const authority = value.slice("http://".length);
+  const literal = /^(127\.0\.0\.1|\[::1\])(?::(\d{1,5}))?$/.exec(authority);
+  if (!literal) return false;
+  const explicitPort = literal[2];
+  if (explicitPort !== undefined && (Number(explicitPort) < 1 || Number(explicitPort) > 65_535)) {
+    return false;
+  }
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
+    return (
+      parsed.protocol === "http:" &&
+      parsed.username === "" &&
+      parsed.password === "" &&
+      parsed.hash === "" &&
+      parsed.search === "" &&
+      parsed.pathname === "/" &&
+      (hostname === "127.0.0.1" || hostname === "[::1]") &&
+      value === `http://${literal[1]}${explicitPort ? `:${Number(explicitPort)}` : ""}`
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isStoredSemanticScope(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["mode", "selectedPaths"]) ||
+    (value.mode !== "all" && value.mode !== "selected") ||
+    !Array.isArray(value.selectedPaths) ||
+    value.selectedPaths.length > 10_000
+  ) {
+    return false;
+  }
+  const selectedPaths = value.selectedPaths;
+  return selectedPaths.every(
+    (selectedPath, index) =>
+      isStoredSemanticPath(selectedPath) &&
+      (index === 0 || String(selectedPaths[index - 1]) < selectedPath),
+  );
+}
+
+function isStoredSemanticPath(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    new TextEncoder().encode(value).byteLength > 1_024 ||
+    value.startsWith("/") ||
+    /^[a-zA-Z]:[\\/]/.test(value) ||
+    value.includes("\\") ||
+    value.includes("//") ||
+    !value.toLowerCase().endsWith(".md")
+  ) {
+    return false;
+  }
+  return value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
 }
 
 function isUnitScore(value: unknown): value is number {

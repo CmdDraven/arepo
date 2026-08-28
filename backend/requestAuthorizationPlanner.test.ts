@@ -253,6 +253,26 @@ test("enrichment settings separate readIndex visibility from manageVaults mutati
   assert.equal(managed.wouldAllow, true);
 });
 
+test("semantic provider status and test use existing readIndex/manageVaults grants", () => {
+  const status = planRouteAwareRequestAuthorization({
+    request: bearerRequest("GET", "/api/vaults/notes/enrichment/semantic/status"),
+    stores: storesForCredential(credential(["readIndex"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(status.wouldAllow, true);
+  assert.deepEqual(status.requiredPermissions, ["readIndex"]);
+
+  const denied = planRouteAwareRequestAuthorization({
+    request: bearerRequest("POST", "/api/vaults/notes/enrichment/semantic/test"),
+    stores: storesForCredential(credential(["readIndex"])),
+    vaultId: "notes",
+    now: new Date(now),
+  });
+  assert.equal(denied.wouldDeny, true);
+  assert.deepEqual(denied.missingPermissions, ["manageVaults"]);
+});
+
 test("source file read with only readIndex produces wouldDeny requiring readContent", () => {
   const plan = planRouteAwareRequestAuthorization({
     request: bearerRequest("GET", "/api/vaults/notes/file?path=Notes/note.md"),

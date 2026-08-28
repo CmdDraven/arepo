@@ -53,7 +53,9 @@ export type RoutePolicyCategory =
   | "relatedNotesCurationWrite"
   | "relationshipPromotion"
   | "enrichmentSettingsRead"
-  | "enrichmentSettingsWrite";
+  | "enrichmentSettingsWrite"
+  | "semanticProviderStatus"
+  | "semanticProviderTest";
 
 export type StrongerConfirmation =
   | "delete"
@@ -188,6 +190,29 @@ export const PROTECTED_ROUTE_POLICIES = [
     dataAccess: access({ nodeManagement: true }),
     networkExposureSafe: false,
     notes: "Changing durable per-vault enrichment consent is a vault-management operation.",
+  },
+  {
+    method: "GET",
+    routePattern: "/api/vaults/:vaultId/enrichment/semantic/status",
+    category: "semanticProviderStatus",
+    requiredPermissions: ["readIndex"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ generatedIndex: true }),
+    networkExposureSafe: false,
+    notes: "Readers may inspect bounded status for the configured loopback semantic provider.",
+  },
+  {
+    method: "POST",
+    routePattern: "/api/vaults/:vaultId/enrichment/semantic/test",
+    category: "semanticProviderTest",
+    requiredPermissions: ["manageVaults"],
+    anonymousReducedStatusMayExist: false,
+    strongerConfirmation: [],
+    dataAccess: access({ nodeManagement: true }),
+    networkExposureSafe: false,
+    notes:
+      "Testing provider configuration is a vault-management operation and sends only a fixed AREPO probe.",
   },
   {
     method: "GET",

@@ -18,9 +18,15 @@ import {
   refreshMachineIndex,
   type MachineIndexResult,
 } from "./indexCache.js";
-import { getRelatedNotes } from "./relatedNotesCache.js";
-import { updateRelatedNotesPreferencesAndCache } from "./relatedNotesCache.js";
-import { readEnrichmentPreferences } from "./enrichmentPreferences.js";
+import { getRelatedNotes, updateEnrichmentPreferencesAndCaches } from "./relatedNotesCache.js";
+import {
+  readEnrichmentPreferences,
+  renameSemanticPreferencePaths,
+} from "./enrichmentPreferences.js";
+import {
+  getSemanticRuntimeStatus,
+  testSemanticProviderConnection,
+} from "./semanticProviderStatus.js";
 import {
   clearRelatedNotesCurationDecision,
   readRelatedNotesCuration,
@@ -322,6 +328,13 @@ export async function routeRequest(
           body.kind === "folder" ? "folder" : "file",
           cwd,
         );
+        const semanticScope = await renameSemanticPreferencePaths(
+          vault,
+          data.fromPath,
+          data.toPath,
+          body.kind === "folder" ? "folder" : "file",
+          cwd,
+        );
         await recordVaultMutation(vault, cwd);
         return json(
           200,
@@ -330,6 +343,9 @@ export async function routeRequest(
             data: {
               ...data,
               ...(curation.diagnostic ? { curationDiagnostic: curation.diagnostic } : {}),
+              ...(semanticScope.diagnostic
+                ? { semanticScopeDiagnostic: semanticScope.diagnostic }
+                : {}),
             },
           },
           cors.headers,
@@ -436,11 +452,32 @@ export async function routeRequest(
         return json(200, await readEnrichmentPreferences(vault, cwd), cors.headers);
       }
 
-      if (method === "PUT" && action === "enrichment" && segments[4] === "settings") {
-        const body = asRecord(await readJson(request));
+      if (
+        method === "GET" &&
+        action === "enrichment" &&
+        segments[4] === "semantic" &&
+        segments[5] === "status"
+      ) {
+        return json(200, await getSemanticRuntimeStatus(vault, cwd), cors.headers);
+      }
+
+      if (
+        method === "POST" &&
+        action === "enrichment" &&
+        segments[4] === "semantic" &&
+        segments[5] === "test"
+      ) {
         return json(
           200,
-          await updateRelatedNotesPreferencesAndCache(vault, body.relatedNotes, cwd),
+          await testSemanticProviderConnection(await readJson(request)),
+          cors.headers,
+        );
+      }
+
+      if (method === "PUT" && action === "enrichment" && segments[4] === "settings") {
+        return json(
+          200,
+          await updateEnrichmentPreferencesAndCaches(vault, await readJson(request), cwd),
           cors.headers,
         );
       }

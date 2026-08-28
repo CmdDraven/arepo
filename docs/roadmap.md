@@ -236,8 +236,10 @@ The enrichment policy is:
    wikilinks or hidden frontmatter `related` metadata.
 3. Enabling deterministic Related Notes does not grant consent for any model,
    embedding, vector storage, download, or network provider.
-4. Each future semantic or generative producer requires independent consent;
-   external providers would additionally require explicit privacy disclosure.
+4. Semantic Similarity now has independent default-off consent and an explicit
+   per-note All/Selected Markdown target scope plus a loopback-provider privacy
+   disclosure; future generative producers require their own consent and
+   disclosure.
 5. Enrichment is derived and disposable; Markdown remains canonical.
 6. Inferred candidates do not automatically become links, backlinks, or graph
    edges.
@@ -252,21 +254,23 @@ The enrichment policy is:
 Canonical frontmatter promotion is implemented with backend-authoritative,
 optimistic, verified Markdown mutation. Visible body-wikilink promotion remains
 deferred because placement, wording, alias, and editing context require separate
-UX. The evaluation-only local semantic experiment is deferred for runtime maturity:
-the maintained candidate's native runtime installation failed its portability
-gate and the legacy fallback failed the dependency-security gate. A later
-experiment must still compare against the identical locked labels, avoid
-automatic tuning, and require separate per-vault consent before any production
-integration. Kept relationships now support explicit current-only, related-only,
+UX. A dependency-free external semantic-provider foundation now supports
+independent per-vault consent, loopback-only Ollama discovery/capability
+testing pinned to literal loopback addresses, backend-authoritative granular
+Markdown target scope, versioned Markdown text preparation, and a separate
+real-provider evaluation command against the unchanged locked labels. AREPO
+installs no runtime or model. Production semantic candidates and vector
+persistence remain deferred until comparative evidence warrants them. Remote
+providers remain deferred. Kept relationships now support explicit current-only, related-only,
 or reciprocal Both promotion through conflict-safe Markdown mutation without
 confusing AREPO metadata with canonical source. Both is deliberately non-atomic
 across files and exposes bounded partial success with idempotent retry.
 
 ## Deferred Work
 
-- production semantic/embedding enrichment pending comparative evaluation and
-  separate explicit consent
-- generative AI/LLM enrichment and external model providers
+- production semantic/embedding candidates and vector persistence pending the
+  external-provider comparative evaluation
+- generative AI/LLM enrichment and non-loopback/hosted model providers
 - visible body-wikilink promotion with explicit placement and wording UX
 - semantic/vector search unless separately planned
 - sync implementation

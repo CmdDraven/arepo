@@ -233,8 +233,9 @@ disposable caches:
 <appDataDir>/curation/<vault-id>.related-notes.json
 ```
 
-Missing, malformed, unknown-version, or unreadable preference state fails
-closed to enrichment disabled. Removing generated index/cache data retains
+Missing, unknown-version, or unreadable preference state fails closed to all
+enrichment disabled. A malformed semantic section fails that producer closed
+while retaining a separately valid deterministic choice. Removing generated index/cache data retains
 these explicit user preferences and kept/dismissed curation decisions.
 Preference schema versioning is independent from Related Notes producer,
 derivation, and disposable cache versions; changing a user's preference does
@@ -270,6 +271,8 @@ AREPO cache and preference files to appear beside user notes.
 - `GET /api/vaults/:vaultId/index`
 - `GET /api/vaults/:vaultId/enrichment/settings`
 - `PUT /api/vaults/:vaultId/enrichment/settings`
+- `GET /api/vaults/:vaultId/enrichment/semantic/status`
+- `POST /api/vaults/:vaultId/enrichment/semantic/test`
 - `GET /api/vaults/:vaultId/enrichment/related?path=...`
 - `GET /api/vaults/:vaultId/enrichment/related/curation?path=...`
 - `PUT /api/vaults/:vaultId/enrichment/related/curation`
@@ -516,15 +519,56 @@ frontmatter, and heading lines are excluded from lexical body scoring. Future
 semantic producers may supplement this evidence, but they must remain optional
 derived state and must not replace explicit Markdown link semantics.
 
-The first evaluation-only local semantic experiment remains deferred for
-runtime maturity: the maintained candidate's native runtime installation was
-not reliable in the supported development environment, while the legacy
-fallback introduced unacceptable dependency vulnerabilities. No embedding or
-vector runtime is part of AREPO.
+### External semantic-provider foundation
 
-Enabling deterministic Related Notes never grants consent for embeddings,
-model downloads, model execution, network calls, vector storage, or generative
-processing; each future producer requires its own explicit per-vault opt-in.
+AREPO now has an evaluation-stage semantic producer foundation that uses a
+separately installed Ollama service over HTTP loopback. AREPO includes no model,
+model runtime, Ollama SDK, vector database, download command, or installation
+workflow. It calls only Ollama's model-list and embedding endpoints, from the
+backend, after validating a configured `localhost`, `127.0.0.1`, or `::1`
+origin. `localhost` is immediately canonicalized to literal `127.0.0.1`, so
+accepted requests never depend on DNS or host-file resolution. Redirects,
+credentials, arbitrary paths, remote hosts, oversized
+responses, invalid vectors, and raw provider errors are rejected.
+
+Semantic Similarity has its own per-vault toggle and defaults off. It is a
+sibling of deterministic Related Notes: neither toggle enables the other, and
+provider failure never causes deterministic fallback. While semantic is off,
+AREPO performs no provider discovery or inference. Existing version-1
+preference files migrate with their deterministic setting intact and semantic
+consent off; version-2 semantic settings preserve their provider choice but
+migrate to an empty Selected scope, authorizing no vault content. Malformed
+semantic settings also fail closed without erasing a valid deterministic
+choice.
+
+Semantic consent has an independent per-vault target scope. **All Markdown
+notes** dynamically permits every readable, in-index-scope Markdown note,
+including eligible notes created later. **Selected Markdown notes** permits
+only canonical paths the user explicitly checks; selected notes are compared
+only with other selected notes. Missing or unreadable selections remain durable
+but inactive and revive if restored. AREPO-managed file/folder moves rewrite
+stored Selected paths, including dormant choices while All mode is active;
+external renames are deliberately not guessed. Plain
+text, JSON, symlinks, missing sources, and out-of-scope sources are never
+eligible. An empty Selected scope is valid and sends no vault content.
+
+Before any vault-derived text can enter provider-request preparation, the
+backend resolves this scope against the current structural source manifest and
+rejects paths outside the effective authorized set. The browser's filtering is
+only UI, not the consent boundary. Any permitted version-1 semantic preparation
+uses bounded Markdown-derived title, heading, and prose text. In a self-hosted
+deployment the configured service is on the AREPO backend machine—not
+necessarily the browser user's desktop. The browser never contacts Ollama
+directly. Test connection is scope-independent and uses only the fixed
+AREPO-owned probe `AREPO semantic capability test`, never vault text. Public
+status keeps provider health and bounded scope counts separate and exposes no
+vectors or raw response bodies.
+
+Production semantic Related Notes candidates and vector persistence remain
+deliberately deferred until the external-provider evaluation justifies them.
+No semantic vector or result cache is written by this tranche. Durable Keep /
+Dismiss decisions, canonical Markdown relationships, deterministic caches, and
+generated-data cleanup remain provider-independent.
 
 Developers can run the synthetic, exhaustively human-reviewed V1 baseline with
 `npm run eval:related` (or add `-- --json` for machine-readable output). The
@@ -532,6 +576,22 @@ ratings are evaluation data, not training data, and never affect production
 scoring or preferences. See
 [Related-note evaluation](docs/related-notes-evaluation.md) for the rubric,
 metrics, privacy rules, and future-producer comparison contract.
+
+An explicitly configured real-provider experiment is separate:
+
+```bash
+AREPO_OLLAMA_MODEL=<installed-embedding-model> npm run eval:semantic
+AREPO_OLLAMA_URL=http://127.0.0.1:11434 \
+  AREPO_OLLAMA_MODEL=<installed-embedding-model> npm run eval:semantic
+```
+
+The command never chooses or downloads a model. Without a model it prints a
+bounded skipped message; when Ollama is unavailable it reports the experiment
+as unavailable without affecting ordinary tests. It evaluates semantic-only
+cosine rankings against the unchanged locked corpus and reports provider,
+model, digest when available, dimensions, producer/text versions, headline
+metrics, semantic-gap recall, and hard-negative surfacing without printing
+vectors.
 
 ### Index benchmark
 

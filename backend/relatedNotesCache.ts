@@ -2,7 +2,11 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getAppDataDir } from "./config.js";
-import { readEnrichmentPreferences, writeRelatedNotesPreference } from "./enrichmentPreferences.js";
+import {
+  readEnrichmentPreferences,
+  writeEnrichmentPreferences,
+  writeRelatedNotesPreference,
+} from "./enrichmentPreferences.js";
 import {
   MARKDOWN_SOURCE_DERIVATION_VERSION,
   STRUCTURAL_INDEX_DERIVATION_VERSION,
@@ -201,6 +205,37 @@ export async function updateRelatedNotesPreferencesAndCache(
   return withRelatedNotesLock(file, async () => {
     const response = await writeRelatedNotesPreference(vault, rawPreference, cwd);
     if (!response.preferences.producers.relatedNotes.enabled) {
+      try {
+        const removal = await removeRelatedNotesCacheIfOwned(vault, cwd);
+        if (removal.diagnostics.length > 0) {
+          return {
+            ...response,
+            diagnostic:
+              "Related Notes is off, but its disposable cache could not be verified for removal.",
+          };
+        }
+      } catch {
+        return {
+          ...response,
+          diagnostic: "Related Notes is off, but its disposable cache could not be removed.",
+        };
+      }
+    }
+    return response;
+  });
+}
+
+export async function updateEnrichmentPreferencesAndCaches(
+  vault: VaultInfo,
+  rawPreferences: unknown,
+  cwd = process.cwd(),
+): Promise<EnrichmentPreferencesResponse> {
+  const file = await relatedNotesCachePath(vault, cwd);
+  return withRelatedNotesLock(file, async () => {
+    const response = await writeEnrichmentPreferences(vault, rawPreferences, cwd);
+    const updatesRelatedNotes =
+      isRecord(rawPreferences) && Object.hasOwn(rawPreferences, "relatedNotes");
+    if (updatesRelatedNotes && !response.preferences.producers.relatedNotes.enabled) {
       try {
         const removal = await removeRelatedNotesCacheIfOwned(vault, cwd);
         if (removal.diagnostics.length > 0) {

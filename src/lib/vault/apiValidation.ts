@@ -41,6 +41,12 @@ import {
   isEnrichmentPreferencesResponse as isSharedEnrichmentPreferencesResponse,
   type EnrichmentPreferencesResponse,
 } from "./enrichmentPreferences.ts";
+import {
+  isSemanticProviderStatusResponse as isSharedSemanticProviderStatusResponse,
+  isSemanticRuntimeStatusResponse as isSharedSemanticRuntimeStatusResponse,
+  type SemanticProviderStatusResponse,
+  type SemanticRuntimeStatusResponse,
+} from "./semanticContracts.ts";
 
 const SOURCE_KINDS = {
   markdown: true,
@@ -517,18 +523,23 @@ export const isRenameMutationData: ApiGuard<{
   fromPath: string;
   toPath: string;
   curationDiagnostic?: string;
+  semanticScopeDiagnostic?: string;
 }> = (
   value,
 ): value is {
   fromPath: string;
   toPath: string;
   curationDiagnostic?: string;
+  semanticScopeDiagnostic?: string;
 } =>
   isObjectRecord(value) &&
   isRelativeVaultPath(value.fromPath) &&
   isRelativeVaultPath(value.toPath) &&
   (value.curationDiagnostic === undefined ||
-    (typeof value.curationDiagnostic === "string" && value.curationDiagnostic.length <= 512));
+    (typeof value.curationDiagnostic === "string" && value.curationDiagnostic.length <= 512)) &&
+  (value.semanticScopeDiagnostic === undefined ||
+    (typeof value.semanticScopeDiagnostic === "string" &&
+      value.semanticScopeDiagnostic.length <= 512));
 
 export const isRelationshipPromotionData: ApiGuard<RelationshipPromotionData> = (
   value,
@@ -737,6 +748,14 @@ export const isRelatedNotesResponse: ApiGuard<RelatedNotesEndpointResponse> = (
 export const isEnrichmentPreferencesResponse: ApiGuard<EnrichmentPreferencesResponse> = (
   value,
 ): value is EnrichmentPreferencesResponse => isSharedEnrichmentPreferencesResponse(value);
+
+export const isSemanticProviderStatusResponse: ApiGuard<SemanticProviderStatusResponse> = (
+  value,
+): value is SemanticProviderStatusResponse => isSharedSemanticProviderStatusResponse(value);
+
+export const isSemanticRuntimeStatusResponse: ApiGuard<SemanticRuntimeStatusResponse> = (
+  value,
+): value is SemanticRuntimeStatusResponse => isSharedSemanticRuntimeStatusResponse(value);
 
 export const isRelatedNotesCurationResponse: ApiGuard<RelatedNotesCurationResponse> = (
   value,

@@ -800,6 +800,37 @@ tags, aliases, or proposed links. It needs explicit enrichment permissions,
 clear provenance, generated-data storage boundaries, and a way to disable or
 revoke enrichment access.
 
+### Current loopback embedding-provider boundary
+
+The first semantic-provider foundation is narrower than a future enrichment
+node. Only the AREPO backend may contact it, using native HTTP fetch to a
+literal `127.0.0.1` or `::1` origin. Exact textual `localhost` input is accepted
+only by immediately canonicalizing it to `127.0.0.1`; no accepted provider
+request contains a DNS hostname or relies on DNS or `/etc/hosts`. Known Ollama model-list
+and embedding paths are constructed internally. Provider URLs cannot contain
+credentials, fragments, query strings, or arbitrary paths; redirects and
+non-loopback hosts are rejected. Requests have explicit text, batch, timeout,
+response-size, vector-count, dimension, finite-number, and non-zero-norm
+bounds. Raw socket errors and provider bodies never enter public diagnostics.
+
+The per-vault semantic toggle and Markdown target scope are independent and
+default to off plus empty Selected scope. All mode dynamically authorizes only
+readable in-index-scope Markdown sources; Selected mode authorizes only the
+intersection of canonical stored Markdown paths and the current readable
+structural manifest. The backend performs this resolution before vault content
+enters semantic text preparation or provider-request construction. Frontend
+selection is not an authorization boundary. Plain text, JSON, symlinks,
+missing/unreadable sources, and paths outside the effective scope are excluded.
+
+Test connection requires `manageVaults` and sends a fixed AREPO-owned probe,
+never a vault note; bounded provider/scope status requires `readIndex`. Future
+inference over note content additionally requires `readContent`. Enabling
+semantic processing means permitted prepared note-derived text may cross the
+AREPO process boundary to a separately running service on the backend machine's
+loopback interface. This is not a claim that data never leaves AREPO.
+Production semantic candidate output and vector persistence remain deferred,
+and durable curation is not model state or training data.
+
 ### Future Mobile Browse Node
 
 Future low-trust client optimized for reading. It should receive minimal scoped
